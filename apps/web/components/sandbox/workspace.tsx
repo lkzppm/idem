@@ -4,22 +4,25 @@ import { createContext, type ReactNode, useContext } from "react";
 import { createPortal } from "react-dom";
 import type { Rect, SandboxMode, WindowId } from "@/lib/sandbox/layout";
 
-/** Places in the shell a mode fills: the sidebar body, the stage, its status cluster, each window. */
-export type SlotName = "controls" | "stage" | "status" | `win:${WindowId}` | `hint:${WindowId}`;
+/**
+ * Places in the shell a mode fills: the sidebar body, the stage, the player bar over it, the card
+ * on its right (the selection), and each panel of the dock (its body and its title hint).
+ */
+export type SlotName = "controls" | "stage" | "player" | "aside" | `win:${WindowId}` | `hint:${WindowId}`;
 
 /** What the observatory shell offers the mode running inside it. */
 export interface WorkspaceApi {
   mode: SandboxMode;
-  /** Phone layout: the stage on top, the windows as tabs of a sheet below. */
+  /** Phone layout: the stage on top, the panels as tabs of a sheet below. */
   phone: boolean;
   /** Stage size (CSS px). */
   stage: { w: number; h: number };
-  /** The part of the stage the open windows leave to the network (stage px). */
+  /** The part of the stage the dock leaves to the network (stage px). */
   area: Rect;
   /** Mounted slot elements. */
   slots: Partial<Record<SlotName, HTMLElement>>;
   isOpen(id: WindowId): boolean;
-  /** Open a window (or show its tab on a phone) and bring it to the front. */
+  /** Open a panel (or show its tab on a phone). */
   reveal(id: WindowId): void;
 }
 
@@ -51,7 +54,7 @@ export function isTyping(e: KeyboardEvent): boolean {
 }
 
 /**
- * Render `children` into one of the shell's slots (a portal), once the slot exists. A closed window
+ * Render `children` into one of the shell's slots (a portal), once the slot exists. A closed panel
  * has no slot, so its content is not rendered at all.
  */
 export function Slot({ name, children }: { name: SlotName; children: ReactNode }) {

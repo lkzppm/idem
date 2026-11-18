@@ -35,11 +35,13 @@ import {
   totalCalls,
 } from "@/lib/sandbox/run";
 import type { Camera, SceneNode } from "@/lib/sandbox/scene";
-import { Properties } from "./editor/properties";
+import { NodeGlyph } from "./editor/glyph";
+import { SelectionCard } from "./editor/selection-card";
 import type { NetworkState } from "./editor/use-network";
 import { PauseIcon, PlayIcon, RestartIcon } from "./icons";
 import { NdnEngine } from "./ndn-engine";
 import { DataFacts, DigestCheck, NameParts, type SafetyItem, SafetyList, useContentCheck } from "./panels";
+import { PlayerButton, PlayerIssues, PlayerProgress, PlayerSep, SpeedMenu } from "./player";
 import { type EditorSelection, StageCanvas, type StageEditor, type StageEditorHandle } from "./stage-canvas";
 import {
   Button,
@@ -50,10 +52,10 @@ import {
   fmtBytes,
   fmtMs,
   fmtPct,
+  InfoTip,
   Label,
   Section,
   Segmented,
-  Slider,
   Stat,
   shortName,
 } from "./ui";
@@ -145,6 +147,8 @@ function attackDetail(a: AttackRecord & { caughtAt?: string }, r: SwarmStrings["
 
 /** The protocols in the order their panes appear. */
 const COMPARE_ORDER: CompareMode[] = ["mcp-direct", "mcp-local-cache", "idem"];
+/** The player's speeds (virtual time per real time). */
+const SPEEDS = [0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2] as const;
 
 /** An issue in the visitor's language. */
 function issueText(i: Issue, t: EditorStrings["issues"], name: (id: string) => string): string {
@@ -187,7 +191,6 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
   const [table, setTable] = useState<TableSnapshot>();
   const [named, setNamed] = useState<NameSnapshot>();
   const [metricsRun, setMetricsRun] = useState<SimMode>("idem");
-  const [backend, setBackend] = useState<"webgpu" | "canvas2d">();
   const [sel, setSel] = useState<EditorSelection>();
   const [target, setTarget] = useState<string>("");
   const camera = useRef<Camera>({ x: 0, y: 0, zoom: 1 }).current;
@@ -480,9 +483,7 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
   stageEl.current = ws.slots.stage ?? null;
   const drag = useDragToStage<NetNodeKind>({
     stage: stageEl,
-    chip: true,
-    sizeOf: () => ({ w: 120, h: 38 }),
-    onDrop: (kind, _r, at) => {
+    onDrop: (kind, at) => {
       const w = handle.current?.worldAt(at.x, at.y);
       if (w) add(kind, w);
     },
@@ -496,6 +497,10 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
 
   const total = totalCalls(net);
   const allDone = views.length > 0 && views.every((v) => v.done);
+  // Calls answered or failed so far, in the slowest run.
+  const progress = views.length
+    ? Math.min(...views.map((v) => (v.metrics ? v.metrics.completed + v.metrics.failed : 0)))
+    : 0;
   const now = views[0]?.now ?? 0;
   const modes = views.map((v) => v.mode);
 
@@ -535,63 +540,34 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
     <>
       {drag.ghost}
       <Slot name="controls">
-        <Section title={te.run.title}>
-          {problems.length > 0 && (
-            <div className="obs-issues-box" role="status">
-              <p className="obs-issues-title">{te.run.cannotRun}</p>
-              <ul className="obs-issues">
-                {problems.slice(0, 5).map((i) => (
-                  <li key={JSON.stringify(i)}>{issueText(i, te.issues, nameOf)}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div className="obs-field">
-            <Label tip={te.run.tips.engine}>{te.run.engine}</Label>
-            <Segmented
-              label={te.run.engine}
-              value={net.run.engine}
-              onChange={(v) => setRun({ engine: v }, "engine")}
-              options={[
-                {
-                  value: "idem",
-                  label: (
-                    <span className="obs-mode">
-                      {te.run.engineIdem}
-                      <span className="obs-mode-hint">{te.run.engineIdemHint}</span>
-                    </span>
-                  ),
-                },
-                {
-                  value: "ndn",
-                  label: (
-                    <span className="obs-mode">
-                      {te.run.engineNdn}
-                      <span className="obs-mode-hint">{te.run.engineNdnHint}</span>
-                    </span>
-                  ),
-                },
-              ]}
-            />
-          </div>
+        <Section title={te.run.engine} aside={<InfoTip label={te.run.engine}>{te.run.tips.engine}</InfoTip>}>
+          <Segmented
+            label={te.run.engine}
+            value={net.run.engine}
+            onChange={(v) => setRun({ engine: v }, "engine")}
+            options={[
+              {
+                value: "idem",
+                label: (
+                  <span className="obs-mode">
+                    {te.run.engineIdem}
+                    <span className="obs-mode-hint">{te.run.engineIdemHint}</span>
+                  </span>
+                ),
+              },
+              {
+                value: "ndn",
+                label: (
+                  <span className="obs-mode">
+                    {te.run.engineNdn}
+                    <span className="obs-mode-hint">{te.run.engineNdnHint}</span>
+                  </span>
+                ),
+              },
+            ]}
+          />
           {!ndn && (
             <>
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={() => setPlaying((p) => !p)}
-                  kbd="Space"
-                  className="flex-1"
-                  disabled={!runnable}
-                >
-                  {playing ? <PauseIcon /> : <PlayIcon />}
-                  {playing ? ts.pause : ts.play}
-                </Button>
-                <Button onClick={() => void restart(net, false)} kbd="R" disabled={!runnable}>
-                  <RestartIcon />
-                  {ts.restart}
-                </Button>
-              </div>
               <fieldset className="obs-field">
                 <legend className="sr-only">{te.run.compare}</legend>
                 <Label tip={te.run.tips.compare}>{te.run.compare}</Label>
@@ -609,16 +585,6 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
                   />
                 ))}
               </fieldset>
-              <Slider
-                label={ts.speed}
-                tip={ts.tips.speed}
-                value={Math.log10(net.run.speed)}
-                min={-2}
-                max={Math.log10(2)}
-                step={0.01}
-                format={() => `${fixed(net.run.speed, net.run.speed < 0.1 ? 3 : 2)}×`}
-                onChange={(v) => setRun({ speed: Number((10 ** v).toFixed(3)) }, "speed")}
-              />
               <div className="obs-field">
                 <Label htmlFor="net-seed" tip={ts.tips.seed}>
                   {ts.seed}
@@ -664,16 +630,6 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
             ))}
           </div>
           <p className="obs-note">{te.add.hint}</p>
-        </Section>
-        <Section title={te.props.title}>
-          <Properties
-            net={net}
-            sel={sel}
-            edit={edit}
-            onSelect={setSel}
-            onDelete={removeSelected}
-            onConnect={connect}
-          />
         </Section>
         {!ndn && (
           <Section title={ts.attacks} defaultOpen={false}>
@@ -722,16 +678,21 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
             </p>
           </Section>
         )}
-        {backend && (
-          <p className="obs-footnote t-mono">
-            {ts.renderer(backend === "webgpu" ? "WebGPU" : "Canvas2D")} · {ts.seed.toLowerCase()}{" "}
-            {net.run.seed}
-          </p>
-        )}
+      </Slot>
+
+      <Slot name="aside">
+        <SelectionCard
+          net={net}
+          sel={sel}
+          edit={edit}
+          onSelect={setSel}
+          onDelete={removeSelected}
+          onConnect={connect}
+        />
       </Slot>
 
       {ndn ? (
-        <NdnEngine net={net} loads={nw.loads} editor={editorProps} onBackend={setBackend} />
+        <NdnEngine net={net} loads={nw.loads} editor={editorProps} />
       ) : (
         <>
           <Slot name="stage">
@@ -764,36 +725,54 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
               label={te.canvas.label}
               onNodeClick={onNodeClick}
               nodeAction={(_pane, n) => te.canvas.select(n.id)}
-              onBackend={setBackend}
               editor={editorProps}
             />
           </Slot>
 
-          <Slot name="status">
-            <button
-              type="button"
-              className="obs-round-btn"
-              aria-label={playing ? ts.pause : ts.play}
-              title={playing ? ts.pause : ts.play}
+          <Slot name="player">
+            <PlayerButton
+              label={ts.restart}
+              kbd="R"
+              disabled={!runnable}
+              onClick={() => void restart(netRef.current, false)}
+            >
+              <RestartIcon />
+            </PlayerButton>
+            <PlayerButton
+              primary
+              label={playing ? ts.pause : ts.play}
+              kbd="Space"
               disabled={!runnable}
               onClick={() => setPlaying((p) => !p)}
             >
               {playing ? <PauseIcon /> : <PlayIcon />}
-            </button>
-            <span
-              className="obs-status"
-              data-state={!runnable ? "paused" : allDone ? "done" : playing ? "ready" : "paused"}
-            >
-              {runnable ? (
-                <>
-                  <span className="t-mono tabular-nums text-fg">{ts.time(fmtVirtual(now))}</span>
-                  <span className="text-faint">{ts.virtual}</span>
-                  {allDone && <span className="text-data">· {ts.done}</span>}
-                </>
-              ) : (
-                <span className="text-faint">{te.run.cannotRun}</span>
-              )}
-            </span>
+            </PlayerButton>
+            <PlayerSep />
+            {runnable ? (
+              <>
+                <span className="obs-ptime">
+                  <span className="t-mono tabular-nums text-fg">{fmtVirtual(now)}</span>
+                  <span className="obs-ptime-note">{allDone ? ts.done : ts.virtual}</span>
+                </span>
+                <PlayerProgress
+                  value={allDone ? 1 : progress / Math.max(1, total)}
+                  label={`${allDone ? total : Math.min(total, progress)}/${total}`}
+                  title={te.run.progress}
+                />
+                <PlayerSep />
+                <SpeedMenu
+                  value={net.run.speed}
+                  presets={SPEEDS}
+                  label={ts.speed}
+                  onChange={(v) => setRun({ speed: v }, "speed")}
+                />
+              </>
+            ) : (
+              <PlayerIssues
+                title={te.run.cannotRun}
+                items={problems.map((i) => issueText(i, te.issues, nameOf))}
+              />
+            )}
           </Slot>
         </>
       )}
@@ -859,24 +838,6 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
         <SafetyList items={safety} labels={t.safety} />
       </Slot>
     </>
-  );
-}
-
-/** The stage's shape for a node kind, small, for the palette. */
-export function NodeGlyph({ kind }: { kind: NetNodeKind }) {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="obs-glyph">
-      {kind === "agent" && <circle cx="8" cy="8" r="4.2" className="obs-glyph-agent" />}
-      {kind === "forwarder" && (
-        <rect x="2.5" y="2.5" width="11" height="11" rx="3" className="obs-glyph-fwd" />
-      )}
-      {kind === "producer" && (
-        <>
-          <rect x="1.5" y="1.5" width="13" height="13" rx="3.4" className="obs-glyph-prod" />
-          <rect x="5.5" y="5.5" width="5" height="5" rx="1.3" className="obs-glyph-core" />
-        </>
-      )}
-    </svg>
   );
 }
 
