@@ -4,7 +4,7 @@ One rule makes it trustworthy: the sandbox runs the **same** `Forwarder` class a
 
 ## What you can run {#modes}
 
-The sandbox opens on a choice: an **example** network (a swarm on one edge, two producers, a regional tree), a **blank canvas**, **Live**, or the network you were editing last time. Every network but Live can be edited.
+The sandbox opens on a choice: a **blank canvas** (the big plus), an **example** network (a swarm on one edge, two producers, a regional tree), **Live**, or the network you were editing last time. Every network but Live can be edited. To open another one, go back with *Networks* at the top of the sidebar: an edited network is kept, and *Continue where you left off* brings it back.
 
 | | A network in the editor | Live |
 |---|---|---|
@@ -43,13 +43,13 @@ Agents connect only to forwarders, never straight to a producer or to each other
 | add a node | click *Agent*, *Forwarder* or *Producer*: it appears next to the selected node, already linked (or drag the chip onto the network) |
 | move a node | drag it. A run never restarts for a move |
 | link two nodes | select one, then drag from its blue handle onto the other (or hold `Shift` and drag from a node) |
-| change a node or a link | select it, and use the *Selected* section. Every field has an info bubble |
+| change a node or a link | click it: a card named after it opens on the right, with its settings. Every field has an info bubble |
 | remove | select, then `Delete` |
 | look around | drag empty space to pan; scroll, pinch or use the buttons to zoom; `F` fits the network |
 | undo | `⌘Z` (`⇧⌘Z` to redo) |
 | share | *Share* copies a link that carries the whole network |
 
-When something stops the network from running (no agent, an agent with no tools, a tool whose producer it cannot reach), the *Run* section lists it.
+The player bar over the network plays, pauses and restarts the run, shows its virtual time and how many calls were answered, and sets the speed. When something stops the network from running (no agent, an agent with no tools, a tool whose producer it cannot reach), the player bar says so; click it for the whole list.
 
 ### The IDEM engine {#idem-engine}
 
@@ -152,9 +152,9 @@ Three controls try to break the protocol on purpose. Each one must end in a visi
 
 The rule behind each rejection is on the [Security](/docs/security#attacks) page. The same attempts, counted over many runs, are experiment E5 in the [Evaluation](/docs/evaluation#e5).
 
-## Windows {#windows}
+## Panels {#windows}
 
-The protocol's state lives in six windows over the network: **Event log**, **PIT & CS**, **Packet inspector**, **Metrics**, **Compare** and **Safety**. Drag one by its title bar, double-click the bar to collapse it, resize it from its corner, and close or reopen it from the sidebar; the layout is remembered in this browser, and *Tidy up* puts every window back. Clicking a forwarder opens its tables, and clicking a call or a name in the log opens it in the inspector. On a phone the windows become tabs of a sheet under the network.
+The protocol's state lives in six panels, with a tab each along the bottom of the network: **Event log**, **PIT & CS**, **Packet inspector**, **Metrics**, **Compare** and **Safety**. Click a tab (or press its number) to open its panel: the panels rise from the tabs, side by side, and the network moves up to make room. Drag the top edge to make them taller or shorter. Which panels are open and their height are remembered in this browser; the button at the right of the tabs resets them. Clicking a forwarder opens its tables, and clicking a call or a name in the log opens it in the inspector. On a phone the panels become tabs of a sheet under the network.
 
 ## Keyboard and motion {#access}
 
@@ -162,15 +162,14 @@ The sandbox can be driven without a pointer:
 
 | Key | What it does |
 |---|---|
-| `1`–`6` | open or close a window, in the order above |
+| `1`–`6` | open or close a panel, in the order above |
 | `Space` | a burst (live) · play or pause (editor) |
 | `R` | restart the run (editor) |
 | `Delete` | remove the selected node or link (editor) |
 | `⌘Z`, `⇧⌘Z` | undo, redo (editor) |
 | `F` | fit the network (editor) |
-| `Esc` | close the shortcut list, clear the highlight and the selection; on a window's grip, close that window |
-| `←` `↑` `→` `↓` | move a window, from the grip in its title bar (`Shift` for bigger steps) |
-| `Alt` + `←` `↑` `→` `↓` | resize a window, from the same grip |
+| `Esc` | close the shortcut list or a menu, clear the highlight and the selection |
+| `↑` `↓` | make the panels taller or shorter, from their top edge (`Shift` for bigger steps) |
 | `Tab`, then `←` `→` | reach the agents and forwarders on the stage (one tab stop); `Enter` acts as a click |
 | `?` | show the shortcut list |
 

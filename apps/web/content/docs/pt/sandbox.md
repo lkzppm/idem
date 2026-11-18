@@ -4,7 +4,7 @@ Uma regra o torna confiável: o sandbox executa a **mesma** classe `Forwarder` d
 
 ## O que dá para rodar {#modes}
 
-O sandbox abre numa escolha: uma rede de **exemplo** (um enxame numa borda, dois produtores, uma árvore regional), uma **tela em branco**, o modo **Ao vivo**, ou a rede que você editava da última vez. Toda rede, exceto a Ao vivo, pode ser editada.
+O sandbox abre numa escolha: uma **tela em branco** (o sinal de mais grande), uma rede de **exemplo** (um enxame numa borda, dois produtores, uma árvore regional), o modo **Ao vivo**, ou a rede que você editava da última vez. Toda rede, exceto a Ao vivo, pode ser editada. Para abrir outra, volte com *Redes* no topo da barra lateral: uma rede editada fica guardada, e *Continuar de onde parou* a traz de volta.
 
 | | Uma rede no editor | Ao vivo |
 |---|---|---|
@@ -43,19 +43,19 @@ Agentes se ligam só a forwarders, nunca direto a um produtor nem entre si: o fo
 | adicionar um nó | clique em *Agente*, *Forwarder* ou *Produtor*: ele aparece ao lado do nó selecionado, já ligado (ou arraste o botão até a rede) |
 | mover um nó | arraste-o. Uma execução nunca reinicia por um movimento |
 | ligar dois nós | selecione um e arraste da alça azul até o outro (ou segure `Shift` e arraste a partir de um nó) |
-| mudar um nó ou enlace | selecione-o e use a seção *Selecionado*. Todo campo tem um balão de informação |
+| mudar um nó ou enlace | clique nele: um cartão com o nome dele abre à direita, com as configurações. Todo campo tem um balão de informação |
 | remover | selecione e aperte `Delete` |
 | olhar em volta | arraste o fundo para deslocar; role, faça pinça ou use os botões para zoom; `F` enquadra a rede |
 | desfazer | `⌘Z` (`⇧⌘Z` para refazer) |
 | compartilhar | *Compartilhar* copia um link que carrega a rede inteira |
 
-Quando algo impede a rede de rodar (nenhum agente, um agente sem ferramentas, uma ferramenta cujo produtor ele não alcança), a seção *Execução* lista.
+A barra do player, sobre a rede, executa, pausa e reinicia a execução, mostra o tempo virtual e quantas chamadas foram respondidas, e ajusta a velocidade. Quando algo impede a rede de rodar (nenhum agente, um agente sem ferramentas, uma ferramenta cujo produtor ele não alcança), a barra do player avisa; clique nela para ver a lista inteira.
 
 ### O motor IDEM {#idem-engine}
 
 O motor IDEM roda a rede no `@idem/sim`: as chamadas dos agentes, sobre enlaces virtuais, com um relógio virtual. Tudo deriva de uma **semente**, então a mesma rede e a mesma semente dão a mesma execução, evento por evento. Qualquer mudança, exceto mover um nó, reinicia a execução.
 
-Sua visão mais útil é a **comparação**: a mesma carga, com a mesma semente, roda uma vez por protocolo marcado, lado a lado. Os agentes pedem exatamente as mesmas coisas nos mesmos instantes, então o que difere entre os painéis é o protocolo.
+Sua visão mais útil é a **comparação**: a mesma carga, com a mesma semente, roda uma vez por protocolo marcado, lado a lado. Os agentes pedem exatamente as mesmas coisas nos mesmos instantes, então o que difere entre os quadros é o protocolo.
 
 | Protocolo | O que acontece com uma chamada |
 |---|---|
@@ -152,9 +152,9 @@ Três controles tentam quebrar o protocolo de propósito. Cada um precisa termin
 
 A regra por trás de cada rejeição está na página de [Segurança](/docs/security#attacks). As mesmas tentativas, contadas ao longo de muitas execuções, são o experimento E5 da [Avaliação](/docs/evaluation#e5).
 
-## Janelas {#windows}
+## Painéis {#windows}
 
-O estado do protocolo fica em seis janelas sobre a rede: **Log de eventos**, **PIT e CS**, **Inspetor de pacotes**, **Métricas**, **Comparar** e **Segurança**. Arraste uma pela barra de título, clique duas vezes na barra para recolhê-la, redimensione pelo canto e feche ou reabra pela barra lateral; o layout fica guardado neste navegador, e *Arrumar* devolve cada janela ao lugar. Clicar em um forwarder abre as suas tabelas, e clicar em uma chamada ou em um nome no log abre o inspetor. No celular, as janelas viram abas de uma folha embaixo da rede.
+O estado do protocolo fica em seis painéis, cada um com uma aba ao longo da parte de baixo da rede: **Log de eventos**, **PIT e CS**, **Inspetor de pacotes**, **Métricas**, **Comparar** e **Segurança**. Clique numa aba (ou aperte o número dela) para abrir o painel: os painéis sobem a partir das abas, lado a lado, e a rede sobe para dar espaço. Arraste a borda de cima para deixá-los mais altos ou mais baixos. Quais painéis estão abertos e a altura deles ficam guardados neste navegador; o botão à direita das abas os restaura. Clicar em um forwarder abre as suas tabelas, e clicar em uma chamada ou em um nome no log abre o inspetor. No celular, os painéis viram abas de uma folha embaixo da rede.
 
 ## Teclado e movimento {#access}
 
@@ -162,15 +162,14 @@ O sandbox pode ser operado sem ponteiro:
 
 | Tecla | O que faz |
 |---|---|
-| `1`–`6` | abre ou fecha uma janela, na ordem acima |
+| `1`–`6` | abre ou fecha um painel, na ordem acima |
 | `Espaço` | uma rajada (ao vivo) · executar ou pausar (editor) |
 | `R` | reinicia a execução (editor) |
 | `Delete` | remove o nó ou enlace selecionado (editor) |
 | `⌘Z`, `⇧⌘Z` | desfazer, refazer (editor) |
 | `F` | enquadra a rede (editor) |
-| `Esc` | fecha a lista de atalhos, limpa o destaque e a seleção; na alça de uma janela, fecha essa janela |
-| `←` `↑` `→` `↓` | move uma janela, pela alça na barra de título (`Shift` para passos maiores) |
-| `Alt` + `←` `↑` `→` `↓` | redimensiona uma janela, pela mesma alça |
+| `Esc` | fecha a lista de atalhos ou um menu, limpa o destaque e a seleção |
+| `↑` `↓` | deixa os painéis mais altos ou mais baixos, pela borda de cima (`Shift` para passos maiores) |
 | `Tab`, depois `←` `→` | alcança os agentes e forwarders do palco (uma parada de Tab); `Enter` age como um clique |
 | `?` | mostra a lista de atalhos |
 
