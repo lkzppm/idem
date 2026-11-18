@@ -7,7 +7,9 @@ export interface Metrics {
   calls: number;
   completed: number;
   failed: number;
-  /** `tools/call` requests (Interests + passthrough calls) that reached the producer. */
+  /** Failed calls whose producer the agent could not reach (no path; `CallRecord.error`). */
+  noRoute: number;
+  /** `tools/call` requests (Interests + passthrough calls) that reached a producer node. */
   upstreamCalls: number;
   csHits: number;
   pitAggregations: number;
@@ -61,10 +63,12 @@ export class MetricsCollector {
   readonly counts = Object.fromEntries(KINDS.map((k) => [k, 0])) as Record<ForwarderEventKind, number>;
   readonly #producerLinks: Set<string>;
   readonly #edges: Set<string>;
+  readonly #producers: Set<string>;
   readonly latencies: number[] = [];
   calls = 0;
   completed = 0;
   failed = 0;
+  noRoute = 0;
   upstreamCalls = 0;
   producerLinkBytes = 0;
   edgeInterests = 0;
@@ -80,9 +84,15 @@ export class MetricsCollector {
   consumerVerifyFailures = 0;
   readonly violations: string[] = [];
 
-  constructor(opts: { producerLinks: Set<string>; edges: Set<string> }) {
+  /**
+   * `producerLinks`: ids of the links that touch a producer node (byte accounting). `edges`:
+   * forwarders adjacent to an agent. `producers`: producer node ids, the destinations counted as
+   * upstream (default: the single node `producer` of the topology presets).
+   */
+  constructor(opts: { producerLinks: Set<string>; edges: Set<string>; producers?: Set<string> }) {
     this.#producerLinks = opts.producerLinks;
     this.#edges = opts.edges;
+    this.#producers = opts.producers ?? new Set(["producer"]);
   }
 
   event(e: ForwarderEvent): void {
@@ -100,7 +110,7 @@ export class MetricsCollector {
   transmit(tx: Transmission): void {
     if (!this.#producerLinks.has(tx.link)) return;
     this.producerLinkBytes += tx.bytes;
-    if (!tx.lost && tx.to === "producer" && (tx.kind === "interest" || tx.kind === "call"))
+    if (!tx.lost && this.#producers.has(tx.to) && (tx.kind === "interest" || tx.kind === "call"))
       this.upstreamCalls++;
   }
 
@@ -116,6 +126,7 @@ export class MetricsCollector {
       this.lateServes++;
       this.maxLateMs = Math.max(this.maxLateMs, r.lateMs);
     }
+    if (r.error === "NO_ROUTE") this.noRoute++;
     this.retries += Math.max(0, r.attempts - 1);
   }
 
@@ -133,6 +144,7 @@ export class MetricsCollector {
       calls: this.calls,
       completed: this.completed,
       failed: this.failed,
+      noRoute: this.noRoute,
       upstreamCalls: this.upstreamCalls,
       csHits: this.edgeCsHits,
       pitAggregations: this.edgePitAggregations,

@@ -22,7 +22,8 @@
     "build": "tsdown",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "cli": "node --import ./scripts/ts-resolve.mjs src/cli.ts"
+    "cli": "node --import ./scripts/ts-resolve.mjs src/cli.ts",
+    "fingerprint": "node --import ./scripts/ts-resolve.mjs scripts/fingerprint.ts"
   },
   "dependencies": {
     "@idem/core": "workspace:*"
