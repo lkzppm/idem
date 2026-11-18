@@ -138,7 +138,7 @@ export function StageCanvas({
       const fr = frameOf(f);
       const title = titles.current.get(p.key);
       if (title) title.style.transform = `translate3d(${fr.x + 18}px, ${fr.y + 14}px, 0)`;
-      const k = nodeScale(fr);
+      const k = p.scene.scaleFor(fr);
       for (const n of p.nodes) {
         const s = p.scene.screen(fr, n.id);
         if (!s) continue;
