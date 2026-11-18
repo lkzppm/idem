@@ -1,0 +1,32 @@
+{
+  "name": "@idem/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@idem/core": "workspace:*",
+    "@idem/gateway": "workspace:*",
+    "@idem/mcp": "workspace:*",
+    "@idem/ndn": "workspace:*",
+    "@idem/sim": "workspace:*",
+    "@ndn/packet": "0.0.20260427",
+    "geist": "1.9.2",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@webgpu/types": "0.1.74",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2"
+  }
+}
