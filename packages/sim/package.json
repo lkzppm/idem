@@ -1,0 +1,30 @@
+{
+  "name": "@idem/sim",
+  "version": "0.0.0",
+  "description": "Deterministic discrete-event simulator for IDEM: topologies, lossy links, agent workloads, metrics. Runs the real @idem/core forwarder in Node and the browser.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "cli": "node --import ./scripts/ts-resolve.mjs src/cli.ts"
+  },
+  "dependencies": {
+    "@idem/core": "workspace:*"
+  }
+}
