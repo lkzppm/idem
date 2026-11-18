@@ -89,12 +89,18 @@ const LIFE: Live = {
 
 /**
  * Columns by hop distance from the producer: agents at x = 0 (fanned on a shallow arc so dense swarms
- * stay legible), the producer at x = 1.
+ * stay legible), the producer at x = 1. A node with `at` is placed there (0..1 in both axes) and left
+ * out of the columns.
  */
 export function layoutTopology(topology: {
-  nodes: { id: string; kind: NodeKind }[];
+  nodes: { id: string; kind: NodeKind; at?: { x: number; y: number } }[];
   links: { a: string; b: string }[];
 }): SceneNode[] {
+  const pinned = topology.nodes.filter((n) => n.at);
+  if (pinned.length > 0) {
+    const rest = layoutTopology({ ...topology, nodes: topology.nodes.filter((n) => !n.at) });
+    return [...pinned.map((n) => ({ id: n.id, kind: n.kind, x: n.at?.x ?? 0, y: n.at?.y ?? 0 })), ...rest];
+  }
   const adj = new Map<string, string[]>();
   for (const l of topology.links) {
     adj.set(l.a, [...(adj.get(l.a) ?? []), l.b]);
@@ -217,7 +223,10 @@ export class TopologyScene {
 
   /** Replace the topology; nodes pop in from the producer outward, starting at real time `at`. */
   setTopology(
-    t: { nodes: { id: string; kind: NodeKind; x?: number; y?: number }[]; links: { a: string; b: string }[] },
+    t: {
+      nodes: { id: string; kind: NodeKind; x?: number; y?: number; at?: { x: number; y: number } }[];
+      links: { a: string; b: string }[];
+    },
     at = performance.now(),
     /** Keep the packets in flight whose ends still exist (an edit, not a new run). */
     keepTraffic = false,
