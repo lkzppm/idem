@@ -1,0 +1,5 @@
+packages:
+  - packages/*
+  - apps/*
+fetchTimeout: 300000
+networkConcurrency: 8
