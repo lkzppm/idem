@@ -1,6 +1,6 @@
 // Three YaNFD-on-WASM instances in one JS process: edge1, edge2 → regional → producer.
 import { readFileSync } from "node:fs";
-import { Data, Interest, Name, digestSigning } from "@ndn/packet";
+import { Data, digestSigning, Interest, Name } from "@ndn/packet";
 import { Decoder, Encoder } from "@ndn/tlv";
 
 const [wasmPath, execPath] = process.argv.slice(2);
@@ -22,7 +22,10 @@ const l3 = (frame) => {
   const t = new Decoder(frame).read();
   if (t.type !== 0x64) return frame;
   const d = new Decoder(t.value);
-  while (!d.eof) { const f = d.read(); if (f.type === 0x50) return f.value; }
+  while (!d.eof) {
+    const f = d.read();
+    if (f.type === 0x50) return f.value;
+  }
 };
 const kind = (b) => new Decoder(b).read().type;
 
@@ -54,13 +57,19 @@ reg.route("/idem", P);
 
 const got = [];
 const consumerOn = (fwd, label) => {
-  const id = fwd.addFace((frame) => { const b = l3(frame); if (kind(b) === 0x06) got.push(label); });
+  const id = fwd.addFace((frame) => {
+    const b = l3(frame);
+    if (kind(b) === 0x06) got.push(label);
+  });
   return (n) => fwd.send(id, Encoder.encode(new Interest(n, Interest.MustBeFresh)));
 };
-const a = consumerOn(e1, "agent on edge1"), b = consumerOn(e2, "agent on edge2");
+const a = consumerOn(e1, "agent on edge1"),
+  b = consumerOn(e2, "agent on edge2");
 await sleep(50);
 const n = new Name("/idem/v1/demo.idem.dev/search_corpus/s/q1");
-a(n); await sleep(500);
-b(n); await sleep(500);
+a(n);
+await sleep(500);
+b(n);
+await sleep(500);
 console.log(JSON.stringify({ answered: got, producerInterests: upstream }));
 console.log(upstream === 1 && got.length === 2 ? "PASS: regional CS served the second edge" : "FAIL");
