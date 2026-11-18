@@ -175,6 +175,53 @@ export function removeNode(net: Network, id: string): Network {
   };
 }
 
+/** A typed name made fit for a node id: lowercase, spaces and other characters as dashes, ≤ 40. */
+export function cleanNodeName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 40);
+}
+
+/** Why a node cannot take `next` as its name, or `undefined` when it can (or it is its name already). */
+export type RenameProblem = "invalid" | "taken";
+
+export function renameProblem(net: Network, id: string, next: string): RenameProblem | undefined {
+  if (next === id) return undefined;
+  if (!isId(next)) return "invalid";
+  if (net.nodes.some((n) => n.id === next) || net.links.some((l) => l.id === next)) return "taken";
+  return undefined;
+}
+
+/**
+ * Rename a node: its id is the name shown on the canvas and in the panels. Its links and the agents'
+ * tool-list entries that point at it (a producer) follow. Unchanged when the name is not allowed.
+ */
+export function renameNode(net: Network, id: string, next: string): Network {
+  if (next === id || renameProblem(net, id, next)) return net;
+  const to = (x: string) => (x === id ? next : x);
+  return {
+    ...net,
+    nodes: net.nodes.map((n) => {
+      const renamed = n.id === id ? { ...n, id: next } : n;
+      return renamed.kind === "agent"
+        ? {
+            ...renamed,
+            config: {
+              ...renamed.config,
+              tools: renamed.config.tools.map((t) => ({ ...t, producer: to(t.producer) })),
+            },
+          }
+        : renamed;
+    }),
+    links: net.links.map((l) => ({ ...l, a: to(l.a), b: to(l.b) })),
+  };
+}
+
 /** Why two nodes cannot be linked, or `undefined` when they can. */
 export type LinkProblem =
   | "same"

@@ -851,6 +851,31 @@
     font-size: 9.5px;
     color: var(--fg-subtle);
   }
+  /* Live: the other visitors' agents, one boxed caption under their dot (ADR-030). */
+  .obs-node-label[data-box] {
+    text-shadow: none;
+  }
+  .obs-node-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    margin-top: 2px;
+    padding: 5px 9px 6px;
+    font-family: var(--font-sans);
+    background: var(--bg);
+    border: 1.5px dashed var(--obs-edge-strong);
+    border-radius: 9px;
+  }
+  .obs-node-box-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .obs-node-box-sub {
+    font-size: 10.5px;
+    color: var(--fg-muted);
+  }
   /* Keyboard stand-ins for the canvas nodes: invisible until focused, then the site's focus ring
      around the node (round: `border-radius` is inline, since the unlayered `:focus-visible` rule in
      globals.css would beat this layer). The pointer goes through them to the canvas. */

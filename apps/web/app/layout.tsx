@@ -19,7 +19,8 @@ const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-face", 
 export async function generateMetadata(): Promise<Metadata> {
   const t = (await getMessages(chrome)).meta;
   return {
-    title: { default: t.title, template: "%s · IDEM" },
+    // The home tab reads "IDEM"; every other page "IDEM • <page>".
+    title: { default: "IDEM", template: "IDEM • %s" },
     description: t.description,
   };
 }

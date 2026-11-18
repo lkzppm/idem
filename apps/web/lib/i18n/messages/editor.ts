@@ -145,7 +145,10 @@ export const editor = defineMessages(
       removeTool: (tool: string) => `Remove ${tool}`,
       addTool: "Add a tool",
       csSize: "Content Store",
-      name: "Name",
+      label: "Name",
+      labelInvalid: "Lowercase letters, digits and dashes, starting with a letter or digit.",
+      labelTaken: "Another node or link already has this name.",
+      name: "Name in IDEM names",
       nameInvalid: "A lowercase host name, unique in the network (e.g. docs.idem.dev).",
       serves: "Serves",
       ttl: "Fresh for",
@@ -166,6 +169,7 @@ export const editor = defineMessages(
         tools:
           "The tools this agent calls, from the producers it can reach, and how often (relative weights). my_notes is private and send_email has a side effect: neither is ever shared from a cache.",
         csSize: "This forwarder's Content Store budget. When full, the least recently used entry goes.",
+        label: "What this node is called on the canvas, in the panels and in the log. Press Enter to apply.",
         name: "The producer component of the names it signs: /idem/v1/<name>/<tool>/…",
         serves:
           "The tools this producer offers and, per its signed manifest, how long a result stays fresh in caches.",
@@ -385,7 +389,10 @@ export const editor = defineMessages(
       removeTool: (tool: string) => `Remover ${tool}`,
       addTool: "Adicionar ferramenta",
       csSize: "Content Store",
-      name: "Nome",
+      label: "Nome",
+      labelInvalid: "Letras minúsculas, dígitos e hífens, começando por letra ou dígito.",
+      labelTaken: "Outro nó ou enlace já tem este nome.",
+      name: "Nome nos nomes IDEM",
       nameInvalid: "Um nome de host em minúsculas, único na rede (ex.: docs.idem.dev).",
       serves: "Oferece",
       ttl: "Fresco por",
@@ -407,6 +414,7 @@ export const editor = defineMessages(
           "As ferramentas que este agente chama, dos produtores que ele alcança, e com que frequência (pesos relativos). my_notes é privada e send_email tem efeito colateral: nenhuma das duas é servida de um cache.",
         csSize:
           "O orçamento do Content Store deste forwarder. Quando enche, sai a entrada usada há mais tempo.",
+        label: "Como este nó aparece no canvas, nos painéis e no log. Enter aplica.",
         name: "O componente de produtor dos nomes que ele assina: /idem/v1/<nome>/<ferramenta>/…",
         serves:
           "As ferramentas que este produtor oferece e, pelo manifesto assinado, por quanto tempo um resultado fica fresco nos caches.",

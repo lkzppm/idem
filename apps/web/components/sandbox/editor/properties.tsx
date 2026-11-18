@@ -5,6 +5,7 @@ import { useMessages } from "@/lib/i18n/client";
 import { editor } from "@/lib/i18n/messages/editor";
 import {
   type AgentConfig,
+  cleanNodeName,
   isProducerName,
   linkProblem,
   type NetLink,
@@ -12,6 +13,8 @@ import {
   type Network,
   producerNodes,
   reachableProducers,
+  renameNode,
+  renameProblem,
   setLink,
   setNodeConfig,
   TOOL_IDS,
@@ -54,6 +57,14 @@ export function Properties({
   if (!n) return null;
   return (
     <div className="obs-props">
+      <NodeName
+        key={n.id}
+        n={n}
+        net={net}
+        edit={edit}
+        t={t}
+        onRenamed={(id) => onSelect({ kind: "node", id })}
+      />
       {n.kind === "agent" && <AgentProps n={n} net={net} edit={edit} t={t} />}
       {n.kind === "forwarder" && (
         <Slider
@@ -72,6 +83,71 @@ export function Properties({
       <Button variant="ghost" onClick={onDelete} kbd="Del" className="obs-props-delete">
         {p.delete}
       </Button>
+    </div>
+  );
+}
+
+/**
+ * The node's name, shown on the canvas and in the panels (its id). Typed freely, made fit as it is
+ * typed (lowercase, dashes), and applied on Enter or when the field loses focus; Escape puts it back.
+ */
+function NodeName({
+  n,
+  net,
+  edit,
+  t,
+  onRenamed,
+}: {
+  n: NetNode;
+  net: Network;
+  edit: Edit;
+  t: T;
+  onRenamed: (id: string) => void;
+}) {
+  const p = t.props;
+  const id = useId();
+  const [draft, setDraft] = useState(n.id);
+  const problem = renameProblem(net, n.id, draft);
+  const commit = () => {
+    if (draft === n.id) return;
+    if (problem) {
+      setDraft(n.id);
+      return;
+    }
+    edit(renameNode(net, n.id, draft));
+    onRenamed(draft);
+  };
+  return (
+    <div className="obs-field">
+      <Label htmlFor={`${id}-label`} tip={p.tips.label}>
+        {p.label}
+      </Label>
+      <input
+        id={`${id}-label`}
+        className="obs-input t-mono"
+        value={draft}
+        spellCheck={false}
+        autoComplete="off"
+        maxLength={40}
+        aria-invalid={problem !== undefined}
+        aria-describedby={problem ? `${id}-label-err` : undefined}
+        onChange={(e) => setDraft(cleanNodeName(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.stopPropagation();
+            setDraft(n.id);
+          }
+        }}
+        onBlur={commit}
+      />
+      {problem && (
+        <p id={`${id}-label-err`} className="obs-note obs-note-warn">
+          {problem === "taken" ? p.labelTaken : p.labelInvalid}
+        </p>
+      )}
     </div>
   );
 }

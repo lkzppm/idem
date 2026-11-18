@@ -755,6 +755,16 @@ export function LiveMode() {
               scene,
               now: () => performance.now(),
               nodes,
+              boxes: {
+                [VISITORS]: (
+                  <>
+                    <span className="obs-node-box-title">{tl.card.visitorsBox}</span>
+                    <span className="obs-node-box-sub">
+                      {others > 0 ? tl.feed.othersSeen(others) : tl.card.visitorsNone}
+                    </span>
+                  </>
+                ),
+              },
               badges: {
                 edge:
                   seen.size > 0 || inFlight.length > 0 ? (

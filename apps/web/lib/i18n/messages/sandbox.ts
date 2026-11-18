@@ -110,6 +110,8 @@ export const sandbox = defineMessages(
         remove: "Remove",
         edge: "Forwarder · deployed, shared by every visitor",
         visitorsTitle: "other visitors",
+        visitorsBox: "Agents of other visitors",
+        visitorsNone: "none in the last 10 min",
         visitors: "Everyone else using this edge",
         producer: "Producer · deployed",
         producerBody:
@@ -497,6 +499,8 @@ export const sandbox = defineMessages(
         remove: "Remover",
         edge: "Forwarder · implantado, compartilhado por todo visitante",
         visitorsTitle: "outros visitantes",
+        visitorsBox: "Agentes de outros visitantes",
+        visitorsNone: "nenhum nos últimos 10 min",
         visitors: "Todos os outros que usam esta borda",
         producer: "Produtor · implantado",
         producerBody:
