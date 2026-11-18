@@ -8,9 +8,9 @@ O sandbox abre numa escolha: uma **tela em branco** (o sinal de mais grande), um
 
 | | Uma rede no editor | Ao vivo |
 |---|---|---|
-| O que roda | uma rede que você monta, no seu navegador: o motor IDEM (uma simulação determinística) ou o motor NDN (roteadores NDN reais compilados para WebAssembly) | pedidos HTTP reais do seu navegador ao gateway de borda do site, que encaminha ao produtor de demonstração |
-| Motor | IDEM: o mesmo `Forwarder`, na página, num relógio virtual. NDN: YaNFD, um roteador por forwarder, em tempo real | o `Forwarder` da borda, no servidor, no relógio de parede |
-| Agentes | quantos você adicionar, cada um com sua lista de ferramentas | alguns consumidores na página, cada um um `IdemClient` com sua própria credencial |
+| O que roda | uma rede que você monta, no seu navegador: IDEM em roteadores NDN reais compilados para WebAssembly (o padrão), ou uma simulação determinística | pedidos HTTP reais do seu navegador ao gateway de borda do site, que encaminha ao produtor de demonstração |
+| Motor | IDEM: YaNFD, um roteador por forwarder, em tempo real. Simulação: o mesmo `Forwarder`, na página, num relógio virtual | o `Forwarder` da borda, no servidor, no relógio de parede, compartilhado por todo visitante |
+| Agentes | quantos você adicionar, cada um com sua lista de ferramentas | quantos você adicionar (até 16), cada um um `IdemClient` com sua própria credencial, ferramenta e argumento |
 | Bom para | ver agregação e cache em qualquer topologia, e comparar protocolos na mesma carga | ver que o protocolo funciona numa rede real, e verificar as assinaturas você mesmo |
 
 Nada aqui produz um resultado do projeto. Os contadores descrevem a execução à sua frente. Os números medidos, com sementes e configurações, estão na página de [benchmarks](/benchmarks).
@@ -29,8 +29,12 @@ O produtor de demonstração serve cinco ferramentas sobre um pequeno corpus ver
 | `my_notes()` | cacheável, `private` | um nome, uma resposta diferente por credencial, nunca compartilhada |
 | `send_email(to, body)` | não cacheável | um efeito colateral: sempre passa direto (`bypass`) |
 
+A borda e o produtor são os implantados, então ficam como estão. Adicione agentes na barra lateral e clique em um para escolher a ferramenta que ele chama e o argumento; *Perguntar agora* envia só a chamada dele, e `Espaço` envia a de todos os agentes juntos. Um agente novo busca a página compartilhada, escrevendo a URL do seu jeito, então uma rajada mostra normalização e agregação juntas.
+
+A borda é compartilhada por todos no site. O nó **visitors** representa os outros: as chamadas deles chegam por ele quando acontecem, e o cartão da borda lista o que ela viu, as suas marcadas como *você*. Quando uma chamada sua é respondida pelo cache, ou se junta a um Interest pendente, o log e o cartão dizem se foi a chamada de outro visitante que a preencheu: essa resposta atravessou a rede uma vez, para outra pessoa. Só aparecem a ferramenta, os primeiros caracteres do digest dos argumentos e como a borda respondeu, nunca os argumentos; chamadas privadas não levam digest.
+
 > [!NOTE]
-> Em produção, o Content Store da borda fica na memória de uma instância de função. Se o seu pedido cair em outra instância, uma chamada que você esperava acertar vai faltar. Isso é a implantação, não o protocolo.
+> Em produção, o Content Store da borda fica na memória de uma instância de função. Se o seu pedido cair em outra instância, uma chamada que você esperava acertar vai faltar. Isso é a implantação, não o protocolo. O cartão da borda diz de qual instância ouviu, e avisa quando as suas chamadas foram respondidas por outra.
 
 ## O editor de rede {#editor}
 
@@ -49,11 +53,17 @@ Agentes se ligam só a forwarders, nunca direto a um produtor nem entre si: o fo
 | desfazer | `⌘Z` (`⇧⌘Z` para refazer) |
 | compartilhar | *Compartilhar* copia um link que carrega a rede inteira |
 
-A barra do player, sobre a rede, executa, pausa e reinicia a execução, mostra o tempo virtual e quantas chamadas foram respondidas, e ajusta a velocidade. Quando algo impede a rede de rodar (nenhum agente, um agente sem ferramentas, uma ferramenta cujo produtor ele não alcança), a barra do player avisa; clique nela para ver a lista inteira.
+A barra do player, sobre a rede, executa, pausa e reinicia a execução, e mostra quantas chamadas foram respondidas (e, na simulação, o tempo virtual e a velocidade). Uma rede que você abre começa pausada: aperte executar. Quando algo impede a rede de rodar (nenhum agente, um agente sem ferramentas, uma ferramenta cujo produtor ele não alcança), a barra do player avisa; clique nela para ver a lista inteira.
 
-### O motor IDEM {#idem-engine}
+O motor é escolhido no topo da barra lateral: **IDEM**, em roteadores NDN (o padrão), ou **Simulação**.
 
-O motor IDEM roda a rede no `@idem/sim`: as chamadas dos agentes, sobre enlaces virtuais, com um relógio virtual. Tudo deriva de uma **semente**, então a mesma rede e a mesma semente dão a mesma execução, evento por evento. Qualquer mudança, exceto mover um nó, reinicia a execução.
+### IDEM em roteadores NDN {#ndn-engine}
+
+O IDEM roda a rede em roteadores NDN reais: cada forwarder é uma instância do YaNFD (o forwarder do ndnd, do projeto NDN), compilado para WebAssembly e rodando nesta aba. Produtores e agentes falam o binding nativo (`@idem/ndn`): Interests e Data são pacotes NDN TLV, e os agentes verificam as duas assinaturas de cada resposta. Roda em tempo real, então os períodos de frescor passam de verdade; pausar segura a próxima chamada de cada agente (as que estão em trânsito terminam). Os roteadores encaminham e guardam, mas não verificam assinaturas, e chamadas a ferramentas `private` ou com efeito colateral nunca viajam no NDN. O roteador é baixado na primeira vez que roda.
+
+### A simulação {#idem-engine}
+
+A simulação roda a rede no `@idem/sim`: as chamadas dos agentes, sobre enlaces virtuais, com um relógio virtual. Tudo deriva de uma **semente**, então a mesma rede e a mesma semente dão a mesma execução, evento por evento. Qualquer mudança, exceto mover um nó, reinicia a execução.
 
 Sua visão mais útil é a **comparação**: a mesma carga, com a mesma semente, roda uma vez por protocolo marcado, lado a lado. Os agentes pedem exatamente as mesmas coisas nos mesmos instantes, então o que difere entre os quadros é o protocolo.
 
@@ -62,10 +72,6 @@ Sua visão mais útil é a **comparação**: a mesma carga, com a mesma semente,
 | `mcp-direct` | vai direto ao produtor. Nada é guardado |
 | `mcp-local-cache` | cada agente lembra as próprias respostas. Uma repetição do mesmo agente é local; a de outro agente vai ao produtor |
 | `idem` | passa pelos forwarders: agregada numa PIT, respondida por um CS, ou encaminhada |
-
-### O motor NDN {#ndn-engine}
-
-O motor NDN roda a mesma rede em roteadores NDN reais: cada forwarder é uma instância do YaNFD (o forwarder do ndnd, do projeto NDN), compilado para WebAssembly e rodando nesta aba. Produtores e agentes falam o binding nativo (`@idem/ndn`): Interests e Data são pacotes NDN TLV, e os agentes verificam as duas assinaturas de cada resposta. Roda em tempo real, então os períodos de frescor passam de verdade. Os roteadores encaminham e guardam, mas não verificam assinaturas, e chamadas a ferramentas `private` ou com efeito colateral nunca viajam no NDN. O roteador é baixado na primeira vez que você escolhe este motor.
 
 ### O que as configurações mudam {#controls}
 

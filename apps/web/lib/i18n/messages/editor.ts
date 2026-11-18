@@ -47,10 +47,9 @@ export const editor = defineMessages(
     },
     run: {
       engine: "Engine",
-      engineIdem: "IDEM",
-      engineIdemHint: "simulated, seeded",
-      engineNdn: "NDN",
-      engineNdnHint: "real routers",
+      engineIdem: "Simulation",
+      engineNdn: "IDEM",
+      aboutEngine: (name: string) => `About the ${name} engine`,
       compare: "Compare",
       compareModes: {
         "mcp-direct": "MCP direct",
@@ -60,8 +59,10 @@ export const editor = defineMessages(
       cannotRun: "Can't run yet",
       progress: "Calls answered",
       tips: {
-        engine:
-          "IDEM: the real @idem/core forwarders on the simulator's virtual clock, the same run for the same seed. NDN: real NDN routers (YaNFD, ndnd's forwarder, compiled to WebAssembly) running in this tab, in real time, with NDN packets on every link.",
+        engineNdn:
+          "IDEM on NDN routers: every forwarder is a real NDN router (YaNFD, ndnd's forwarder, compiled to WebAssembly) running in this tab, in real time, with NDN packets on every link. Agents verify every answer. Pause holds their next calls.",
+        engineIdem:
+          "A simulation: the real @idem/core forwarders on the simulator's virtual clock, the same run for the same seed, with MCP and IDEM compared side by side at any speed.",
         compare:
           "The same seeded workload runs once per protocol, side by side. MCP direct: every call goes to the producer. MCP + local cache: each agent caches its own results. IDEM: forwarders aggregate and cache signed results for everyone.",
       },
@@ -172,6 +173,7 @@ export const editor = defineMessages(
       failed: (why: string) => `The routers could not start: ${why}`,
       unsupported: "This browser has no WebAssembly or Web Workers, which the NDN routers need.",
       realTime: "real time",
+      paused: "paused: agents hold their next call",
       limits:
         "NDN routers forward and cache, but do not check signatures (agents do) and never see private or side-effect calls: those go straight to the producer.",
       note: "YaNFD in WebAssembly",
@@ -189,7 +191,7 @@ export const editor = defineMessages(
         failed: "Failed",
         latency: "Mean latency",
         noCompare:
-          "The NDN engine runs one network in real time; switch to IDEM to compare protocols side by side.",
+          "The routers run one network in real time; switch the engine to Simulation to compare protocols side by side.",
       },
     },
   },
@@ -236,10 +238,9 @@ export const editor = defineMessages(
     },
     run: {
       engine: "Motor",
-      engineIdem: "IDEM",
-      engineIdemHint: "simulado, com semente",
-      engineNdn: "NDN",
-      engineNdnHint: "roteadores reais",
+      engineIdem: "Simulação",
+      engineNdn: "IDEM",
+      aboutEngine: (name: string) => `Sobre o motor ${name}`,
       compare: "Comparar",
       compareModes: {
         "mcp-direct": "MCP direto",
@@ -249,8 +250,10 @@ export const editor = defineMessages(
       cannotRun: "Ainda não roda",
       progress: "Chamadas respondidas",
       tips: {
-        engine:
-          "IDEM: os forwarders reais do @idem/core no relógio virtual do simulador, a mesma execução para a mesma semente. NDN: roteadores NDN reais (YaNFD, o forwarder do ndnd, compilado para WebAssembly) rodando nesta aba, em tempo real, com pacotes NDN em cada enlace.",
+        engineNdn:
+          "IDEM em roteadores NDN: cada forwarder é um roteador NDN real (YaNFD, o forwarder do ndnd, compilado para WebAssembly) rodando nesta aba, em tempo real, com pacotes NDN em cada enlace. Os agentes verificam toda resposta. Pausar segura as próximas chamadas deles.",
+        engineIdem:
+          "Uma simulação: os forwarders reais do @idem/core no relógio virtual do simulador, a mesma execução para a mesma semente, com MCP e IDEM comparados lado a lado em qualquer velocidade.",
         compare:
           "A mesma carga, com a mesma semente, roda uma vez por protocolo, lado a lado. MCP direto: toda chamada vai ao produtor. MCP + cache local: cada agente guarda os próprios resultados. IDEM: os forwarders agregam e guardam resultados assinados para todos.",
       },
@@ -363,6 +366,7 @@ export const editor = defineMessages(
       failed: (why: string) => `Os roteadores não iniciaram: ${why}`,
       unsupported: "Este navegador não tem WebAssembly ou Web Workers, de que os roteadores NDN precisam.",
       realTime: "tempo real",
+      paused: "pausado: os agentes seguram a próxima chamada",
       limits:
         "Os roteadores NDN encaminham e guardam em cache, mas não verificam assinaturas (os agentes verificam) e nunca veem chamadas privadas ou com efeito colateral: essas vão direto ao produtor.",
       note: "YaNFD em WebAssembly",
@@ -380,7 +384,7 @@ export const editor = defineMessages(
         failed: "Falharam",
         latency: "Latência média",
         noCompare:
-          "O motor NDN roda uma rede em tempo real; mude para IDEM para comparar protocolos lado a lado.",
+          "Os roteadores rodam uma rede em tempo real; mude o motor para Simulação para comparar protocolos lado a lado.",
       },
     },
   },

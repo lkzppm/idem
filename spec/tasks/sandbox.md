@@ -131,3 +131,19 @@ Self-contained new files; no existing sandbox file was touched while the layout 
   menu, issues, back and continue, blank canvas, NDN engine, phone (dark), desktop dark; no console errors
 - [ ] Author check in Safari: the transitions, the dock drawer (open, resize, close), the card, the
   player's menus, phone width, Portuguese
+
+## Routers first, Live agents, shared edge (ADR-030), built 2026-11-18
+
+- [x] The routers are the default engine, named "IDEM" (NDN wasm routers) beside "Simulation"; an
+  info bubble per option, no subtitles (`Segmented` `tip`)
+- [x] Pause on the routers holds the agents' next calls (`NdnNetwork.pause/resume`, tested); a
+  network just loaded starts paused
+- [x] Restart animates: the icon turns once, the progress bar drains back on an ease
+- [x] Live: add agents, set each agent's tool and argument in its card; edge and producer fixed;
+  Scenario section removed
+- [x] Shared edge: `lib/server/edge-activity.ts` (tested), `/api/edge/activity`, `idem-filled-by`,
+  the visitors node, the edge's card
+- [x] Headless WebKit (2026-11-18): two contexts on Live (the second's hit says "filled by another
+  visitor"; the first sees one other visitor), routers paused on load then 80/80 after play, the
+  engine bubbles, the reset animation; no console errors
+- [ ] Author check in Safari, and on the deployment (two devices on Live)
