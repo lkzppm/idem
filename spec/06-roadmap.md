@@ -64,8 +64,8 @@ Each milestone ends with its acceptance criteria met and the checklist ticked.
 - [x] `@idem/ndn` producer/consumer with NDNts (in-process round trip over `@ndn/fw`); Q1 resolved by ADR-026 (2026-11-18)
 - [x] Sandbox: native NDN view of a Live exchange (`apps/web/lib/sandbox/ndn.ts`, `components/sandbox/ndn-packet.tsx`; not wired in yet)
 - [ ] `@idem/ndn` against a real NFD (WebSocket/UDP face) and a runnable native producer/consumer for Mini-NDN
-- [ ] Mini-NDN topologies (star, tree) + netem scripts
-- [ ] E3 real-agent traces (budgeted); E4 overlay vs native under loss
+- [ ] Mini-NDN topologies (star, tree) + netem scripts. Replaced by a Docker bench (`experiments/ndn/bench`: NFD 24.07 + overlay sidecars per namespace, star and tree, `tc netem` per link, `pnpm exp:e4`); built and smoke-tested, Mini-NDN itself not used (needs a Linux host)
+- [ ] E3 real-agent traces (budgeted); E4 overlay vs native under loss (harness, config and figures script ready; the full run has not been executed, so there is no E4 number yet)
 
 **Accept:** same workload runs on overlay and native NDN; E4 figures produced.
 

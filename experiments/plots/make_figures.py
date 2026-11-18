@@ -114,15 +114,17 @@ class Sweep:
 CAPTIONS: dict[str, str] = {}
 
 
-def finish(fig, name: str, caption: str, refs: list[str], simulation: bool) -> None:
-    label = "simulation · " if simulation else ""
+def finish(fig, name: str, caption: str, refs: list[str], simulation: bool, emulation: bool = False) -> None:
+    kind = "simulation" if simulation else "emulation" if emulation else ""
+    label = f"{kind} · " if kind else ""
     footer = f"{label}{SCRIPT} · runs: {', '.join(refs)}"
     fig.text(0.01, -0.07, footer, fontsize=5.5, color=GREY, ha="left", va="top", wrap=True)
     OUT.mkdir(parents=True, exist_ok=True)
     for ext in ("pdf", "png"):
         fig.savefig(OUT / f"{name}.{ext}")
     plt.close(fig)
-    CAPTIONS[name] = f"{caption} ({'Simulation. ' if simulation else ''}Script: {SCRIPT}; runs: {', '.join(refs)}.)"
+    prefix = f"{kind.capitalize()}. " if kind else ""
+    CAPTIONS[name] = f"{caption} ({prefix}Script: {SCRIPT}; runs: {', '.join(refs)}.)"
     print(f"wrote {name}")
 
 
@@ -305,6 +307,82 @@ def safety_figure() -> None:
     )
 
 
+E4_STYLE = {
+    "B0": dict(color=INTEREST, linestyle="-", marker="o", label="B0 overlay, plain calls"),
+    "B2": dict(color=DATA, linestyle="-", marker="o", label="B2 overlay, star"),
+    "B3": dict(color=DATA, linestyle="--", marker="D", label="B3 overlay, tree"),
+    "N2": dict(color=INK, linestyle="-", marker="s", label="N2 native NDN, star"),
+    "N3": dict(color=INK, linestyle="--", marker="^", label="N3 native NDN, tree"),
+}
+
+
+def e4_figures() -> None:
+    """E4 (emulation): overlay vs native NDN under loss, from the latest `e4` run."""
+    found = runs_of("e4")
+    if not found:
+        print("skipped e4 figures: no run under experiments/results/e4")
+        return
+    run = found[-1]
+    ref = f"e4/{run.name}"
+    config = json.loads((run / "config.json").read_text())
+    summary = rows(run / "summary.csv")
+    seeds = config["seeds"]["count"]
+
+    def series(metric: str, mode: str) -> tuple[list[float], list[float], list[float]]:
+        pts = sorted(
+            (float(r["loss_pct"]), float(r["mean"]), float(r["ci95"]))
+            for r in summary
+            if r["metric"] == metric and r["mode"] == mode and r["n"] != "0"
+        )
+        return [p[0] for p in pts], [p[1] for p in pts], [p[2] for p in pts]
+
+    def per_loss(name: str, panels: list[tuple[str, str, float]], caption: str) -> None:
+        fig, axes = plt.subplots(1, len(panels), figsize=(3.3 * len(panels), 2.6))
+        axes = axes if len(panels) > 1 else [axes]
+        for ax, (metric, ylabel, scale) in zip(axes, panels):
+            for mode in config["modes"]:
+                xs, ys, ci = series(metric, mode)
+                if xs:
+                    ax.errorbar(xs, [y * scale for y in ys], yerr=[c * scale for c in ci], capsize=2, **E4_STYLE[mode])
+            ax.set_xlabel("loss per link and direction (%)")
+            ax.set_ylabel(ylabel)
+            ax.set_xticks(config["lossPct"])
+        axes[-1].legend(fontsize=6.5)
+        finish(fig, name, f"{caption} Mean over {seeds} seeds; bars are 95% confidence intervals.", [ref], False, True)
+
+    per_loss(
+        "e4-producer-link",
+        [("upstream_calls", "calls reaching the producer", 1.0), ("producer_link_bytes", "producer-link traffic (KiB)", 1 / 1024)],
+        "Calls that reached the producer and frames received over the producer link (both directions, Ethernet frames) against link loss, HTTP overlay vs native NDN on the same Docker links.",
+    )
+    per_loss(
+        "e4-latency",
+        [("latency_p50_ms", "p50 latency (ms)", 1.0), ("latency_p95_ms", "p95 latency (ms)", 1.0), ("success_ratio", "calls answered", 1.0)],
+        "Consumer-observed latency of answered calls and the fraction of calls answered, against link loss. The overlay recovers loss in TCP; the native consumer re-expresses an Interest with a fresh Nonce after its lifetime.",
+    )
+
+    # Per-hop answers at the lowest loss of the run: where calls were absorbed before the producer.
+    hops = rows(run / "hops.csv")
+    loss0 = min(config["lossPct"])
+    modes = [m for m in config["modes"] if m != "B0"]
+    nodes = ["edge1", "edge2", "regional", "producer-nfd"]
+    shades = {"edge1": DATA, "edge2": "#f7cd66", "regional": INTEREST, "producer-nfd": GREY}
+    fig, ax = plt.subplots(figsize=(4.6, 2.6))
+    for i, mode in enumerate(modes):
+        bottom = 0.0
+        for node in nodes:
+            vals = [float(h["cs_hits"]) for h in hops if h["mode"] == mode and h["node"] == node and float(h["loss_pct"]) == loss0]
+            if not vals:
+                continue
+            v = statistics.mean(vals)
+            ax.bar(i, v, bottom=bottom, color=shades[node], label=node if i == 0 or node not in ax.get_legend_handles_labels()[1] else None)
+            bottom += v
+    ax.set_xticks(range(len(modes)), modes)
+    ax.set_ylabel("Content Store hits per run")
+    ax.legend(fontsize=6.5)
+    finish(fig, "e4-hops", f"Content Store hits per forwarder at {loss0}% loss, mean over {seeds} seeds (hops.csv).", [ref], False, True)
+
+
 def main() -> None:
     reduction_figure("e2-agents", "e2-agents", "agents", "Calls reaching the producer, relative to direct MCP, as the swarm grows (W-syn, overlap 0.5).", log2=True)
     reduction_figure("e2-overlap", "e2-overlap", "cross-agent overlap", "Calls reaching the producer, relative to direct MCP, as more of each agent's calls come from the shared catalog (W-syn, 8 agents).")
@@ -313,6 +391,7 @@ def main() -> None:
     mixed_figure()
     microbench_figure()
     safety_figure()
+    e4_figures()
     (OUT / "captions.json").write_text(json.dumps(CAPTIONS, indent=2, ensure_ascii=False) + "\n")
 
 

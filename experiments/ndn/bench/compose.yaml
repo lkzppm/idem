@@ -1,0 +1,110 @@
+# E4 bench topology (spec/05-evaluation.md §4, E4). Run through `pnpm exp:e4`, which builds the
+# Node image, brings this up, shapes every link with tc netem and always tears it down.
+#
+# Every node is one network namespace holding an NFD (native binding) and a Node sidecar (HTTP
+# overlay, tc). The sidecar shares the NFD's namespace, so the overlay and the native binding cross
+# exactly the same interfaces and the same netem qdiscs. One Docker network per link:
+#
+#   agents ──a1── edge1 ──e1p────────────── producer        star (B2, N2): agents → edge1 → producer
+#   agents ──a2── edge2 ──e2r── regional ──rp── producer    tree (B3, N3): agents i%2 → edge1|edge2
+#                 edge1 ──e1r── regional                     → regional → producer
+#
+# Every name is prefixed `idem-bench-`; `docker compose -p idem-bench down` removes exactly what
+# this file creates. No host port is published: the harness talks to the containers with
+# `docker exec` and files under the bind-mounted repository.
+name: idem-bench
+
+x-nfd: &nfd # ghcr.io/named-data/nfd:20261105 (NFD 24.07+git.23c53535), pinned by index digest.
+  image: ghcr.io/named-data/nfd@sha256:d9ffc6fb0a6171af4fc69c4d6a18f8e4d9d9dd130f28c768716c500c283504a5
+  volumes:
+    - ./nfd.conf:/config/nfd.conf:ro
+
+x-node: &node
+  image: idem-bench-node:local
+  cap_add: [NET_ADMIN]
+  volumes:
+    - ../../..:/repo
+  init: true
+
+services:
+  nfd-edge1:
+    <<: *nfd
+    container_name: idem-bench-nfd-edge1
+    hostname: edge1
+    networks:
+      idem-bench-a1: { ipv4_address: 10.231.1.10 }
+      idem-bench-e1p: { ipv4_address: 10.231.3.10 }
+      idem-bench-e1r: { ipv4_address: 10.231.4.10 }
+  edge1:
+    <<: *node
+    container_name: idem-bench-edge1
+    network_mode: service:nfd-edge1
+    depends_on: [nfd-edge1]
+
+  nfd-edge2:
+    <<: *nfd
+    container_name: idem-bench-nfd-edge2
+    hostname: edge2
+    networks:
+      idem-bench-a2: { ipv4_address: 10.231.2.10 }
+      idem-bench-e2r: { ipv4_address: 10.231.5.10 }
+  edge2:
+    <<: *node
+    container_name: idem-bench-edge2
+    network_mode: service:nfd-edge2
+    depends_on: [nfd-edge2]
+
+  nfd-regional:
+    <<: *nfd
+    container_name: idem-bench-nfd-regional
+    hostname: regional
+    networks:
+      idem-bench-e1r: { ipv4_address: 10.231.4.20 }
+      idem-bench-e2r: { ipv4_address: 10.231.5.20 }
+      idem-bench-rp: { ipv4_address: 10.231.6.10 }
+  regional:
+    <<: *node
+    container_name: idem-bench-regional
+    network_mode: service:nfd-regional
+    depends_on: [nfd-regional]
+
+  nfd-producer:
+    <<: *nfd
+    container_name: idem-bench-nfd-producer
+    hostname: producer
+    networks:
+      idem-bench-e1p: { ipv4_address: 10.231.3.20 }
+      idem-bench-rp: { ipv4_address: 10.231.6.20 }
+  producer:
+    <<: *node
+    container_name: idem-bench-producer
+    network_mode: service:nfd-producer
+    depends_on: [nfd-producer]
+
+  agents:
+    <<: *node
+    container_name: idem-bench-agents
+    hostname: agents
+    networks:
+      idem-bench-a1: { ipv4_address: 10.231.1.20 }
+      idem-bench-a2: { ipv4_address: 10.231.2.20 }
+
+networks:
+  idem-bench-a1:
+    name: idem-bench-a1
+    ipam: { config: [{ subnet: 10.231.1.0/24 }] }
+  idem-bench-a2:
+    name: idem-bench-a2
+    ipam: { config: [{ subnet: 10.231.2.0/24 }] }
+  idem-bench-e1p:
+    name: idem-bench-e1p
+    ipam: { config: [{ subnet: 10.231.3.0/24 }] }
+  idem-bench-e1r:
+    name: idem-bench-e1r
+    ipam: { config: [{ subnet: 10.231.4.0/24 }] }
+  idem-bench-e2r:
+    name: idem-bench-e2r
+    ipam: { config: [{ subnet: 10.231.5.0/24 }] }
+  idem-bench-rp:
+    name: idem-bench-rp
+    ipam: { config: [{ subnet: 10.231.6.0/24 }] }

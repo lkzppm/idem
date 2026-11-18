@@ -1,5 +1,6 @@
 packages:
   - packages/*
   - apps/*
+  - experiments/ndn/bench
 fetchTimeout: 300000
 networkConcurrency: 8
