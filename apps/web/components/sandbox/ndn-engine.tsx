@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMessages } from "@/lib/i18n/client";
 import { editor as editorMessages } from "@/lib/i18n/messages/editor";
 import { sandbox } from "@/lib/i18n/messages/sandbox";
+import { splitPanes } from "@/lib/sandbox/layout";
 import { browserYanfd, type NdnCall, NdnNetwork, type NdnStats } from "@/lib/sandbox/ndn-net";
 import type { Network } from "@/lib/sandbox/network";
 import { runSignature } from "@/lib/sandbox/run";
@@ -21,6 +22,8 @@ type Phase =
   | { kind: "unsupported" };
 
 const LOG_CAP = 200;
+/** Edits (a slider being dragged) settle before the routers are rebuilt. */
+const BUILD_DEBOUNCE_MS = 400;
 
 const mb = (n: number) => `${fixed(n / 1_000_000, 1)} MB`;
 
@@ -31,10 +34,13 @@ const mb = (n: number) => `${fixed(n / 1_000_000, 1)} MB`;
  */
 export function NdnEngine({
   net,
+  loads,
   editor,
   onBackend,
 }: {
   net: Network;
+  /** Bumped when another network is loaded: the stage is then fitted to it. */
+  loads: number;
   editor: StageEditor;
   onBackend: (b: "webgpu" | "canvas2d") => void;
 }) {
@@ -42,6 +48,8 @@ export function NdnEngine({
   const tn = t.ndn;
   const ts = useMessages(sandbox).swarm;
   const ws = useWorkspace();
+  const wsRef = useRef(ws);
+  wsRef.current = ws;
   const [phase, setPhase] = useState<Phase>({ kind: "starting" });
   const [stats, setStats] = useState<NdnStats>();
   const [calls, setCalls] = useState<NdnCall[]>([]);
@@ -56,14 +64,27 @@ export function NdnEngine({
   netRef.current = net;
   const sig = useMemo(() => runSignature(net), [net]);
   const log = useRef<NdnCall[]>([]);
+  const fitted = useRef(-1);
 
-  // Build and start the network; rebuild when what it does changes (not when a node moves).
+  // The drawn network follows every change at once; a newly loaded one is fitted to the stage.
+  useLayoutEffect(() => {
+    void sig;
+    scene.setTopology(netRef.current, 0);
+    setNodes([...scene.nodes.values()]);
+    if (fitted.current !== loads) {
+      const fr = splitPanes(wsRef.current.area, 1)[0];
+      if (fr && fr.w > 2) {
+        scene.fit(fr);
+        fitted.current = loads;
+      }
+    }
+  }, [sig, loads, scene, ws.area.w > 2]);
+
+  // Build and start the routers; rebuild when what the network does changes (not when a node
+  // moves). Edits are debounced, and a build that is overtaken stops between routers and frees them.
   useEffect(() => {
     void sig;
     void runId;
-    const n = netRef.current;
-    scene.setTopology(n, 0);
-    setNodes([...scene.nodes.values()]);
     log.current = [];
     setCalls([]);
     setStats(undefined);
@@ -71,35 +92,44 @@ export function NdnEngine({
       setPhase({ kind: "unsupported" });
       return;
     }
-    let cancelled = false;
+    const abort = new AbortController();
     let running: NdnNetwork | undefined;
-    const { factory, ready } = browserYanfd("/ndn/", (loaded, total) => {
-      if (!cancelled) setPhase({ kind: "loading", loaded, total });
-    });
-    void (async () => {
-      try {
-        await ready;
-        if (cancelled) return;
-        setPhase({ kind: "starting" });
-        const made = await NdnNetwork.create(n, factory, {
-          packet: (p) => scene.addPacket({ ...p, kind: p.kind }),
-          flash: (node, kind) => scene.flash(node, kind),
-          call: (c) => {
-            log.current.push(c);
-            if (log.current.length > LOG_CAP) log.current.splice(0, log.current.length - LOG_CAP);
-          },
-        });
-        if (cancelled) {
-          made.stop();
-          return;
+    const timer = setTimeout(() => {
+      const n = netRef.current;
+      const { factory, ready } = browserYanfd("/ndn/", (loaded, total) => {
+        if (!abort.signal.aborted) setPhase({ kind: "loading", loaded, total });
+      });
+      void (async () => {
+        try {
+          await ready;
+          if (abort.signal.aborted) return;
+          setPhase({ kind: "starting" });
+          const made = await NdnNetwork.create(
+            n,
+            factory,
+            {
+              packet: (p) => scene.addPacket({ ...p, kind: p.kind }),
+              flash: (node, kind) => scene.flash(node, kind),
+              call: (c) => {
+                log.current.push(c);
+                if (log.current.length > LOG_CAP) log.current.splice(0, log.current.length - LOG_CAP);
+              },
+            },
+            abort.signal,
+          );
+          if (abort.signal.aborted) {
+            made.stop();
+            return;
+          }
+          running = made;
+          made.start();
+          setPhase({ kind: "running", routers: n.nodes.filter((x) => x.kind === "forwarder").length });
+        } catch (e) {
+          if (!abort.signal.aborted)
+            setPhase({ kind: "failed", why: e instanceof Error ? e.message : String(e) });
         }
-        running = made;
-        made.start();
-        setPhase({ kind: "running", routers: n.nodes.filter((x) => x.kind === "forwarder").length });
-      } catch (e) {
-        if (!cancelled) setPhase({ kind: "failed", why: e instanceof Error ? e.message : String(e) });
-      }
-    })();
+      })();
+    }, BUILD_DEBOUNCE_MS);
     const id = setInterval(() => {
       if (!running) return;
       const s = running.stats();
@@ -109,7 +139,8 @@ export function NdnEngine({
       setCalls([...log.current]);
     }, 250);
     return () => {
-      cancelled = true;
+      abort.abort();
+      clearTimeout(timer);
       clearInterval(id);
       running?.stop();
     };

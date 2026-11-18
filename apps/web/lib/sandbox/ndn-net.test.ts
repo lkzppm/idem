@@ -83,6 +83,23 @@ describe("NDN engine: the editor's network on YaNFD routers", () => {
     expect(stats.forwarders.regional).toBeDefined();
   }, 30_000);
 
+  it("stops a build that is aborted between routers, and ends the routers it made", async () => {
+    const net = small("regional", 3, 1);
+    const ac = new AbortController();
+    let made = 0;
+    let ended = 0;
+    const factory = async () => {
+      const r = await instantiate(mod);
+      made++;
+      if (made === 1) ac.abort();
+      return { ...r, exit: () => (ended++, r.exit?.()) };
+    };
+    const events: NdnNetEvents = { packet: () => {}, flash: () => {}, call: () => {} };
+    await expect(NdnNetwork.create(net, factory, events, ac.signal)).rejects.toThrow();
+    expect(made).toBe(1);
+    expect(ended).toBe(1);
+  }, 30_000);
+
   it("keeps private and side-effect calls off NDN", async () => {
     const net = small("swarm", 1, 3);
     const a = net.nodes.find((n) => n.kind === "agent");

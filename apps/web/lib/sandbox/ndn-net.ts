@@ -31,6 +31,8 @@ export interface Yanfd {
   addFace(onFrame: (frame: Uint8Array) => void): number;
   send(face: number, frame: Uint8Array): unknown;
   route(prefix: string, face: number): string | null | undefined;
+  /** Ends the router's Go runtime so its memory can be freed (absent in older builds). */
+  exit?(): void;
 }
 
 /** Makes a fresh router instance (one per forwarder node). */
@@ -160,9 +162,12 @@ function bridge(
   };
 }
 
+/** How long the watch remembers an Interest it saw: the consumers' InterestLifetime. */
+const WATCH_LIFETIME_MS = 4000;
+
 /** Per-forwarder bookkeeping to read cache hits and aggregation off the traffic. */
 class Watch {
-  readonly pending = new Map<string, { up: boolean; n: number }>();
+  readonly pending = new Map<string, { up: boolean; n: number; at: number }>();
   csHits = 0;
   aggregated = 0;
   constructor(
@@ -170,14 +175,20 @@ class Watch {
     readonly events: NdnNetEvents,
   ) {}
   interestIn(name: string): void {
-    const p = this.pending.get(name);
+    const now = performance.now();
+    let p = this.pending.get(name);
+    // An entry older than an Interest's lifetime was lost or expired: this is a new question.
+    if (p && now - p.at > WATCH_LIFETIME_MS) {
+      this.pending.delete(name);
+      p = undefined;
+    }
     if (p) {
       p.n++;
       if (p.up) {
         this.aggregated++;
         this.events.flash(this.node, "pit");
       }
-    } else this.pending.set(name, { up: false, n: 1 });
+    } else this.pending.set(name, { up: false, n: 1, at: now });
   }
   interestUp(name: string): void {
     const p = this.pending.get(name);
@@ -197,6 +208,16 @@ class Watch {
     }
     this.pending.delete(key);
   }
+  /** Names sent upstream and not yet answered, within an Interest's lifetime. */
+  inFlight(): number {
+    const now = performance.now();
+    let n = 0;
+    for (const [k, p] of this.pending) {
+      if (now - p.at > WATCH_LIFETIME_MS) this.pending.delete(k);
+      else if (p.up) n++;
+    }
+    return n;
+  }
 }
 
 /** Exponential think time (ms), seeded. */
@@ -213,6 +234,7 @@ export class NdnNetwork {
   readonly #closers: (() => void)[] = [];
   readonly #watch = new Map<string, Watch>();
   readonly #agents: { id: string; run: () => Promise<void> }[] = [];
+  readonly #routers: Yanfd[] = [];
   #stopped = false;
   #stats = { calls: 0, done: 0, ok: 0, failed: 0, bypass: 0, upstream: 0, latency: 0 };
 
@@ -221,10 +243,23 @@ export class NdnNetwork {
     this.#events = events;
   }
 
-  /** Build the routers, links, producers and agents of `net` (nothing is sent until {@link start}). */
-  static async create(net: Network, factory: YanfdFactory, events: NdnNetEvents): Promise<NdnNetwork> {
+  /**
+   * Build the routers, links, producers and agents of `net` (nothing is sent until {@link start}).
+   * An aborted `signal` stops the build between routers, frees what it made and rejects.
+   */
+  static async create(
+    net: Network,
+    factory: YanfdFactory,
+    events: NdnNetEvents,
+    signal?: AbortSignal,
+  ): Promise<NdnNetwork> {
     const self = new NdnNetwork(net, events);
-    await self.#build(factory);
+    try {
+      await self.#build(factory, signal);
+    } catch (e) {
+      self.stop();
+      throw e;
+    }
     return self;
   }
 
@@ -240,7 +275,7 @@ export class NdnNetwork {
     this.#timers.add(t);
   }
 
-  async #build(factory: YanfdFactory): Promise<void> {
+  async #build(factory: YanfdFactory, signal?: AbortSignal): Promise<void> {
     const net = this.#net;
     const sim = networkToSim(net, "idem");
     const kind = new Map(net.nodes.map((n) => [n.id, n.kind]));
@@ -251,7 +286,11 @@ export class NdnNetwork {
     const routers = new Map<string, Yanfd>();
     for (const n of net.nodes) {
       if (n.kind !== "forwarder") continue;
-      routers.set(n.id, await factory());
+      signal?.throwIfAborted();
+      const r = await factory();
+      this.#routers.push(r);
+      signal?.throwIfAborted();
+      routers.set(n.id, r);
       this.#watch.set(n.id, new Watch(n.id, this.#events));
     }
     // NDNts logical forwarders for agents and producers.
@@ -417,7 +456,7 @@ export class NdnNetwork {
     let aggregated = 0;
     for (const [id, w] of this.#watch) {
       forwarders[id] = {
-        pit: [...w.pending.values()].filter((p) => p.up).length,
+        pit: w.inFlight(),
         csHits: w.csHits,
         aggregated: w.aggregated,
       };
@@ -438,16 +477,16 @@ export class NdnNetwork {
     };
   }
 
-  /**
-   * Stop sending and drop every pending timer. The router instances keep their memory until the
-   * page lets go of them (Go's WebAssembly runtime has no exit from JavaScript).
-   */
+  /** Stop sending, drop every pending timer and end the routers (their memory can then be freed). */
   stop(): void {
+    if (this.#stopped) return;
     this.#stopped = true;
     for (const t of this.#timers) clearTimeout(t);
     this.#timers.clear();
     for (const c of this.#closers) c();
     for (const f of this.#faces) f.close();
+    for (const r of this.#routers) r.exit?.();
+    this.#routers.length = 0;
   }
 }
 
@@ -476,7 +515,7 @@ export function browserYanfd(
     }
     const res = await fetch(`${base}yanfd.wasm`);
     if (!res.ok || !res.body) throw new Error(`yanfd.wasm: HTTP ${res.status}`);
-    const total = Number(res.headers.get("content-length")) || 9_679_217;
+    const total = Number(res.headers.get("content-length")) || 9_680_301;
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let loaded = 0;
@@ -504,6 +543,18 @@ export function browserYanfd(
   };
 }
 
+/** The parts of Go's `wasm_exec.js` runtime the loader touches. */
+interface GoRuntime {
+  importObject: WebAssembly.Imports;
+  run(i: WebAssembly.Instance): Promise<void>;
+  exited: boolean;
+  _resume(): void;
+  _scheduledTimeouts: Map<number, ReturnType<typeof setTimeout>>;
+}
+
+/** How long a router gets to announce itself. */
+const READY_TIMEOUT_MS = 15_000;
+
 /** Routers are started one at a time: each announces itself on the same global names. */
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -511,7 +562,7 @@ let queue: Promise<unknown> = Promise.resolve();
 export function instantiate(mod: Promise<WebAssembly.Module>): Promise<Yanfd> {
   const next = queue.then(async () => {
     const G = globalThis as unknown as {
-      Go: new () => { importObject: WebAssembly.Imports; run(i: WebAssembly.Instance): Promise<void> };
+      Go: new () => GoRuntime;
       yanfd?: Yanfd;
       onYanfdReady?: () => void;
     };
@@ -520,11 +571,40 @@ export function instantiate(mod: Promise<WebAssembly.Module>): Promise<Yanfd> {
       G.onYanfdReady = r;
     });
     const instance = await WebAssembly.instantiate(await mod, go.importObject);
-    void go.run(instance);
-    await ready;
+    const exited = go.run(instance);
+    // A router that never announces itself must not hold up every later one.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        ready,
+        exited.then(() => {
+          throw new Error("the router exited before it was ready");
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("the router did not start")), READY_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
     const api = G.yanfd as Yanfd;
     delete G.yanfd;
     delete G.onYanfdReady;
+    // After exit, Go's timers that are still scheduled (and any late call into the router) would
+    // resume a program that is gone: they are dropped instead, and the instance can be collected.
+    const resume = go._resume.bind(go);
+    go._resume = () => {
+      if (!go.exited) resume();
+    };
+    const exit = api.exit;
+    if (exit)
+      api.exit = () => {
+        exit();
+        void exited.then(() => {
+          for (const t of go._scheduledTimeouts.values()) clearTimeout(t);
+          go._scheduledTimeouts.clear();
+        });
+      };
     return api;
   });
   queue = next.catch(() => undefined);
