@@ -360,6 +360,8 @@ Code in `apps/web/components/site/*`, styles in `app/styles/chrome.css`, strings
 
 - Monorepo: Vercel project root `apps/web`; Turborepo builds the workspace packages it depends on.
 - Runtime: Node.js 24, Fluid compute (default for new projects).
+- Vercel Web Analytics (`@vercel/analytics`, `<Analytics />` in the root layout): page views without
+  cookies, counted on the deployed site only.
 - Environment variables: `IDEM_PRODUCER_KEY` (Ed25519 private JWK, demo only), `IDEM_EDGE_SECRET`
   (HMAC for `authContext`), `IDEM_LIVE_LLM` (0/1), `AI_GATEWAY_API_KEY` (only if live LLM).
 - Project `idem-ufrj` (production: `https://idem-ufrj.vercel.app`), created 2026-11-18 at the

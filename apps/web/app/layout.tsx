@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Outfit } from "next/font/google";
 import type { ReactNode } from "react";
@@ -55,6 +56,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           {children}
           <SiteFooter />
         </LocaleProvider>
+        {/* Vercel Web Analytics: page views, no cookies; only sends on the deployed site. */}
+        <Analytics />
       </body>
     </html>
   );
