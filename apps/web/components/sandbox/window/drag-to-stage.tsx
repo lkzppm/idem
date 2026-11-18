@@ -10,46 +10,33 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { clampRect, type Rect, TITLE_H, type WindowId } from "@/lib/sandbox/layout";
 
-/** Pointer travel (px) before a press on a window button becomes a drag instead of a click. */
+/** Pointer travel (px) before a press on a palette chip becomes a drag instead of a click. */
 const THRESHOLD = 5;
-/** Where the pointer holds the ghost's title bar, from its left edge (px). */
-const GRAB_X = 28;
-/** Widest the ghost gets while it is still over the sidebar (px). */
-const CHIP_MAX_W = 240;
 
 /** Options of {@link useDragToStage}. */
-export interface DragToStageOptions<Id extends string = WindowId> {
-  /** The stage: dropping inside it places the window there. */
+export interface DragToStageOptions<Id extends string> {
+  /** The stage: dropping inside it places the item there. */
   stage: RefObject<HTMLElement | null>;
-  /** The window's current size (its landing rectangle keeps it). */
-  sizeOf: (id: Id) => { w: number; h: number };
-  /**
-   * The drag ended over the stage at `rect` (stage coordinates, already clamped); `at` is the
-   * pointer's client position.
-   */
-  onDrop: (id: Id, rect: Rect, at: { x: number; y: number }) => void;
-  /** The ghost's title bar contents (icon and name). */
+  /** The drag ended over the stage; `at` is the pointer's client position. */
+  onDrop: (id: Id, at: { x: number; y: number }) => void;
+  /** The ghost chip's contents (icon and name). */
   render: (id: Id) => ReactNode;
-  /** The ghost stays a chip under the pointer over the stage too (palette items, not windows). */
-  chip?: boolean;
 }
 
 /**
- * Drag a window's button from the sidebar onto the stage. A press that travels a few pixels becomes
- * a drag: a ghost title bar follows the pointer, and over the stage it grows into the window's frame
- * exactly where it will land. Releasing there opens (or moves) the window to that spot; releasing
- * anywhere else, or Escape, cancels. A press that does not travel stays a click. The ghost is moved
- * by writing its style directly, so a drag renders nothing per pointer move.
+ * Drag a chip from the sidebar onto the stage (the editor's Add palette). A press that travels a few
+ * pixels becomes a drag: a ghost chip follows the pointer, and releasing it over the stage drops the
+ * item there; releasing anywhere else, or Escape, cancels. A press that does not travel stays a
+ * click. The ghost is moved by writing its style directly, so a drag renders nothing per pointer move.
  */
-export function useDragToStage<Id extends string = WindowId>(opts: DragToStageOptions<Id>) {
+export function useDragToStage<Id extends string>(opts: DragToStageOptions<Id>) {
   const o = useRef(opts);
   o.current = opts;
   const press = useRef<{ id: Id; pointer: number; sx: number; sy: number } | null>(null);
   const dragging = useRef(false);
   const last = useRef({ x: 0, y: 0 });
-  const target = useRef<Rect | null>(null);
+  const over = useRef(false);
   const swallowClick = useRef(false);
   const ghost = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<Id | null>(null);
@@ -60,34 +47,10 @@ export function useDragToStage<Id extends string = WindowId>(opts: DragToStageOp
     if (!p || !g) return;
     last.current = { x, y };
     const st = o.current.stage.current?.getBoundingClientRect();
-    const size = o.current.sizeOf(p.id);
-    const over = !!st && x >= st.left && x <= st.right && y >= st.top && y <= st.bottom;
-    if (st && over && o.current.chip) {
-      target.current = { x: x - st.left, y: y - st.top, w: 0, h: 0 };
-      g.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
-      g.style.width = "";
-      g.style.height = "";
-      g.dataset.over = "";
-    } else if (st && over) {
-      const r = clampRect(
-        { x: x - st.left - GRAB_X, y: y - st.top - TITLE_H / 2, w: size.w, h: size.h },
-        st.width,
-        st.height,
-      );
-      target.current = r;
-      g.style.transform = `translate3d(${st.left + r.x}px, ${st.top + r.y}px, 0)`;
-      g.style.width = `${r.w}px`;
-      g.style.height = `${r.h}px`;
-      g.dataset.over = "";
-    } else {
-      target.current = null;
-      g.style.transform = o.current.chip
-        ? `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`
-        : `translate3d(${x - GRAB_X}px, ${y - TITLE_H / 2}px, 0)`;
-      g.style.width = o.current.chip ? "" : `${Math.min(size.w, CHIP_MAX_W)}px`;
-      g.style.height = o.current.chip ? "" : `${TITLE_H}px`;
-      delete g.dataset.over;
-    }
+    over.current = !!st && x >= st.left && x <= st.right && y >= st.top && y <= st.bottom;
+    g.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+    if (over.current) g.dataset.over = "";
+    else delete g.dataset.over;
   };
 
   // The ghost mounts on the first move past the threshold: place it before it paints.
@@ -107,10 +70,10 @@ export function useDragToStage<Id extends string = WindowId>(opts: DragToStageOp
       window.setTimeout(() => {
         swallowClick.current = false;
       }, 0);
-      const r = target.current;
-      target.current = null;
+      const landed = over.current;
+      over.current = false;
       setActive(null);
-      if (drop && p && r) o.current.onDrop(p.id, r, last.current);
+      if (drop && p && landed) o.current.onDrop(p.id, last.current);
     };
     const move = (e: PointerEvent) => {
       const p = press.current;
@@ -152,7 +115,7 @@ export function useDragToStage<Id extends string = WindowId>(opts: DragToStageOp
   }, []);
 
   return {
-    /** Spread on a window's button in the sidebar. */
+    /** Spread on a chip in the sidebar. */
     bind: (id: Id) => ({
       onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
         if (e.button !== 0 || !e.isPrimary) return;
@@ -166,12 +129,7 @@ export function useDragToStage<Id extends string = WindowId>(opts: DragToStageOp
     ghost:
       active &&
       createPortal(
-        <div
-          ref={ghost}
-          className="obs-drag-ghost"
-          data-chip={o.current.chip ? "" : undefined}
-          aria-hidden="true"
-        >
+        <div ref={ghost} className="obs-drag-ghost" data-chip="" aria-hidden="true">
           <div className="obs-drag-bar">{o.current.render(active)}</div>
         </div>,
         document.body,

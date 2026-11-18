@@ -1,4 +1,5 @@
-/* The sandbox observatory: sidebar, stage, floating windows, phone dock. Imported by app/globals.css;
+/* The sandbox observatory: start screen, sidebar, stage with its player bar, selection card and
+   bottom dock of panels, phone sheet. Imported by app/globals.css;
    owned by the sandbox area. Flat cartoon: solid fills, hairline or 1.5 px ink outlines, flat offset
    shadows (no blur), dashed rules, no gradients, no glow, no pills. Components live in
    `@layer components` so Tailwind utilities on the same element still win. */
@@ -35,6 +36,86 @@
     scale: 0.9;
   }
 }
+@keyframes obs-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes obs-start-out {
+  to {
+    opacity: 0;
+    transform: scale(1.025);
+  }
+}
+@keyframes obs-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+@keyframes obs-out-left {
+  to {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+@keyframes obs-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.96);
+  }
+}
+@keyframes obs-in-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes obs-in-up-soft {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+}
+@keyframes obs-drawer-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes obs-drawer-enter {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes obs-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+}
+@keyframes obs-drawer-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes obs-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+}
+@keyframes obs-card-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.94);
+  }
+}
+@keyframes obs-card-out {
+  to {
+    opacity: 0;
+    transform: translateX(14px) scale(0.97);
+  }
+}
 @keyframes obs-blink {
   50% {
     opacity: 0.25;
@@ -48,8 +129,7 @@
 
   .obs,
   .obs-tip,
-  .obs-drag-ghost,
-  .obs-modal-scrim {
+  .obs-drag-ghost {
     /* Local tokens (also on the bubbles and the drag ghost, which are portalled to the body). */
     --obs-top: 65px;
     --obs-edge: color-mix(in srgb, var(--fg) 20%, transparent);
@@ -248,72 +328,6 @@
     flex-direction: column;
     gap: 12px;
     padding: 2px 16px 16px;
-  }
-
-  /* The window list. */
-  .obs-winlist {
-    list-style: none;
-    margin: 0 -8px;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .obs-winlist-btn {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 6px 8px;
-    border-radius: 9px;
-    text-align: left;
-    transition: background-color 0.2s var(--ease);
-  }
-  .obs-winlist-btn:hover {
-    background: var(--bg-subtle);
-  }
-  .obs-winlist-icon {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    border: 1.5px solid var(--obs-edge);
-    color: var(--fg-muted);
-    transition:
-      background-color 0.2s var(--ease),
-      color 0.2s var(--ease),
-      border-color 0.2s var(--ease),
-      transform 0.45s var(--ease-spring);
-  }
-  .obs-winlist-btn[aria-pressed="true"] .obs-winlist-icon {
-    background: var(--fg);
-    border-color: var(--fg);
-    color: var(--bg);
-  }
-  .obs-winlist-btn:active .obs-winlist-icon {
-    transform: scale(0.9);
-    transition-duration: 0.1s;
-  }
-  .obs-winlist-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    flex: 1 1 auto;
-    font-size: 13px;
-    line-height: 1.3;
-    color: var(--fg);
-  }
-  .obs-winlist-blurb {
-    font-size: 11.5px;
-    color: var(--fg-subtle);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .obs-tick {
-    display: none;
   }
 
   /* ------------------------------------------------------------ controls */
@@ -707,14 +721,8 @@
     color: var(--fg);
   }
 
-  /* ------------------------------------------------------------ dragging a window in */
+  /* ------------------------------------------------------------ dragging a chip in */
 
-  .obs-winlist-btn {
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-    touch-action: pan-y;
-  }
   :root[data-obs-dragging],
   :root[data-obs-dragging] * {
     cursor: grabbing !important;
@@ -728,41 +736,26 @@
     z-index: 1000;
     pointer-events: none;
     display: flex;
-    flex-direction: column;
     overflow: hidden;
     background: var(--obs-panel);
     border: 1.5px solid var(--obs-edge-strong);
-    border-radius: 12px;
+    border-radius: 10px;
     box-shadow: 0 6px 0 0 var(--obs-shadow);
     transition:
-      width 0.22s var(--ease),
-      height 0.22s var(--ease),
       background-color 0.2s var(--ease),
       border-color 0.2s var(--ease);
     animation: obs-tip-in 0.25s var(--obs-pop-ease) both;
-  }
-  /* Over the stage: the frame of the window where it will land, drawn but not filled. */
-  .obs-drag-ghost[data-over] {
-    background: color-mix(in srgb, var(--bg-elev) 55%, transparent);
-    border-style: dashed;
-    border-radius: 14px;
-    box-shadow: none;
   }
   .obs-drag-bar {
     flex: none;
     display: flex;
     align-items: center;
     gap: 7px;
-    height: 35px;
+    height: 32px;
     padding: 0 12px 0 10px;
     font-size: 13px;
     font-weight: 560;
     color: var(--fg);
-    background: var(--obs-panel);
-    border-bottom: 1.5px dashed transparent;
-  }
-  .obs-drag-ghost[data-over] .obs-drag-bar {
-    border-bottom-color: var(--obs-edge);
   }
   .obs-drag-name {
     overflow: hidden;
@@ -897,26 +890,6 @@
     position: absolute;
     z-index: 6;
   }
-  .obs-hud-top {
-    top: 12px;
-    left: 50%;
-    translate: -50% 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    max-width: calc(100% - 24px);
-  }
-  .obs-hud-top:not(:empty) {
-    padding: 4px 12px 4px 4px;
-    background: var(--obs-panel);
-    border: 1.5px solid var(--obs-edge);
-    border-radius: 12px;
-    box-shadow: 0 3px 0 0 var(--obs-shadow);
-  }
-  .obs-hud-top:not(:has(button)) {
-    padding-left: 12px;
-    height: 36px;
-  }
   .obs-status {
     display: inline-flex;
     align-items: center;
@@ -940,51 +913,240 @@
   .obs-status[data-state="down"] .obs-status-dot {
     background: var(--fg);
   }
-  .obs-round-btn {
+
+  /* The player bar (ADR-029): the run's transport, clock and progress, top centre of the stage. */
+  .obs-player {
+    top: 12px;
+    left: 50%;
+    translate: -50% 0;
+    z-index: 7;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: calc(100% - 24px);
+    padding: 5px 12px 5px 5px;
+    background: var(--obs-panel);
+    border: 1.5px solid var(--obs-edge-strong);
+    border-radius: 14px;
+    box-shadow: 0 3px 0 0 var(--obs-shadow);
+  }
+  .obs-player:empty {
+    display: none;
+  }
+  .obs-pbtn {
     flex: none;
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     color: var(--fg);
     background: var(--bg);
     border: 1.5px solid var(--obs-edge);
-    border-radius: 8px;
-    transition:
-      transform 0.45s var(--ease-spring),
-      border-color 0.2s var(--ease),
-      background-color 0.2s var(--ease);
+    border-radius: 10px;
+    transition: transform 0.45s var(--ease-spring);
+  }
+  .obs-pbtn[data-primary] {
+    width: 38px;
+    height: 38px;
+    color: var(--bg);
+    background: var(--fg);
+    border-color: var(--fg);
+    border-radius: 11px;
   }
   @media (hover: hover) {
-    .obs-round-btn:hover {
+    .obs-pbtn:hover:not(:disabled),
+    .obs-paction:hover:not(:disabled) {
       transform: scale(1.07);
-      border-color: var(--obs-edge-strong);
     }
   }
-  .obs-round-btn:active {
+  .obs-pbtn:active:not(:disabled),
+  .obs-paction:active:not(:disabled) {
+    transform: scale(0.9);
+    transition-duration: 0.1s;
+  }
+  .obs-pbtn:disabled,
+  .obs-paction:disabled {
+    opacity: 0.35;
+  }
+  .obs-paction {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 560;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 10px;
+    white-space: nowrap;
+    transition: transform 0.45s var(--ease-spring);
+  }
+  .obs-paction[data-primary] {
+    color: var(--bg);
+    background: var(--fg);
+    border-color: var(--fg);
+  }
+  .obs-psep {
+    flex: none;
+    align-self: stretch;
+    margin: 4px 4px;
+    border-left: 1.5px dashed var(--obs-dash);
+  }
+  .obs-ptime {
+    display: inline-flex;
+    flex-direction: column;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+  .obs-ptime-note {
+    font-size: 10.5px;
+    color: var(--fg-subtle);
+  }
+  .obs-pprog-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 6px;
+  }
+  .obs-pprog {
+    position: relative;
+    width: clamp(70px, 11vw, 150px);
+    height: 9px;
+    overflow: hidden;
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge-strong);
+    border-radius: 5px;
+  }
+  .obs-pprog-fill {
+    position: absolute;
+    inset: 0;
+    background: var(--data-bright);
+    transform-origin: 0 50%;
+    transition: transform 0.25s linear;
+  }
+  .obs-pprog-label {
+    font-size: 11.5px;
+    color: var(--fg-muted);
+  }
+  .obs-pmenu-wrap {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+  }
+  .obs-pspeed {
+    height: 30px;
+    padding: 0 9px;
+    font-size: 12.5px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 9px;
+    transition: transform 0.45s var(--ease-spring);
+  }
+  .obs-pspeed[aria-expanded="true"] {
+    color: var(--bg);
+    background: var(--fg);
+    border-color: var(--fg);
+  }
+  .obs-pspeed:active {
     transform: scale(0.92);
     transition-duration: 0.1s;
   }
-  .obs-round-btn[aria-expanded="true"] {
-    background: var(--fg);
-    border-color: var(--fg);
-    color: var(--bg);
-  }
-  .obs-hud-help {
-    right: 12px;
-    bottom: 12px;
-    z-index: 30;
-  }
-  .obs-hud-help .obs-round-btn {
-    width: 36px;
-    height: 36px;
+  .obs-pmenu {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: -6px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 116px;
+    padding: 6px;
     background: var(--obs-panel);
-    box-shadow: 0 3px 0 0 var(--obs-shadow);
+    border: 1.5px solid var(--obs-edge-strong);
+    border-radius: 12px;
+    box-shadow: 0 4px 0 0 var(--obs-shadow);
+    transform-origin: 80% 0;
+    animation: obs-pop 0.36s var(--obs-pop-ease) both;
+  }
+  .obs-pmenu-wide {
+    left: -6px;
+    right: auto;
+    width: min(320px, 80vw);
+    padding: 8px 12px 10px;
+    transform-origin: 20% 0;
+  }
+  .obs-pmenu-title {
+    padding: 2px 8px 4px;
+    font-size: 11.5px;
+    color: var(--fg-subtle);
+  }
+  .obs-pmenu-wide .obs-pmenu-title {
+    padding: 0 0 4px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .obs-pmenu-item {
+    padding: 5px 9px;
+    font-size: 12.5px;
+    text-align: left;
+    color: var(--fg-muted);
+    border-radius: 8px;
+  }
+  .obs-pmenu-item:hover {
+    color: var(--fg);
+    background: var(--bg-subtle);
+  }
+  .obs-pmenu-item[aria-pressed="true"] {
+    color: var(--bg);
+    background: var(--fg);
+  }
+  .obs-pissues {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    max-width: min(380px, 52vw);
+    padding: 0 6px;
+    height: 32px;
+    font-size: 12.5px;
+    color: var(--fg);
+    border-radius: 9px;
+  }
+  .obs-pissues svg {
+    flex: none;
+  }
+  .obs-pissues-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .obs-pissues-more {
+    flex: none;
+    padding: 0 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-muted);
+    border: 1px dashed var(--obs-edge-strong);
+    border-radius: 5px;
+  }
+
+  /* The help button and its cheat sheet, at the right end of the dock's tab bar. */
+  .obs-help {
+    position: relative;
+    display: flex;
   }
   .obs-popover {
     position: absolute;
     right: 0;
-    bottom: calc(100% + 10px);
+    bottom: calc(100% + 12px);
+    z-index: 40;
     width: 310px;
     padding: 12px 14px 14px;
     background: var(--obs-panel);
@@ -1022,7 +1184,9 @@
 
   .obs-legend {
     left: 12px;
-    bottom: 12px;
+    /* Above the dock's tab bar, and its drawer when it is open. */
+    bottom: calc(var(--obs-drawer, 0px) + 46px + 12px);
+    transition: bottom 0.42s cubic-bezier(0.22, 1, 0.36, 1);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1076,84 +1240,175 @@
     stroke-linecap: round;
   }
 
-  /* ------------------------------------------------------------ windows */
+  /* ------------------------------------------------------------ the dock (ADR-029) */
 
-  .obs-windows {
+  /* The tab bar: always at the bottom of the stage, one tab per panel. */
+  .obs-tabbar {
     position: absolute;
-    inset: 0;
-    z-index: 8;
-    pointer-events: none;
-  }
-  .obs-win {
-    position: absolute;
-    top: 0;
     left: 0;
-    pointer-events: auto;
-    will-change: transform;
-    transition: height 0.32s var(--ease);
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 0 10px;
+    background: var(--bg-elev);
+    border-top: 1px solid var(--line-strong);
+    container-type: inline-size;
   }
-  .obs-win[data-resizing] {
-    transition: none;
+  .obs-drawer + .obs-tabbar {
+    border-top: 1.5px dashed var(--obs-dash);
   }
-  .obs-win-card {
-    height: 100%;
+  .obs-tabs {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-x: auto;
+  }
+  .obs-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 8px 0 9px;
+    font-size: 12.5px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+    border: 1.5px solid transparent;
+    border-radius: 9px;
+    transition:
+      transform 0.45s var(--ease-spring),
+      color 0.2s var(--ease),
+      background-color 0.2s var(--ease);
+  }
+  .obs-tab .obs-kbd {
+    opacity: 0.45;
+  }
+  .obs-tab[aria-pressed="true"] {
+    color: var(--bg);
+    background: var(--fg);
+    border-color: var(--fg);
+  }
+  .obs-tab[aria-pressed="true"] .obs-kbd {
+    opacity: 0.7;
+  }
+  @media (hover: hover) {
+    .obs-tab:hover {
+      transform: scale(1.04);
+    }
+  }
+  .obs-tab:active {
+    transform: scale(0.94);
+    transition-duration: 0.1s;
+  }
+  @container (max-width: 820px) {
+    .obs-tab-name {
+      display: none;
+    }
+  }
+  .obs-tabbar-end {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 8px;
+    border-left: 1.5px dashed var(--obs-dash);
+  }
+
+  /* The drawer: the open panels side by side, rising from behind the tab bar. */
+  .obs-drawer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 46px;
+    z-index: 9;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-elev);
+    border-top: 1px solid var(--line-strong);
+    animation: obs-drawer-in 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .obs-drawer[data-closing] {
+    pointer-events: none;
+    animation: obs-drawer-out 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  .obs-drawer-grip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -5px;
+    z-index: 2;
+    height: 10px;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+  .obs-drawer-grip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 3px;
+    width: 40px;
+    height: 4px;
+    translate: -50% 0;
+    background: var(--obs-edge-strong);
+    border-radius: 2px;
+    transition:
+      background-color 0.2s var(--ease),
+      width 0.3s var(--ease-spring);
+  }
+  .obs-drawer-grip:hover::after,
+  .obs-drawer-grip:focus-visible::after,
+  .obs-drawer-grip[data-dragging]::after {
+    width: 64px;
+    background: var(--interest);
+  }
+  .obs-drawer-panels {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    gap: 10px;
+    padding: 12px 12px 10px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+  .obs-panel {
+    flex: 1 1 0;
+    min-width: 260px;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--obs-panel);
+    background: var(--bg);
     border: 1.5px solid var(--obs-edge);
-    border-radius: 14px;
-    box-shadow: 0 4px 0 0 var(--obs-shadow);
-    transform-origin: 50% 0;
-    transition:
-      translate 0.42s var(--ease-spring),
-      box-shadow 0.25s var(--ease),
-      border-color 0.2s var(--ease);
+    border-radius: 12px;
+    scroll-snap-align: start;
+    transform-origin: 50% 100%;
+    animation: obs-panel-in 0.5s var(--obs-pop-ease) backwards;
+    animation-delay: calc(var(--i, 0) * 45ms + 60ms);
   }
-  .obs-win[data-front] .obs-win-card {
-    border-color: var(--obs-edge-strong);
+  .obs-panel[data-window="log"] {
+    flex-grow: 1.5;
   }
-  .obs-win-card[data-lifted] {
-    translate: 0 -4px;
-    box-shadow: 0 10px 0 0 var(--obs-shadow);
-  }
-  .obs-win-card[data-entering] {
-    animation: obs-pop 0.56s var(--obs-pop-ease) both;
-  }
-  .obs-win-card[data-phase="closing"] {
-    pointer-events: none;
-    animation: obs-out 0.17s cubic-bezier(0.23, 1, 0.32, 1) both;
-  }
-
-  .obs-win-bar {
+  .obs-panel-bar {
     flex: none;
     display: flex;
     align-items: center;
     gap: 6px;
-    height: 35px;
-    padding: 0 6px 0 4px;
+    height: 34px;
+    padding: 0 4px 0 10px;
     border-bottom: 1.5px dashed var(--obs-dash);
-    cursor: grab;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: none;
   }
-  .obs-win-card[data-lifted] .obs-win-bar {
-    cursor: grabbing;
-  }
-  .obs-win-grip {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 22px;
-    height: 26px;
-    color: var(--fg-subtle);
-    border-radius: 6px;
-    cursor: inherit;
-    transition: color 0.2s var(--ease);
-  }
-  .obs-win-bar:hover .obs-win-grip {
-    color: var(--fg-muted);
+  .obs-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
   }
   .obs-win-icon {
     flex: none;
@@ -1162,7 +1417,7 @@
   }
   .obs-win-title {
     flex: none;
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 560;
     letter-spacing: -0.01em;
     white-space: nowrap;
@@ -1177,12 +1432,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .obs-win-actions {
-    flex: none;
-    display: flex;
-    gap: 2px;
-    margin-left: auto;
   }
   .obs-icon-btn {
     display: grid;
@@ -1204,52 +1453,16 @@
     transform: scale(0.88);
     transition-duration: 0.1s;
   }
-  .obs-icon-btn svg {
-    transition: rotate 0.35s var(--ease-spring);
-  }
-  .obs-icon-btn[data-turn] svg {
-    rotate: -90deg;
-  }
-  .obs-win-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
   /* No scrollbars in the workspace (it still scrolls), except in the event log, where the bar tells
      how far back the history goes. */
   .obs,
   .obs * {
     scrollbar-width: none;
   }
-  .obs .obs-win[data-window="log"] .obs-win-body,
+  .obs .obs-panel[data-window="log"] .obs-panel-body,
   .obs .obs-dock-body[data-tab="log"] {
     scrollbar-width: thin;
     scrollbar-color: var(--line-strong) transparent;
-  }
-  .obs-win-resize {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 18px;
-    height: 18px;
-    cursor: nwse-resize;
-    touch-action: none;
-  }
-  .obs-win-resize::after {
-    content: "";
-    position: absolute;
-    right: 4px;
-    bottom: 4px;
-    width: 7px;
-    height: 7px;
-    border-right: 1.5px solid var(--obs-edge-strong);
-    border-bottom: 1.5px solid var(--obs-edge-strong);
-    border-bottom-right-radius: 3px;
-    transition: border-color 0.2s var(--ease);
-  }
-  .obs-win-resize:hover::after {
-    border-color: var(--interest);
   }
   .obs-win-foot {
     padding: 8px 14px 10px;
@@ -1749,8 +1962,11 @@
     padding: 4px 8px;
     font-size: 10.5px;
   }
-  .obs[data-phone] .obs-hud-top {
+  .obs[data-phone] .obs-player {
     top: 8px;
+  }
+  .obs[data-phone] .obs-legend {
+    transition: none;
   }
   .obs[data-phone] .obs-pane-name {
     font-size: 13px;
@@ -1761,32 +1977,25 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .obs-win,
   .obs-collapse,
   .obs-seg-thumb,
   .obs-chevron,
-  .obs-icon-btn svg {
+  .obs-icon-btn svg,
+  .obs-legend {
     transition: none;
   }
-  .obs-win-card {
-    transition:
-      box-shadow 0.15s ease,
-      border-color 0.15s ease;
-  }
-  .obs-win-card[data-lifted] {
-    translate: none;
-  }
-  .obs-win-card[data-entering],
   .obs-popover,
   .obs-tip,
   .obs-drag-ghost,
-  .obs-stage-card {
+  .obs-stage-card,
+  .obs-pmenu,
+  .obs-panel {
     animation: obs-fade 0.15s ease both;
   }
-  .obs-drag-ghost {
-    transition: none;
+  .obs-drawer {
+    animation: obs-fade 0.15s ease both;
   }
-  .obs-win-card[data-phase="closing"] {
+  .obs-drawer[data-closing] {
     animation: obs-fade-out 0.12s ease both;
   }
   .obs-status[data-state="connecting"] .obs-status-dot {
@@ -1794,10 +2003,11 @@
     opacity: 0.5;
   }
   .obs-btn,
-  .obs-round-btn,
   .obs-icon-btn,
   .obs-info,
-  .obs-winlist-icon {
+  .obs-pbtn,
+  .obs-paction,
+  .obs-tab {
     transform: none !important;
   }
 }
@@ -1805,121 +2015,102 @@
 /* ---------------------------------------------------------------- the network editor (ADR-028) */
 
 @layer components {
-  /* The sidebar head: the network's example (opens the picker), undo, redo, share. */
+  /* The sidebar head: back to the start screen, undo, redo, share, and the network's name. */
   .obs-net-head {
     position: relative;
     display: flex;
-    align-items: stretch;
-    gap: 6px;
+    flex-direction: column;
+    gap: 12px;
   }
-  .obs-net-pick {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
-    column-gap: 6px;
-    padding: 6px 10px;
-    text-align: left;
+  .obs-net-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .obs-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px 0 9px;
+    font-size: 13px;
+    font-weight: 560;
+    color: var(--fg);
     background: var(--bg);
-    border: 1.5px solid var(--obs-edge);
+    border: 1.5px solid var(--obs-edge-strong);
     border-radius: 10px;
+    box-shadow: 0 2px 0 0 var(--obs-shadow);
     transition:
-      border-color 0.2s var(--ease),
-      transform 0.45s var(--ease-spring);
+      transform 0.45s var(--ease-spring),
+      box-shadow 0.2s var(--ease);
+  }
+  .obs-back svg {
+    transition: translate 0.45s var(--ease-spring);
   }
   @media (hover: hover) {
-    .obs-net-pick:hover {
-      border-color: var(--obs-edge-strong);
+    .obs-back:hover svg {
+      translate: -3px 0;
     }
   }
-  .obs-net-pick:active {
-    transform: scale(0.98);
-    transition-duration: 0.2s, 0.1s;
+  .obs-back:active {
+    transform: translateY(2px);
+    box-shadow: 0 0 0 0 var(--obs-shadow);
+    transition-duration: 0.1s;
   }
-  .obs-net-label {
-    grid-column: 1;
-    font-size: 11px;
-    color: var(--fg-subtle);
+  .obs-net-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
   }
   .obs-net-name {
-    grid-column: 1;
-    font-size: 14px;
-    font-weight: 600;
+    min-width: 0;
+    font-size: 18px;
+    font-weight: 650;
+    letter-spacing: -0.015em;
     color: var(--fg);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .obs-net-edited {
-    font-weight: 400;
+    flex: none;
+    padding: 0 5px;
+    font-size: 11px;
     color: var(--fg-subtle);
-  }
-  .obs-net-chev {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    align-self: center;
-    color: var(--fg-muted);
-  }
-  .obs-net-head > .obs-info {
-    align-self: stretch;
-    width: 30px;
-    height: auto;
-    margin: 0;
-    border-radius: 9px;
-    border: 1.5px solid var(--obs-edge);
+    border: 1px dashed var(--obs-edge-strong);
+    border-radius: 5px;
   }
   .obs-net-actions {
     display: flex;
     gap: 4px;
   }
-  .obs-icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    min-width: 30px;
-    padding: 0 7px;
-    font-size: 12px;
-    color: var(--fg-muted);
+  .obs-net-actions .obs-icon-btn,
+  .obs-tabbar-end .obs-icon-btn {
+    width: 30px;
+    height: 30px;
     background: var(--bg);
     border: 1.5px solid var(--obs-edge);
     border-radius: 9px;
-    transition:
-      color 0.2s var(--ease),
-      border-color 0.2s var(--ease),
-      transform 0.45s var(--ease-spring);
   }
-  @media (hover: hover) {
-    .obs-icon-btn:hover:not(:disabled) {
-      color: var(--fg);
-      border-color: var(--obs-edge-strong);
-    }
-  }
-  .obs-icon-btn:active:not(:disabled) {
-    transform: scale(0.92);
-    transition-duration: 0.2s, 0.2s, 0.1s;
+  .obs-tabbar-end .obs-icon-btn[aria-expanded="true"] {
+    color: var(--bg);
+    background: var(--fg);
+    border-color: var(--fg);
   }
   .obs-icon-btn:disabled {
     opacity: 0.35;
+    pointer-events: none;
   }
   .obs-sidebar-head,
   .obs-dock-head {
     container-type: inline-size;
   }
-  /* Share: icon only in a narrow sidebar. */
-  .obs-share span {
-    display: none;
-  }
-  @container (min-width: 330px) {
-    .obs-share span {
-      display: inline;
-    }
-  }
   .obs-toast {
     position: absolute;
     right: 0;
-    top: calc(100% + 6px);
+    top: 38px;
     z-index: 30;
     padding: 4px 9px;
     font-size: 12px;
@@ -1929,37 +2120,21 @@
     animation: obs-tip-in 0.25s var(--obs-pop-ease) both;
   }
 
-  /* The issues that stop a network from running. */
-  .obs-issues-box {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 8px 10px;
-    border: 1.5px dashed var(--obs-edge-strong);
-    border-radius: 10px;
-  }
-  .obs-issues-title {
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--fg);
-  }
+  /* The issues that stop a network from running (the player's list). */
   .obs-issues {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
     font-size: 12px;
     line-height: 1.45;
     color: var(--fg-muted);
   }
   .obs-issues li {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 2px 8px;
-  }
-  .obs-note-warn {
-    color: var(--fg);
+    padding-left: 10px;
+    border-left: 1.5px dashed var(--obs-edge-strong);
   }
 
   /* The Add palette. */
@@ -2014,6 +2189,11 @@
   .obs-glyph-core {
     fill: var(--data-fill);
   }
+  .obs-glyph-link {
+    stroke: var(--fg);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
   .obs-drag-ghost[data-chip] {
     flex-direction: row;
     border-radius: 10px;
@@ -2033,24 +2213,6 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-  }
-  .obs-props-head {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    min-width: 0;
-  }
-  .obs-props-kind {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--fg);
-  }
-  .obs-props-id {
-    font-size: 12px;
-    color: var(--fg-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .obs-props-delete {
     align-self: flex-start;
@@ -2150,7 +2312,7 @@
     z-index: 4;
     display: flex;
     flex-direction: column;
-    translate: -100% 0;
+    translate: -100% -100%;
     background: var(--obs-panel);
     border: 1.5px solid var(--obs-edge);
     border-radius: 10px;
@@ -2193,139 +2355,263 @@
     pointer-events: none;
   }
 
-  /* The start screen: over the (empty, inert) workspace until the visitor picks what to load. */
+  /* The start screen (ADR-029): over the hidden workspace until the visitor picks what to load. */
   .obs-start {
     position: absolute;
     inset: 0;
     z-index: 60;
     overflow-y: auto;
-    background: var(--bg);
-    animation: obs-fade 0.25s var(--ease) both;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(circle, var(--obs-dot) 0.9px, transparent 1.3px),
+      radial-gradient(circle, var(--obs-dot) 0.9px, transparent 1.3px);
+    background-size: 18px 18px;
+    background-position:
+      0 0,
+      9px 9px;
+    animation: obs-fade 0.3s var(--ease) both;
+  }
+  .obs-start[data-leaving] {
+    pointer-events: none;
+    animation: obs-start-out 0.28s cubic-bezier(0.4, 0, 1, 1) both;
   }
   .obs-start-inner {
-    width: min(980px, 100%);
+    width: min(1060px, 100%);
     margin: 0 auto;
-    padding: clamp(24px, 6vh, 64px) 16px 48px;
+    padding: clamp(28px, 7vh, 72px) 20px 48px;
+  }
+  .obs-start-head {
+    margin-bottom: 28px;
+    animation: obs-rise 0.5s var(--obs-pop-ease) backwards;
   }
   .obs-start-title {
-    font-size: clamp(22px, 3vw, 30px);
-    font-weight: 650;
-    letter-spacing: -0.01em;
+    font-size: clamp(26px, 3.4vw, 36px);
+    font-weight: 680;
+    letter-spacing: -0.02em;
     color: var(--fg);
   }
-  .obs-start .obs-modal-intro {
-    margin: 6px 0 22px;
-  }
-  .obs[data-choosing] .obs-sidebar,
-  .obs[data-choosing] .obs-stage,
-  .obs[data-choosing] .obs-dock {
-    visibility: hidden;
-  }
-  .obs-pick[data-resume] {
-    border-style: dashed;
-    border-color: var(--obs-edge-strong);
-  }
-
-  /* The example picker. */
-  .obs-modal-scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 900;
-    display: grid;
-    place-items: center;
-    padding: 16px;
-    background: color-mix(in srgb, var(--bg) 62%, transparent);
-    animation: obs-fade 0.2s var(--ease) both;
-  }
-  .obs-modal {
-    width: min(780px, 100%);
-    max-height: calc(100dvh - 32px);
-    overflow-y: auto;
-    padding: 18px;
-    background: var(--obs-panel);
-    border: 1.5px solid var(--obs-edge-strong);
-    border-radius: 16px;
-    box-shadow: 0 8px 0 0 var(--obs-shadow);
-    animation: obs-pop 0.32s var(--obs-pop-ease) both;
-  }
-  .obs-modal-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-  .obs-modal-title {
-    font-size: 18px;
-    font-weight: 650;
-    color: var(--fg);
-  }
-  .obs-modal-intro {
-    margin-top: 3px;
-    max-width: 56ch;
-    font-size: 13px;
-    line-height: 1.5;
+  .obs-start-intro {
+    margin-top: 8px;
+    max-width: 62ch;
+    font-size: 14px;
+    line-height: 1.55;
     color: var(--fg-muted);
+    text-wrap: pretty;
   }
-  .obs-picks {
+  .obs-start-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    gap: 10px;
+    grid-template-columns: minmax(250px, 0.82fr) minmax(0, 1.5fr);
+    gap: 24px;
+    align-items: start;
   }
-  .obs-pick {
+  .obs-start-new {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 12px;
+  }
+  .obs-start-sub {
+    margin: 0 0 10px 2px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg-muted);
+    animation: obs-rise 0.5s var(--obs-pop-ease) 0.08s backwards;
+  }
+
+  /* The blank canvas: a big plus. */
+  .obs-new {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     width: 100%;
-    height: 100%;
-    padding: 10px;
-    text-align: left;
-    background: var(--bg);
-    border: 1.5px solid var(--obs-edge);
-    border-radius: 12px;
+    min-height: 280px;
+    padding: 28px 24px;
+    text-align: center;
+    color: var(--fg);
+    background: var(--bg-elev);
+    border: 2px dashed var(--obs-edge-strong);
+    border-radius: 18px;
     transition:
-      border-color 0.2s var(--ease),
-      transform 0.45s var(--ease-spring);
+      transform 0.5s var(--ease-spring),
+      border-color 0.2s var(--ease);
+    animation: obs-pop 0.55s var(--obs-pop-ease) 0.05s backwards;
+  }
+  .obs-new-plus {
+    display: grid;
+    place-items: center;
+    width: 76px;
+    height: 76px;
+    margin-bottom: 6px;
+    color: var(--bg);
+    background: var(--fg);
+    border-radius: 22px;
+    box-shadow: 0 5px 0 0 var(--obs-shadow);
+    transition: transform 0.55s var(--ease-spring);
+  }
+  .obs-new-plus svg {
+    stroke-width: 2.2;
   }
   @media (hover: hover) {
-    .obs-pick:hover {
-      border-color: var(--obs-edge-strong);
-      transform: translateY(-2px);
+    .obs-new:hover {
+      transform: scale(1.015);
+    }
+    .obs-new:hover .obs-new-plus {
+      transform: rotate(90deg) scale(1.06);
     }
   }
-  .obs-pick:active {
-    transform: scale(0.98);
-    transition-duration: 0.2s, 0.1s;
+  .obs-new:active {
+    transform: scale(0.97);
+    transition-duration: 0.12s;
   }
-  .obs-pick[data-current] {
-    border-color: var(--interest);
+  .obs-new-name {
+    font-size: 18px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
   }
-  .obs-pick-name {
+  .obs-new-blurb {
+    max-width: 28ch;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--fg-muted);
+  }
+
+  /* A row to open: the examples, and the saved network. */
+  .obs-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .obs-rows li {
+    animation: obs-rise 0.5s var(--obs-pop-ease) backwards;
+    animation-delay: calc(var(--i, 0) * 55ms + 120ms);
+  }
+  .obs-row {
+    display: grid;
+    grid-template-columns: 136px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 10px 14px 10px 10px;
+    text-align: left;
+    background: var(--bg-elev);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 14px;
+    box-shadow: 0 3px 0 0 var(--obs-shadow);
+    transition:
+      transform 0.45s var(--ease-spring),
+      box-shadow 0.25s var(--ease),
+      border-color 0.2s var(--ease);
+  }
+  @media (hover: hover) {
+    .obs-row:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 0 0 var(--obs-shadow);
+    }
+    .obs-row:hover .obs-row-go {
+      translate: 3px 0;
+    }
+  }
+  .obs-row:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 0 var(--obs-shadow);
+    transition-duration: 0.1s;
+  }
+  .obs-row[data-picked],
+  .obs-new[data-picked] {
+    border-color: var(--fg);
+  }
+  .obs-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .obs-row-name {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     gap: 4px 8px;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 620;
     color: var(--fg);
   }
-  .obs-pick-tag {
+  .obs-row-tag {
+    padding: 0 5px;
     font-size: 11px;
     font-weight: 400;
     color: var(--fg-subtle);
+    border: 1px dashed var(--obs-edge-strong);
+    border-radius: 5px;
   }
-  .obs-pick-blurb {
+  .obs-row-blurb {
     font-size: 12.5px;
     line-height: 1.45;
     color: var(--fg-muted);
+    text-wrap: pretty;
   }
+  .obs-row-go {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    color: var(--fg-muted);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 9px;
+    transition: translate 0.45s var(--ease-spring);
+  }
+  .obs-resume .obs-row-name {
+    font-size: 14px;
+  }
+  .obs-resume {
+    grid-template-columns: 92px minmax(0, 1fr) auto;
+    gap: 12px;
+    border-style: dashed;
+    border-color: var(--obs-edge-strong);
+    animation: obs-rise 0.5s var(--obs-pop-ease) 0.14s backwards;
+  }
+  @media (max-width: 760px) {
+    .obs-start-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 18px;
+    }
+    .obs-new {
+      flex-direction: row;
+      justify-content: flex-start;
+      min-height: 0;
+      padding: 16px;
+      text-align: left;
+      gap: 14px;
+    }
+    .obs-new-plus {
+      flex: none;
+      width: 52px;
+      height: 52px;
+      margin: 0;
+      border-radius: 16px;
+    }
+    .obs-new-name {
+      font-size: 16px;
+    }
+    .obs-new-blurb {
+      display: none;
+    }
+    .obs-row {
+      grid-template-columns: 88px minmax(0, 1fr) auto;
+      gap: 12px;
+    }
+  }
+
   .obs-thumb {
     width: 100%;
     height: auto;
     aspect-ratio: 200 / 110;
-    margin-bottom: 4px;
-    border-radius: 8px;
-    background: var(--bg-subtle);
+    border-radius: 9px;
+    background: var(--bg);
+    border: 1px solid var(--obs-edge);
   }
   .obs-thumb-link {
     stroke: var(--fg);
@@ -2356,6 +2642,153 @@
     stroke-linecap: round;
   }
 
+  /* While choosing, the workspace is hidden behind the start screen. */
+  .obs[data-choosing] .obs-sidebar,
+  .obs[data-choosing] .obs-grip-rail,
+  .obs[data-choosing] .obs-stage,
+  .obs[data-choosing] .obs-dock {
+    visibility: hidden;
+  }
+
+  /* Coming in from the start screen, and going back to it. */
+  .obs[data-entering] .obs-sidebar {
+    animation: obs-in-left 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+  }
+  .obs[data-entering] .obs-stage {
+    animation: obs-fade 0.45s var(--ease) 0.16s both;
+  }
+  .obs[data-entering] .obs-player {
+    animation: obs-in-down 0.6s var(--obs-pop-ease) 0.3s backwards;
+  }
+  .obs[data-entering] .obs-tabbar {
+    animation: obs-in-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.2s backwards;
+  }
+  /* The drawer was drawn (hidden) under the start screen: a new animation name replays its rise. */
+  .obs[data-entering] .obs-drawer {
+    animation: obs-drawer-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+  }
+  .obs[data-entering] .obs-panel {
+    animation-name: obs-panel-enter;
+    animation-delay: calc(var(--i, 0) * 45ms + 0.42s);
+  }
+  .obs[data-entering] .obs-legend {
+    animation: obs-fade 0.4s var(--ease) 0.4s backwards;
+  }
+  .obs[data-entering] .obs-dock {
+    animation: obs-in-up-soft 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .obs[data-exiting] .obs-sidebar {
+    animation: obs-out-left 0.3s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  .obs[data-exiting] .obs-stage,
+  .obs[data-exiting] .obs-dock,
+  .obs[data-exiting] .obs-grip-rail {
+    animation: obs-fade-out 0.3s var(--ease) both;
+  }
+
+  /* The selection card (ADR-029): the selected node's or link's settings, on the right of the stage. */
+  .obs-aside {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 8;
+    width: min(320px, calc(100% - 24px));
+    /* Clear of the zoom buttons above the dock. */
+    max-height: calc(100% - var(--obs-drawer, 0px) - 46px - 132px);
+    display: flex;
+    pointer-events: none;
+  }
+  .obs-aside > * {
+    pointer-events: auto;
+  }
+  .obs-card {
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--obs-panel);
+    border: 1.5px solid var(--obs-edge-strong);
+    border-radius: 14px;
+    box-shadow: 0 4px 0 0 var(--obs-shadow);
+    transform-origin: 100% 0;
+    animation: obs-card-in 0.5s var(--obs-pop-ease) both;
+  }
+  .obs-card[data-leaving] {
+    pointer-events: none;
+    animation: obs-card-out 0.17s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  .obs-card-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px 10px 12px;
+    border-bottom: 1.5px dashed var(--obs-dash);
+  }
+  .obs-card-glyph {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 9px;
+  }
+  .obs-card-titles {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .obs-card-title {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .obs-card-kind {
+    font-size: 11.5px;
+    color: var(--fg-subtle);
+  }
+  .obs-card-close {
+    flex: none;
+    align-self: flex-start;
+  }
+  .obs-card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 12px 14px 14px;
+    animation: obs-fade 0.22s var(--ease) both;
+  }
+  @container stage (max-width: 1140px) {
+    .obs-aside {
+      top: 70px;
+      max-height: calc(100% - var(--obs-drawer, 0px) - 46px - 190px);
+    }
+  }
+  .obs-stage {
+    container: stage / size;
+  }
+  .obs[data-phone] .obs-zoom {
+    display: none;
+  }
+  .obs[data-phone] .obs-aside {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: 72%;
+  }
+
   /* The NDN engine's windows. */
   .obs-stats {
     display: flex;
@@ -2382,16 +2815,39 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .obs-modal,
-    .obs-modal-scrim,
-    .obs-start,
     .obs-toast,
-    .obs-link-handle {
+    .obs-link-handle,
+    .obs-start-head,
+    .obs-start-sub,
+    .obs-new,
+    .obs-rows li,
+    .obs-resume {
       animation: none;
     }
+    .obs-start,
+    .obs-card,
+    .obs-card-body,
+    .obs[data-entering] .obs-sidebar,
+    .obs[data-entering] .obs-stage,
+    .obs[data-entering] .obs-player,
+    .obs[data-entering] .obs-tabbar,
+    .obs[data-entering] .obs-dock {
+      animation: obs-fade 0.15s ease both;
+    }
+    .obs-start[data-leaving],
+    .obs-card[data-leaving],
+    .obs[data-exiting] .obs-sidebar,
+    .obs[data-exiting] .obs-stage,
+    .obs[data-exiting] .obs-dock {
+      animation: obs-fade-out 0.12s ease both;
+    }
     .obs-chip-node,
-    .obs-pick,
-    .obs-net-pick,
+    .obs-row,
+    .obs-new,
+    .obs-new-plus,
+    .obs-row-go,
+    .obs-back,
+    .obs-back svg,
     .obs-icon-btn {
       transition: none;
     }

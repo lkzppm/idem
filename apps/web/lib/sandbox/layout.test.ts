@@ -1,22 +1,17 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  clampRect,
+  DOCK_MIN,
   defaultLayout,
-  defaultRect,
-  freeRect,
-  GUTTER,
-  HUD_BOTTOM,
+  dockHeight,
   loadLayout,
-  MIN_W,
-  type Rect,
+  NETWORK_MIN_H,
+  networkArea,
+  PLAYER_BAND,
   SIDEBAR_MAX,
   saveLayout,
   splitPanes,
-  WINDOW_IDS,
+  TABBAR_H,
 } from "./layout";
-
-const inside = (r: Rect, W: number, H: number) =>
-  r.x >= GUTTER && r.y >= GUTTER && r.x + r.w <= W - GUTTER && r.y + r.h <= H - GUTTER;
 
 function fakeStorage(seed: Record<string, string> = {}) {
   const data = new Map(Object.entries(seed));
@@ -34,46 +29,21 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
 });
 
-describe("default arrangement", () => {
-  for (const [W, H] of [
-    [1136, 835],
-    [980, 600],
-    [1600, 1100],
-  ] as const) {
-    it(`keeps every window inside a ${W}×${H} stage`, () => {
-      for (const id of WINDOW_IDS) expect(inside(defaultRect(id, W, H), W, H)).toBe(true);
-    });
-  }
-
-  it("stacks the right column without overlap and keeps the log above the HUD", () => {
-    const W = 1136;
-    const H = 835;
-    const top = defaultRect("metrics", W, H);
-    const mid = defaultRect("tables", W, H);
-    const bottom = defaultRect("inspector", W, H);
-    expect(top.y + top.h).toBeLessThanOrEqual(mid.y);
-    expect(mid.y + mid.h).toBeLessThanOrEqual(bottom.y);
-    const log = defaultRect("log", W, H);
-    expect(log.y + log.h).toBeLessThanOrEqual(H - HUD_BOTTOM);
-    expect(log.x + log.w).toBeLessThanOrEqual(top.x);
-  });
-});
-
-describe("clampRect", () => {
-  it("pulls a window dragged off the stage back inside", () => {
-    const r = clampRect({ x: -400, y: 5000, w: 300, h: 200 }, 1000, 700);
-    expect(inside(r, 1000, 700)).toBe(true);
+describe("the dock", () => {
+  it("leaves the network the stage between the player's band and the tab bar, and the drawer when open", () => {
+    const top = PLAYER_BAND;
+    expect(networkArea(1000, 800, 0)).toEqual({ x: 0, y: top, w: 1000, h: 800 - top - TABBAR_H });
+    expect(networkArea(1000, 800, 300)).toEqual({ x: 0, y: top, w: 1000, h: 800 - top - TABBAR_H - 300 });
+    // A phone: no dock on the stage.
+    expect(networkArea(390, 400, 0, 0)).toEqual({ x: 0, y: top, w: 390, h: 400 - top });
   });
 
-  it("shrinks a window larger than the stage", () => {
-    const r = clampRect({ x: 0, y: 0, w: 3000, h: 3000 }, 800, 500);
-    expect(r.w).toBe(800 - 2 * GUTTER);
-    expect(r.h).toBe(500 - 2 * GUTTER);
-    expect(inside(r, 800, 500)).toBe(true);
-  });
-
-  it("never goes below the minimum width on a tiny stage", () => {
-    expect(clampRect({ x: 0, y: 0, w: 500, h: 200 }, 200, 300).w).toBe(MIN_W);
+  it("keeps the drawer between its minimum and what leaves the network room", () => {
+    expect(dockHeight(10, 800)).toBe(DOCK_MIN);
+    expect(dockHeight(5000, 800)).toBe(800 - TABBAR_H - NETWORK_MIN_H);
+    expect(dockHeight(250, 800)).toBe(250);
+    // A stage too short for both: the drawer keeps its minimum.
+    expect(dockHeight(250, 300)).toBe(DOCK_MIN);
   });
 });
 
@@ -81,90 +51,48 @@ describe("layout persistence", () => {
   it("round-trips a saved layout", () => {
     fakeStorage();
     const l = defaultLayout();
-    l.rects.log = { x: 40, y: 50, w: 400, h: 220 };
     l.open.net.metrics = true;
-    l.collapsed.tables = true;
-    l.order = ["safety", "log", "tables", "inspector", "metrics", "compare"];
     l.sidebar = 333;
+    l.dock = 321;
     saveLayout(l);
     expect(loadLayout()).toEqual(l);
   });
 
-  it("falls back to the defaults on garbage, a wrong version or missing storage", () => {
+  it("falls back to the defaults on garbage, an unknown version or missing storage", () => {
     fakeStorage({ "idem.sandbox.layout.v1": "{not json" });
     expect(loadLayout()).toEqual(defaultLayout());
-    fakeStorage({ "idem.sandbox.layout.v1": JSON.stringify({ v: 2 }) });
+    fakeStorage({ "idem.sandbox.layout.v1": JSON.stringify({ v: 3 }) });
     expect(loadLayout()).toEqual(defaultLayout());
     delete (globalThis as { window?: unknown }).window;
     expect(loadLayout()).toEqual(defaultLayout());
     expect(() => saveLayout(defaultLayout())).not.toThrow();
   });
 
-  it("drops unknown windows and bad values, clamps the sidebar and completes the order", () => {
+  it("keeps the open panels and the sidebar of a floating-window layout (v1), and drops bad values", () => {
     fakeStorage({
       "idem.sandbox.layout.v1": JSON.stringify({
         v: 1,
-        rects: {
-          log: { x: 1, y: 2, w: 300, h: "x" },
-          nope: { x: 0, y: 0, w: 1, h: 1 },
-          tables: { x: 1, y: 2, w: 300, h: 200 },
-        },
+        rects: { tables: { x: 1, y: 2, w: 300, h: 200 } },
         open: { live: { log: true, nope: true, tables: "yes" } },
-        collapsed: { inspector: true, nope: true },
-        order: ["log", "nope", "log"],
+        collapsed: { inspector: true },
+        order: ["log"],
         sidebar: 9999,
       }),
     });
     const l = loadLayout();
-    expect(Object.keys(l.rects)).toEqual(["tables"]);
-    expect(l.open.live).toEqual({ log: true });
-    expect(l.open.net).toEqual(defaultLayout().open.net);
-    expect(l.collapsed).toEqual({ inspector: true });
-    expect([...l.order].sort()).toEqual([...WINDOW_IDS].sort());
-    expect(l.sidebar).toBe(SIDEBAR_MAX);
+    expect(l).toEqual({
+      v: 2,
+      open: { live: { log: true }, net: defaultLayout().open.net },
+      sidebar: SIDEBAR_MAX,
+      dock: defaultLayout().dock,
+    });
   });
-});
 
-describe("layouts saved before the editor", () => {
-  it("read the old swarm window set as the editor's", () => {
+  it("reads the old swarm panel set as the editor's", () => {
     fakeStorage({
       "idem.sandbox.layout.v1": JSON.stringify({ v: 1, open: { swarm: { metrics: true, log: false } } }),
     });
     expect(loadLayout().open.net).toEqual({ metrics: true, log: false });
-  });
-});
-
-describe("freeRect", () => {
-  it("is the whole stage with no windows", () => {
-    expect(freeRect(1000, 800, [])).toEqual({ x: 0, y: 0, w: 1000, h: 800 });
-  });
-
-  it("leaves the top-left to the network with the default column and log", () => {
-    const W = 1136;
-    const H = 835;
-    const rects = (["metrics", "tables", "inspector", "log"] as const).map((id) => defaultRect(id, W, H));
-    const f = freeRect(W, H, rects);
-    expect(f.x).toBe(0);
-    expect(f.y).toBe(0);
-    expect(f.x + f.w).toBeLessThanOrEqual(defaultRect("metrics", W, H).x);
-    expect(f.y + f.h).toBeLessThanOrEqual(defaultRect("log", W, H).y);
-  });
-
-  it("ignores a window floating in the middle", () => {
-    expect(freeRect(1000, 800, [{ x: 400, y: 300, w: 200, h: 150 }])).toEqual({
-      x: 0,
-      y: 0,
-      w: 1000,
-      h: 800,
-    });
-  });
-
-  it("gives up on bands that would leave too little room", () => {
-    const f = freeRect(1000, 800, [
-      { x: 12, y: 12, w: 900, h: 300 },
-      { x: 12, y: 400, w: 900, h: 380 },
-    ]);
-    expect(f).toEqual({ x: 0, y: 0, w: 1000, h: 800 });
   });
 });
 

@@ -7,8 +7,10 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import { HTML_LANG } from "@/lib/i18n/locale";
 import { sandbox } from "@/lib/i18n/messages/sandbox";
 import { type PacketKind, type SceneNode, TopologyScene } from "@/lib/sandbox/scene";
+import { PlayIcon } from "./icons";
 import { NdnPacket } from "./ndn-packet";
 import { DataFacts, DigestCheck, NameParts, type SafetyItem, SafetyList, useContentCheck } from "./panels";
+import { PlayerAction, PlayerSep } from "./player";
 import { StageCanvas } from "./stage-canvas";
 import {
   Button,
@@ -520,14 +522,6 @@ export function LiveMode() {
             max={MAX_AGENTS}
             onChange={setAgents}
           />
-          <div className="flex flex-col gap-2">
-            <Button variant="primary" wide disabled={!ready} onClick={() => void burst()} kbd="Space">
-              {tl.burst(agents)}
-            </Button>
-            <Button wide disabled={!ready} onClick={() => void callOne(0, tool, argsFor(tool, 0))}>
-              {tl.callOne}
-            </Button>
-          </div>
           <p className="obs-note">
             {tool === "fetch_page" ? `${tl.burstNote} ${tl.clickHint}` : tl.clickHint}
           </p>
@@ -595,7 +589,15 @@ export function LiveMode() {
         )}
       </Slot>
 
-      <Slot name="status">
+      <Slot name="player">
+        <PlayerAction primary disabled={!ready} kbd="Space" onClick={() => void burst()}>
+          <PlayIcon />
+          {tl.burst(agents)}
+        </PlayerAction>
+        <PlayerAction disabled={!ready} onClick={() => void callOne(0, tool, argsFor(tool, 0))}>
+          {tl.callOne}
+        </PlayerAction>
+        <PlayerSep />
         <span className="obs-status" data-state={status.kind}>
           <span className="obs-status-dot" aria-hidden="true" />
           {statusText}

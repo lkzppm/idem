@@ -39,20 +39,6 @@ export function ChevronIcon() {
   );
 }
 
-/** Six dots: something that can be moved. */
-export function GripIcon() {
-  return (
-    <Glyph>
-      {[5, 8, 11].map((y) => (
-        <g key={y}>
-          <circle cx="6" cy={y} r="0.9" fill="currentColor" stroke="none" />
-          <circle cx="10" cy={y} r="0.9" fill="currentColor" stroke="none" />
-        </g>
-      ))}
-    </Glyph>
-  );
-}
-
 export function PlayIcon() {
   return (
     <Glyph>
@@ -74,6 +60,44 @@ export function RestartIcon() {
     <Glyph>
       <path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3" />
       <path d="M3.5 3v2.6h2.6" />
+    </Glyph>
+  );
+}
+
+/** Back (an arrow pointing left). */
+export function BackIcon() {
+  return (
+    <Glyph>
+      <path d="M12.5 8h-9M7.5 4l-4 4 4 4" />
+    </Glyph>
+  );
+}
+
+/** Plus, drawn large on the start screen's blank canvas tile. */
+export function PlusIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M8 3.5v9M3.5 8h9" />
+    </Glyph>
+  );
+}
+
+/** A small arrow pointing right (a row that opens something). */
+export function ArrowIcon() {
+  return (
+    <Glyph>
+      <path d="M3.5 8h9M8.5 4l4 4-4 4" />
+    </Glyph>
+  );
+}
+
+/** A warning triangle. */
+export function WarnIcon() {
+  return (
+    <Glyph>
+      <path d="M8 2.8l5.6 9.8H2.4z" />
+      <path d="M8 6.6v2.6" />
+      <circle cx="8" cy="11" r="0.7" fill="currentColor" stroke="none" />
     </Glyph>
   );
 }

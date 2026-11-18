@@ -18,31 +18,32 @@ import { editor as editorMessages } from "@/lib/i18n/messages/editor";
 import { sandbox } from "@/lib/i18n/messages/sandbox";
 import { type ExampleId, example } from "@/lib/sandbox/examples";
 import {
-  clampRect,
-  defaultRect,
-  freeRect,
-  type Rect,
+  dockHeight,
+  networkArea,
   SIDEBAR_DEFAULT,
   SIDEBAR_MAX,
   SIDEBAR_MIN,
   STAGE_MIN,
-  TITLE_H,
   WINDOW_IDS,
   type WindowId,
 } from "@/lib/sandbox/layout";
 import { clamp } from "@/lib/sandbox/motion";
-import { ExamplePicker, StartScreen } from "./editor/picker";
+import { Dock } from "./dock";
+import { StartScreen } from "./editor/picker";
 import { useNetwork } from "./editor/use-network";
 import { EditorMode } from "./editor-mode";
-import { HelpIcon, LayoutIcon, WindowIcon } from "./icons";
+import { BackIcon, HelpIcon, LayoutIcon } from "./icons";
 import { LiveMode } from "./live-mode";
-import { InfoTip, Section } from "./ui";
-import { useDragToStage } from "./window/drag-to-stage";
-import { FloatingWindow } from "./window/floating-window";
+import { InfoTip } from "./ui";
 import { useLayout } from "./window/use-layout";
 import { isTyping, type SlotName, type WorkspaceApi, WorkspaceProvider } from "./workspace";
 
 const PHONE_QUERY = "(max-width: 840px)";
+
+/** How long the start screen takes to leave, and the workspace to come in or go (ms). */
+const START_LEAVE_MS = 300;
+const ENTER_MS = 1100;
+const EXIT_MS = 300;
 
 /** Stable (module-level), so React does not resubscribe on every render. */
 function subscribePhone(cb: () => void): () => void {
@@ -51,7 +52,7 @@ function subscribePhone(cb: () => void): () => void {
   return () => q.removeEventListener("change", cb);
 }
 
-/** Phone layout: the stage on top, the windows as tabs below. False on the server and until hydration. */
+/** Phone layout: the stage on top, the panels as tabs below. False on the server and until hydration. */
 function usePhone(): boolean {
   return useSyncExternalStore(
     subscribePhone,
@@ -60,26 +61,17 @@ function usePhone(): boolean {
   );
 }
 
-/** Entrance order of the first layout: the comparison first, the tables, then the log and inspector. */
-const ENTER_DELAY: Record<WindowId, number> = {
-  metrics: 0,
-  compare: 0,
-  tables: 45,
-  log: 80,
-  inspector: 105,
-  safety: 0,
-};
-
 /**
- * The sandbox as an observatory: a full-viewport workspace under the site header, with a sidebar of
- * controls, the network canvas filling the stage, and floating windows over it for the protocol's
- * state (event log, PIT and CS tables, packet inspector, metrics, comparison, safety verdicts).
+ * The sandbox as an observatory (ADR-029): a full-viewport workspace under the site header. It opens
+ * on a start screen; once a network is picked, a sidebar holds its settings (engine, Add palette,
+ * attacks), a player bar over the canvas plays it, a card on the right edits the selected node or
+ * link, and a dock along the bottom holds the protocol's panels (event log, PIT and CS tables, packet
+ * inspector, metrics, comparison, safety verdicts), rising from its tab bar when one opens.
  *
  * What runs is a network from the editor (ADR-028): an example or a blank canvas the visitor edits,
- * or the Live example over real HTTP. The shell owns the layout (sidebar width, which windows are
- * open, where they are), the network and its history, and offers slots; the editor or Live mode
- * portals its controls, canvas and window contents into them. On a phone the stage sits on top and
- * the sidebar and windows become the tabs of a sheet.
+ * or the Live example over real HTTP. The shell owns the layout, the network and its history, and
+ * offers slots; the editor or Live mode portals its controls, canvas, player and panel contents into
+ * them. On a phone the stage sits on top and the sidebar and panels become the tabs of a sheet.
  */
 export function Sandbox() {
   const t = useMessages(sandbox);
@@ -89,7 +81,6 @@ export function Sandbox() {
   const mode = nw.showing.kind === "live" ? "live" : "net";
   const choosing = nw.showing.kind === "none";
   const L = useLayout(mode);
-  const [picking, setPicking] = useState(false);
   const [toast, setToast] = useState<string>();
   const phone = usePhone();
   const reduced = useReducedMotion();
@@ -100,8 +91,15 @@ export function Sandbox() {
   const [help, setHelp] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"controls" | WindowId>("controls");
-  const [booted, setBooted] = useState(false);
-  const toggles = useRef(new Map<WindowId, HTMLButtonElement>());
+  // Screen changes: the start screen leaving, the workspace coming in, the workspace going.
+  const [leavingStart, setLeavingStart] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const timers = useRef<number[]>([]);
+  const later = useCallback((ms: number, fn: () => void) => {
+    timers.current.push(window.setTimeout(fn, ms));
+  }, []);
+  useEffect(() => () => timers.current.forEach((id) => clearTimeout(id)), []);
 
   useEffect(() => {
     if (!toast) return;
@@ -120,10 +118,42 @@ export function Sandbox() {
       setToast(te.copyFailed);
     }
   };
-  const pick = (id: ExampleId) => {
-    setPicking(false);
-    if (id !== "live" || nw.showing.kind !== "live") nw.load(id);
+
+  const enter = useCallback(() => {
+    setEntering(true);
+    later(reduced ? 200 : ENTER_MS, () => setEntering(false));
+  }, [later, reduced]);
+
+  /** From the start screen into a network: the screen leaves while the workspace comes in. */
+  const open = (load: () => void) => {
+    if (leavingStart || exiting) return;
+    setLeavingStart(true);
+    load();
+    enter();
+    later(reduced ? 120 : START_LEAVE_MS, () => setLeavingStart(false));
   };
+  const pick = (id: ExampleId) => open(() => nw.load(id));
+  const resume = () => open(nw.resume);
+
+  /** Back to the start screen: the workspace goes, then the start screen comes in. */
+  const back = () => {
+    if (exiting || entering) return;
+    setExiting(true);
+    setHelp(false);
+    later(reduced ? 0 : EXIT_MS, () => {
+      nw.back();
+      setExiting(false);
+      setTab("controls");
+    });
+  };
+
+  // A network opened straight from the address (a shared link, ?example=): the workspace comes in.
+  const introduced = useRef(false);
+  useEffect(() => {
+    if (!nw.loaded || introduced.current) return;
+    introduced.current = true;
+    if (nw.showing.kind !== "none") enter();
+  }, [nw.loaded, nw.showing.kind, enter]);
 
   // The header's real height (the workspace fills the rest of the viewport).
   useEffect(() => {
@@ -153,13 +183,6 @@ export function Sandbox() {
     return () => ro.disconnect();
   }, []);
 
-  // The first layout pops in with a short stagger; after that, windows open on their own.
-  useEffect(() => {
-    if (!L.loaded || stage.w === 0) return;
-    const id = setTimeout(() => setBooted(true), 900);
-    return () => clearTimeout(id);
-  }, [L.loaded, stage.w]);
-
   // Slots: one stable callback ref per name.
   const refs = useRef(new Map<SlotName, (el: HTMLElement | null) => void>());
   const slotRef = useCallback((name: SlotName) => {
@@ -178,32 +201,27 @@ export function Sandbox() {
     return fn;
   }, []);
 
-  const rectOf = useCallback(
-    (id: WindowId): Rect =>
-      clampRect(L.layout.rects[id] ?? defaultRect(id, stage.w, stage.h), stage.w, stage.h),
-    [L.layout.rects, stage.w, stage.h],
+  // The dock: its drawer is open while any panel is, and the network gets the stage above it.
+  const anyOpen = WINDOW_IDS.some((id) => L.isOpen(id));
+  const drawer = dockHeight(L.layout.dock, stage.h);
+  const drawerMax = dockHeight(Number.POSITIVE_INFINITY, stage.h);
+  const area = useMemo(
+    () =>
+      stage.w === 0
+        ? { x: 0, y: 0, w: stage.w, h: stage.h }
+        : phone
+          ? networkArea(stage.w, stage.h, 0, 0)
+          : networkArea(stage.w, stage.h, anyOpen ? drawer : 0),
+    [phone, stage.w, stage.h, anyOpen, drawer],
   );
-  const openIds = WINDOW_IDS.filter((id) => L.isOpen(id));
-  const area = useMemo(() => {
-    if (phone || stage.w === 0) return { x: 0, y: 0, w: stage.w, h: stage.h };
-    return freeRect(
-      stage.w,
-      stage.h,
-      openIds.map((id) => {
-        const r = rectOf(id);
-        return L.isCollapsed(id) ? { ...r, h: TITLE_H } : r;
-      }),
-    );
-    // openIds is derived from the layout.
-  }, [phone, stage.w, stage.h, rectOf, L, openIds.join()]);
+  const setDrawerVar = useCallback((h: number) => {
+    stageEl.current?.style.setProperty("--obs-drawer", `${h}px`);
+  }, []);
 
   const reveal = useCallback(
     (id: WindowId) => {
       if (phone) setTab(id);
-      else if (L.isOpen(id)) {
-        L.front(id);
-        if (L.isCollapsed(id)) L.setCollapsed(id, false);
-      } else L.open(id);
+      else L.open(id);
     },
     [phone, L],
   );
@@ -213,8 +231,9 @@ export function Sandbox() {
     [mode, phone, stage, area, slots, tab, L, reveal],
   );
 
-  // Keys: 1–6 toggle windows, ? the cheat sheet, Esc closes it.
+  // Keys: 1–6 toggle panels, ? the cheat sheet, Esc closes it.
   useEffect(() => {
+    if (choosing) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e)) return;
       const n = Number(e.key);
@@ -230,7 +249,7 @@ export function Sandbox() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [L, phone, help]);
+  }, [L, phone, help, choosing]);
 
   useEffect(() => {
     if (!help) return;
@@ -241,35 +260,6 @@ export function Sandbox() {
     return () => document.removeEventListener("pointerdown", onDown);
   }, [help]);
 
-  // However the window was closed, focus goes back to its toggle in the sidebar: the close button
-  // that had it is gone, and focus would otherwise fall to the document.
-  const closeWindow = (id: WindowId) => {
-    L.close(id);
-    toggles.current.get(id)?.focus({ preventScroll: true });
-  };
-
-  // A window's button can be dragged onto the stage: it opens (or moves) where it is dropped.
-  const drag = useDragToStage({
-    stage: stageEl,
-    sizeOf: rectOf,
-    onDrop: (id, r) => {
-      L.place(id, r);
-      if (!L.isOpen(id)) L.open(id);
-      else {
-        L.front(id);
-        if (L.isCollapsed(id)) L.setCollapsed(id, false);
-      }
-    },
-    render: (id) => (
-      <>
-        <span className="obs-win-icon">
-          <WindowIcon id={id} />
-        </span>
-        <span className="obs-drag-name">{s.windowNames[id]}</span>
-      </>
-    ),
-  });
-
   const showing = nw.showing;
   const from = showing.kind === "live" ? "live" : showing.kind === "net" ? showing.net.from : "";
   const fromName = (te.example as Record<string, { name: string }>)[from]?.name ?? from;
@@ -279,90 +269,84 @@ export function Sandbox() {
       ? showing.net.nodes.length > 0
       : JSON.stringify(showing.net) !== JSON.stringify(example(from as ExampleId)));
 
-  // The network's head: which example it came from (opens the picker), undo, redo, share.
-  const modeHead = (
+  // The network's head: back to the start screen, undo, redo, share, and the network's name.
+  const netHead = (
     <div className="obs-net-head">
-      <button
-        type="button"
-        className="obs-net-pick"
-        title={te.examplesTitle}
-        aria-haspopup="dialog"
-        onClick={() => setPicking(true)}
-      >
-        <span className="obs-net-label">{te.network}</span>
-        <span className="obs-net-name">
-          {fromName}
-          {edited && <span className="obs-net-edited"> · {te.edited}</span>}
-        </span>
-        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className="obs-net-chev">
-          <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      </button>
-      {showing.kind === "live" && (
-        <InfoTip label={s.modeAbout(fromName)}>
-          {t.live.intro}{" "}
-          <Link href="/benchmarks" className="obs-link">
-            /benchmarks
-          </Link>
-          .
-        </InfoTip>
-      )}
-      <div className="obs-net-actions">
-        <button
-          type="button"
-          className="obs-icon-btn"
-          aria-label={te.undo}
-          title={`${te.undo} (⌘Z)`}
-          disabled={!nw.canUndo}
-          onClick={nw.undo}
-        >
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-            <path
-              d="M6 4L3 7l3 3M3.5 7H10a3 3 0 010 6H8"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+      <div className="obs-net-row">
+        <button type="button" className="obs-back" title={te.backTitle} onClick={back}>
+          <BackIcon />
+          <span>{te.back}</span>
         </button>
-        <button
-          type="button"
-          className="obs-icon-btn"
-          aria-label={te.redo}
-          title={`${te.redo} (⇧⌘Z)`}
-          disabled={!nw.canRedo}
-          onClick={nw.redo}
-        >
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-            <path
-              d="M10 4l3 3-3 3M12.5 7H6a3 3 0 000 6h2"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="obs-icon-btn obs-share"
-          title={te.shareTitle}
-          onClick={() => void share()}
-        >
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-            <path
-              d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.6 2.6 0 013.7 3.7L10.7 8.2M9 11.5l-1.2 1.2a2.6 2.6 0 01-3.7-3.7L5.3 7.8"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-          <span>{te.share}</span>
-        </button>
+        <div className="obs-net-actions">
+          <button
+            type="button"
+            className="obs-icon-btn"
+            aria-label={te.undo}
+            title={`${te.undo} (⌘Z)`}
+            disabled={!nw.canUndo}
+            onClick={nw.undo}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M6 4L3 7l3 3M3.5 7H10a3 3 0 010 6H8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="obs-icon-btn"
+            aria-label={te.redo}
+            title={`${te.redo} (⇧⌘Z)`}
+            disabled={!nw.canRedo}
+            onClick={nw.redo}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M10 4l3 3-3 3M12.5 7H6a3 3 0 000 6h2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="obs-icon-btn"
+            aria-label={te.share}
+            title={te.shareTitle}
+            onClick={() => void share()}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.6 2.6 0 013.7 3.7L10.7 8.2M9 11.5l-1.2 1.2a2.6 2.6 0 01-3.7-3.7L5.3 7.8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div className="obs-net-title">
+        <span className="obs-net-name">{fromName}</span>
+        {edited && <span className="obs-net-edited">{te.edited}</span>}
+        {showing.kind === "live" && (
+          <InfoTip label={s.modeAbout(fromName)}>
+            {t.live.intro}{" "}
+            <Link href="/benchmarks" className="obs-link">
+              /benchmarks
+            </Link>
+            .
+          </InfoTip>
+        )}
       </div>
       {toast && (
         <span className="obs-toast" role="status">
@@ -372,53 +356,35 @@ export function Sandbox() {
     </div>
   );
 
-  const windowList = (
-    <Section
-      title={s.windows}
-      aside={
-        <button type="button" className="obs-link-btn" title={s.tidyTitle} onClick={L.reset}>
-          <LayoutIcon />
-          {s.tidy}
-        </button>
-      }
-    >
-      <ul className="obs-winlist">
-        {WINDOW_IDS.map((id, i) => {
-          const on = L.isOpen(id);
-          const name = s.windowNames[id];
-          return (
-            <li key={id}>
-              <button
-                type="button"
-                ref={(el) => {
-                  if (el) toggles.current.set(id, el);
-                  else toggles.current.delete(id);
-                }}
-                aria-pressed={on}
-                title={`${on ? s.closeWindow(name) : s.openWindow(name)} · ${s.dragHint}`}
-                {...drag.bind(id)}
-                onClick={() => {
-                  if (!drag.clickWasDrag()) L.toggle(id);
-                }}
-                className="obs-winlist-btn"
-              >
-                <span className="obs-winlist-icon">
-                  <WindowIcon id={id} />
-                </span>
-                <span className="obs-winlist-text">
-                  <span>{name}</span>
-                  <span className="obs-winlist-blurb">{s.windowBlurb[id]}</span>
-                </span>
-                <kbd className="obs-kbd">{i + 1}</kbd>
-                <span className="obs-tick" aria-hidden="true" />
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </Section>
+  const helpButton = (
+    <div ref={helpRef} className="obs-help">
+      {help && (
+        <div className="obs-popover" role="dialog" aria-label={s.help}>
+          <p className="obs-popover-title">{s.help}</p>
+          <ul className="obs-keys">
+            {[...s.keys, ...(mode === "net" ? te.keys : [])].map(([k, does]) => (
+              <li key={k}>
+                <kbd className="obs-kbd">{k}</kbd>
+                <span>{does}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <button
+        type="button"
+        className="obs-icon-btn"
+        aria-label={s.help}
+        title={s.help}
+        aria-expanded={help}
+        onClick={() => setHelp((h) => !h)}
+      >
+        <HelpIcon />
+      </button>
+    </div>
   );
 
+  const busy = choosing || exiting;
   return (
     <WorkspaceProvider value={api}>
       <div
@@ -426,15 +392,18 @@ export function Sandbox() {
         className="obs"
         data-phone={phone || undefined}
         data-choosing={choosing || undefined}
+        data-entering={entering || undefined}
+        data-exiting={exiting || undefined}
         style={{ "--obs-sidebar": `${L.layout.sidebar}px` } as CSSProperties}
       >
-        {choosing && nw.loaded && <StartScreen saved={nw.saved} onPick={pick} onResume={nw.resume} />}
+        {(choosing || leavingStart) && nw.loaded && (
+          <StartScreen saved={nw.saved} leaving={!choosing} onPick={pick} onResume={resume} />
+        )}
         {!phone && (
-          <aside className="obs-sidebar" aria-label={s.controls} inert={choosing}>
-            <div className="obs-sidebar-head">{modeHead}</div>
+          <aside className="obs-sidebar" aria-label={s.controls} inert={busy}>
+            <div className="obs-sidebar-head">{netHead}</div>
             <div className="obs-sidebar-scroll">
               <div ref={slotRef("controls")} className="obs-controls" />
-              {windowList}
             </div>
           </aside>
         )}
@@ -442,69 +411,54 @@ export function Sandbox() {
           <SidebarGrip label={s.resizeSidebar} width={L.layout.sidebar} root={root} onCommit={L.setSidebar} />
         )}
 
-        <div ref={stageEl} className="obs-stage" inert={choosing}>
+        <div
+          ref={stageEl}
+          className="obs-stage"
+          inert={busy}
+          style={{ "--obs-drawer": `${anyOpen && !phone ? drawer : 0}px` } as CSSProperties}
+        >
           <div ref={slotRef("stage")} className="obs-stage-layer" />
-          <div ref={slotRef("status")} className="obs-hud obs-hud-top" />
+          <div ref={slotRef("player")} className="obs-hud obs-player" />
+          <div ref={slotRef("aside")} className="obs-aside" />
           <Legend labels={s.legend} />
           {!phone && (
-            <div ref={helpRef} className="obs-hud obs-hud-help">
-              {help && (
-                <div className="obs-popover" role="dialog" aria-label={s.help}>
-                  <p className="obs-popover-title">{s.help}</p>
-                  <ul className="obs-keys">
-                    {[...s.keys, ...(mode === "net" ? te.keys : [])].map(([k, does]) => (
-                      <li key={k}>
-                        <kbd className="obs-kbd">{k}</kbd>
-                        <span>{does}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <button
-                type="button"
-                className="obs-round-btn"
-                aria-label={s.help}
-                title={s.help}
-                aria-expanded={help}
-                onClick={() => setHelp((h) => !h)}
-              >
-                <HelpIcon />
-              </button>
-            </div>
-          )}
-          {!phone && L.loaded && stage.w > 0 && (
-            <div className="obs-windows">
-              {WINDOW_IDS.map((id) => (
-                <FloatingWindow
-                  key={id}
-                  id={id}
-                  title={s.windowNames[id]}
-                  icon={<WindowIcon id={id} />}
-                  rect={rectOf(id)}
-                  bounds={stage}
-                  z={10 + L.z(id)}
-                  open={L.isOpen(id)}
-                  collapsed={L.isCollapsed(id)}
-                  front={L.frontmost() === id}
-                  enterDelay={booted ? 0 : ENTER_DELAY[id]}
-                  reduced={reduced}
-                  labels={s.win}
-                  onFront={() => L.front(id)}
-                  onClose={() => closeWindow(id)}
-                  onCollapse={(v) => L.setCollapsed(id, v)}
-                  onCommit={(r) => L.place(id, r)}
-                  bodyRef={slotRef(`win:${id}`)}
-                  hintRef={slotRef(`hint:${id}`)}
-                />
-              ))}
-            </div>
+            <Dock
+              isOpen={L.isOpen}
+              names={s.windowNames}
+              blurbs={s.windowBlurb}
+              height={drawer}
+              maxHeight={drawerMax}
+              onHeight={(h) => {
+                const v = dockHeight(h, stage.h);
+                setDrawerVar(v);
+                L.setDock(v);
+              }}
+              onPreview={setDrawerVar}
+              onToggle={L.toggle}
+              onClose={L.close}
+              slotRef={slotRef}
+              labels={s.dock}
+              end={
+                <>
+                  <button
+                    type="button"
+                    className="obs-icon-btn"
+                    aria-label={s.tidy}
+                    title={s.tidyTitle}
+                    onClick={L.reset}
+                  >
+                    <LayoutIcon />
+                  </button>
+                  {helpButton}
+                </>
+              }
+            />
           )}
         </div>
 
         {phone && (
-          <div className="obs-dock" inert={choosing}>
-            <div className="obs-dock-head">{modeHead}</div>
+          <div className="obs-dock" inert={busy}>
+            <div className="obs-dock-head">{netHead}</div>
             <nav className="obs-dock-tabs" aria-label={s.sections}>
               {(["controls", ...WINDOW_IDS] as const).map((id) => (
                 <button
@@ -528,10 +482,8 @@ export function Sandbox() {
           </div>
         )}
       </div>
-      {drag.ghost}
       {nw.showing.kind === "live" && <LiveMode key="live" />}
       {nw.showing.kind === "net" && <EditorMode key="net" nw={nw} net={nw.showing.net} />}
-      <ExamplePicker open={picking} current={from} onPick={pick} onClose={() => setPicking(false)} />
     </WorkspaceProvider>
   );
 }

@@ -10,6 +10,7 @@ import type { Network } from "@/lib/sandbox/network";
 import { runSignature } from "@/lib/sandbox/run";
 import { TopologyScene } from "@/lib/sandbox/scene";
 import { RestartIcon } from "./icons";
+import { PlayerButton, PlayerProgress, PlayerSep } from "./player";
 import { StageCanvas, type StageEditor } from "./stage-canvas";
 import { Empty, fixed, Stat, shortName } from "./ui";
 import { Slot, useWorkspace } from "./workspace";
@@ -30,19 +31,17 @@ const mb = (n: number) => `${fixed(n / 1_000_000, 1)} MB`;
 /**
  * The editor's NDN engine on the stage: the network runs on YaNFD routers compiled to WebAssembly,
  * one per forwarder node, in this tab and in real time (`lib/sandbox/ndn-net.ts`). It owns the
- * stage, the status cluster, and the log and metrics windows while it runs.
+ * stage, the player bar, and the log, metrics and compare panels while it runs.
  */
 export function NdnEngine({
   net,
   loads,
   editor,
-  onBackend,
 }: {
   net: Network;
   /** Bumped when another network is loaded: the stage is then fitted to it. */
   loads: number;
   editor: StageEditor;
-  onBackend: (b: "webgpu" | "canvas2d") => void;
 }) {
   const t = useMessages(editorMessages);
   const tn = t.ndn;
@@ -194,32 +193,25 @@ export function NdnEngine({
           label={t.canvas.label}
           onNodeClick={(_p, node) => editor.onSelect({ kind: "node", id: node })}
           nodeAction={(_p, n) => t.canvas.select(n.id)}
-          onBackend={onBackend}
           editor={editor}
         />
       </Slot>
-      <Slot name="status">
-        <button
-          type="button"
-          className="obs-round-btn"
-          aria-label={tn.restart}
-          title={tn.restart}
-          onClick={() => setRunId((r) => r + 1)}
-        >
+      <Slot name="player">
+        <PlayerButton label={tn.restart} onClick={() => setRunId((r) => r + 1)}>
           <RestartIcon />
-        </button>
-        <span
-          className="obs-status"
-          data-state={phase.kind === "running" ? (s && s.done >= s.calls ? "done" : "ready") : "paused"}
-          role="status"
-        >
+        </PlayerButton>
+        <PlayerSep />
+        <span className="obs-ptime" role="status">
           <span className="text-fg">{status}</span>
-          {s && phase.kind === "running" && (
-            <span className="t-mono tabular-nums text-faint">
-              {s.done}/{s.calls}
-            </span>
-          )}
+          {phase.kind === "running" && <span className="obs-ptime-note">{tn.realTime}</span>}
         </span>
+        {s && phase.kind === "running" && (
+          <PlayerProgress
+            value={s.done / Math.max(1, s.calls)}
+            label={`${s.done}/${s.calls}`}
+            title={t.run.progress}
+          />
+        )}
       </Slot>
       <Slot name="win:metrics">
         {s ? (

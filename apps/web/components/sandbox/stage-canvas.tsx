@@ -802,7 +802,10 @@ export function StageCanvas({
         </button>
       )}
       {editor && (
-        <div className="obs-zoom" style={{ left: `${area.x + area.w - 12}px`, top: `${area.y + 12}px` }}>
+        <div
+          className="obs-zoom"
+          style={{ left: `${area.x + area.w - 12}px`, top: `${area.y + area.h - 12}px` }}
+        >
           <button
             type="button"
             className="obs-zoom-btn"

@@ -66,10 +66,12 @@ export interface NetworkState {
    * edit (a drag in progress) changes the network without touching the history at all.
    */
   edit(next: Network, opts?: { coalesce?: string; transient?: boolean }): void;
-  /** Load an example (or the Live one). Undoable, except from the start screen. */
+  /** Load an example (or the Live one) from the start screen. Its history starts empty. */
   load(id: ExampleId): void;
   /** Load the saved network. */
   resume(): void;
+  /** Back to the start screen. The network being edited is saved first (Resume offers it). */
+  back(): void;
   undo(): void;
   redo(): void;
   canUndo: boolean;
@@ -160,7 +162,8 @@ export function useNetwork(): NetworkState {
     (next: Showing) => {
       origin.current.set(next, ++loadSeq.current);
       dirty.current = false;
-      commit(push(hist.current, next));
+      // Networks are only loaded from the start screen (never over another): a fresh history.
+      commit({ past: [], present: next, future: [] });
       last.current = { at: 0 };
       setLoads((n) => n + 1);
     },
@@ -179,6 +182,18 @@ export function useNetwork(): NetworkState {
     const net = readSaved();
     if (net) show({ kind: "net", net });
   }, [show]);
+
+  const back = useCallback(() => {
+    const p = hist.current.present;
+    // The debounced autosave would be cancelled by leaving: save now.
+    if (p.kind === "net" && dirty.current) {
+      writeSaved(p.net);
+      setSaved(p.net);
+    }
+    dirty.current = false;
+    last.current = { at: 0 };
+    commit({ past: [], present: { kind: "none" }, future: [] });
+  }, [commit]);
 
   /** Move to `to` in the history; crossing from one load to another refits like a load. */
   const travel = useCallback(
@@ -211,6 +226,7 @@ export function useNetwork(): NetworkState {
       edit,
       load,
       resume,
+      back,
       undo,
       redo,
       canUndo: h.past.length > 0,
@@ -227,6 +243,6 @@ export function useNetwork(): NetworkState {
         return u.toString();
       },
     }),
-    [loaded, h, saved, loads, edit, load, resume, undo, redo],
+    [loaded, h, saved, loads, edit, load, resume, back, undo, redo],
   );
 }

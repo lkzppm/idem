@@ -1,22 +1,21 @@
 import { defineMessages } from "../locale";
 
 /**
- * The sandbox's network editor (ADR-027): the example picker, the Add palette, the properties of the
- * selected node or link, the run settings and the canvas gestures. Protocol terms (Interest, Data,
+ * The sandbox's network editor (ADR-028, ADR-029): the start screen, the Add palette, the selection
+ * card, the run settings, the player and the canvas gestures. Protocol terms (Interest, Data,
  * PIT, CS, forwarder, producer, NDN, YaNFD), node ids, tool names and numbers are never translated.
  */
 export const editor = defineMessages(
   {
-    network: "Network",
     examples: "Examples",
-    examplesTitle: "Load an example or a blank canvas",
+    back: "Networks",
+    backTitle: "Back to the networks (your edits are kept: Continue picks them up)",
     share: "Share",
     shareTitle: "Copy a link to this network",
     copied: "Link copied",
     copyFailed: "Copy failed: the link is in the address bar",
     undo: "Undo",
     redo: "Redo",
-    fromExample: (name: string) => `From: ${name}`,
     edited: "edited",
     example: {
       swarm: {
@@ -38,11 +37,8 @@ export const editor = defineMessages(
       blank: { name: "Blank canvas", blurb: "Nothing yet: add agents, forwarders and producers." },
     },
     picker: {
-      title: "Start from",
       intro:
-        "Every example can be edited: drag nodes, link them, change what each one does. Your network is kept in this browser.",
-      close: "Close",
-      current: "open now",
+        "Build a network from scratch or start from an example. Every example can be edited: drag nodes, link them, change what each one does. Your network is kept in this browser.",
       locked: "fixed network",
       startTitle: "What do you want to run?",
       resume: "Continue where you left off",
@@ -50,7 +46,6 @@ export const editor = defineMessages(
         `Your network from ${from}, ${nodes} ${nodes === 1 ? "node" : "nodes"}, as you left it.`,
     },
     run: {
-      title: "Run",
       engine: "Engine",
       engineIdem: "IDEM",
       engineIdemHint: "simulated, seeded",
@@ -63,6 +58,7 @@ export const editor = defineMessages(
         idem: "IDEM",
       },
       cannotRun: "Can't run yet",
+      progress: "Calls answered",
       tips: {
         engine:
           "IDEM: the real @idem/core forwarders on the simulator's virtual clock, the same run for the same seed. NDN: real NDN routers (YaNFD, ndnd's forwarder, compiled to WebAssembly) running in this tab, in real time, with NDN packets on every link.",
@@ -75,7 +71,7 @@ export const editor = defineMessages(
       agent: "Agent",
       forwarder: "Forwarder",
       producer: "Producer",
-      hint: "Click to add next to the selected node (linked to it), or drag onto the network.",
+      hint: "Click to add next to the selected node (linked to it), or drag onto the network. Click a node or a link to change it; drag from a selected node's handle to link it.",
       tips: {
         agent: "An LLM agent making tool calls. It connects to a forwarder.",
         forwarder:
@@ -84,8 +80,7 @@ export const editor = defineMessages(
       },
     },
     props: {
-      title: "Selected",
-      none: "Select a node or a link on the network to change it. Drag from a selected node's handle to link it.",
+      close: "Close",
       kinds: { agent: "Agent", forwarder: "Forwarder", producer: "Producer", link: "Link" },
       calls: "Calls",
       think: "Think time",
@@ -109,7 +104,6 @@ export const editor = defineMessages(
       service: "Service time",
       latency: "Latency",
       loss: "Loss",
-      ends: (a: string, b: string) => `${a} ↔ ${b}`,
       connect: "Connect to…",
       connectNone: "Nothing it can link to",
       delete: "Delete",
@@ -200,16 +194,15 @@ export const editor = defineMessages(
     },
   },
   {
-    network: "Rede",
     examples: "Exemplos",
-    examplesTitle: "Carregar um exemplo ou uma tela em branco",
+    back: "Redes",
+    backTitle: "Voltar às redes (suas edições ficam guardadas: Continuar as retoma)",
     share: "Compartilhar",
     shareTitle: "Copiar um link para esta rede",
     copied: "Link copiado",
     copyFailed: "Não deu para copiar: o link está na barra de endereço",
     undo: "Desfazer",
     redo: "Refazer",
-    fromExample: (name: string) => `De: ${name}`,
     edited: "editada",
     example: {
       swarm: {
@@ -233,11 +226,8 @@ export const editor = defineMessages(
       blank: { name: "Tela em branco", blurb: "Nada ainda: adicione agentes, forwarders e produtores." },
     },
     picker: {
-      title: "Começar de",
       intro:
-        "Todo exemplo pode ser editado: arraste nós, ligue-os, mude o que cada um faz. Sua rede fica guardada neste navegador.",
-      close: "Fechar",
-      current: "aberto agora",
+        "Monte uma rede do zero ou comece de um exemplo. Todo exemplo pode ser editado: arraste nós, ligue-os, mude o que cada um faz. Sua rede fica guardada neste navegador.",
       locked: "rede fixa",
       startTitle: "O que você quer rodar?",
       resume: "Continuar de onde parou",
@@ -245,7 +235,6 @@ export const editor = defineMessages(
         `Sua rede a partir de ${from}, ${nodes} ${nodes === 1 ? "nó" : "nós"}, como você deixou.`,
     },
     run: {
-      title: "Execução",
       engine: "Motor",
       engineIdem: "IDEM",
       engineIdemHint: "simulado, com semente",
@@ -258,6 +247,7 @@ export const editor = defineMessages(
         idem: "IDEM",
       },
       cannotRun: "Ainda não roda",
+      progress: "Chamadas respondidas",
       tips: {
         engine:
           "IDEM: os forwarders reais do @idem/core no relógio virtual do simulador, a mesma execução para a mesma semente. NDN: roteadores NDN reais (YaNFD, o forwarder do ndnd, compilado para WebAssembly) rodando nesta aba, em tempo real, com pacotes NDN em cada enlace.",
@@ -270,7 +260,7 @@ export const editor = defineMessages(
       agent: "Agente",
       forwarder: "Forwarder",
       producer: "Produtor",
-      hint: "Clique para adicionar ao lado do nó selecionado (já ligado a ele), ou arraste para a rede.",
+      hint: "Clique para adicionar ao lado do nó selecionado (já ligado a ele), ou arraste para a rede. Clique num nó ou enlace para alterá-lo; arraste da alça de um nó selecionado para ligá-lo.",
       tips: {
         agent: "Um agente LLM fazendo chamadas de ferramentas. Ele se liga a um forwarder.",
         forwarder:
@@ -280,8 +270,7 @@ export const editor = defineMessages(
       },
     },
     props: {
-      title: "Selecionado",
-      none: "Selecione um nó ou um enlace na rede para alterá-lo. Arraste da alça de um nó selecionado para ligá-lo.",
+      close: "Fechar",
       kinds: { agent: "Agente", forwarder: "Forwarder", producer: "Produtor", link: "Enlace" },
       calls: "Chamadas",
       think: "Tempo de pensar",
@@ -305,7 +294,6 @@ export const editor = defineMessages(
       service: "Tempo de serviço",
       latency: "Latência",
       loss: "Perda",
-      ends: (a: string, b: string) => `${a} ↔ ${b}`,
       connect: "Ligar a…",
       connectNone: "Nada a que possa se ligar",
       delete: "Apagar",

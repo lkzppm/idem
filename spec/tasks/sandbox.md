@@ -112,3 +112,22 @@ Self-contained new files; no existing sandbox file was touched while the layout 
   zoom, NDN engine on the regional example (calls answered and verified), Live, 390 px; no console errors
 - [ ] Author check in Safari: start screen, every example, drag/link/configure/delete/undo, share
   link in a new tab, NDN engine (load time on a cold cache), phone width, Portuguese, dark theme
+
+## Chrome (ADR-029), built 2026-11-18
+
+- [x] Start screen redesign: a plus tile for a blank canvas and "continue" on the left, the examples
+  in a column on the right (`editor/picker.tsx`)
+- [x] No loading over an open network: the in-session picker is gone; a back button ("Networks")
+  saves an edited network and returns to the start screen (`use-network.ts` `back()`)
+- [x] Transitions between the start screen and the workspace, both ways (CSS, `sandbox.tsx`)
+- [x] Player bar over the canvas: restart, play/pause, time, progress, speed menu, issues
+  (`player.tsx`); NDN and Live fill it too
+- [x] Selection card on the right of the stage, named after the component (`editor/selection-card.tsx`);
+  the Selected section is gone
+- [x] Bottom dock: tab bar always there, drawer of panels rising from it, resizable (`dock.tsx`); the
+  floating windows and the sidebar's window list are gone; layout v2 (`layout.ts`, tested)
+- [x] Renderer and seed footnote removed
+- [x] Headless WebKit (2026-11-18): start screen, pick with the transition, card, dock panels, speed
+  menu, issues, back and continue, blank canvas, NDN engine, phone (dark), desktop dark; no console errors
+- [ ] Author check in Safari: the transitions, the dock drawer (open, resize, close), the card, the
+  player's menus, phone width, Portuguese

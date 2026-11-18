@@ -9,7 +9,7 @@ Vercel Functions.
 | Route | What | Data source |
 |---|---|---|
 | `/` | Landing: the problem in one scene (N agents fetching the same page), the thesis, one headline result, links | Headline number from `experiments/results` only; if none exists yet, show no number |
-| `/sandbox` | Start screen, then the network editor (ADR-028): examples or a blank canvas, run by the simulator (IDEM engine) or by YaNFD routers in WebAssembly (NDN engine) | `@idem/sim` + `@idem/core` (real code, virtual clock); `apps/web/public/ndn/yanfd.wasm` + `@idem/ndn` |
+| `/sandbox` | Start screen, then the network editor (ADR-028, ADR-029): examples or a blank canvas, run by the simulator (IDEM engine) or by YaNFD routers in WebAssembly (NDN engine) | `@idem/sim` + `@idem/core` (real code, virtual clock); `apps/web/public/ndn/yanfd.wasm` + `@idem/ndn` |
 | `/sandbox` (Live example) | Browser agents over real HTTP through the deployed edge to the deployed producer (ADR-016) | `/api/edge/*`, `/api/producer/*`, `@idem/gateway` `IdemClient` |
 | `/docs`, `/docs/<slug>` | Docs: the single tab for the protocol and the library docs (§4, ADR-022). `/docs` is the introduction; `/spec` permanently redirects to `/docs/protocol` | Markdown read at render time: `apps/web/content/docs/<locale>/<slug>.md`, and `spec/01-protocol.md`, `spec/07-decisions.md`, `spec/08-references.md` rendered as they are |
 | `/benchmarks` | Charts of experiments E1–E5 (the tab was "Results"; `/results` redirects here) | JSON exported from `experiments/results` at build time |
@@ -23,23 +23,30 @@ Vercel Functions.
 Goal: in under a minute, a visitor *sees* aggregation and caching happen and how the numbers change,
 on a network they can build.
 
-**Start screen and the editor (ADR-028)**
+**Start screen and the editor (ADR-028, ADR-029)**
 
-- `/sandbox` opens on a start screen with nothing loaded: one card per example (Swarm: 8 agents, one
-  edge, one producer; Two producers: docs and weather, a tool list per agent; Regional tree: three
-  edges under a regional forwarder), a blank canvas, Live (real HTTP, a fixed network), and "continue
-  where you left off" when this browser saved a network. Each card draws its graph. A shared link
-  (`#n=…`, `?example=<id>`, or the old `?mode=swarm` / `?mode=live`) skips the screen.
-- The sidebar head names the example the network came from (· edited once changed) and opens the
-  picker; undo / redo (⌘Z, ⇧⌘Z) and Share (copies a `#n=` link) sit beside it.
-- **Run:** the "can't run yet" list (no agent, no producer, an agent without tools, a tool whose
-  producer is unreachable or no longer serves it), the engine (IDEM: simulated, seeded; NDN: real
-  routers), and for IDEM play / pause, restart, the protocols compared (MCP direct, MCP + local
-  cache, IDEM), speed and seed.
+- `/sandbox` opens on a start screen with nothing loaded: on the left a large plus tile (blank
+  canvas) and "continue where you left off" when this browser saved a network; on the right the
+  examples in a column, one row each with its drawing (Swarm: 8 agents, one edge, one producer; Two
+  producers: docs and weather, a tool list per agent; Regional tree: three edges under a regional
+  forwarder; Live: real HTTP, a fixed network). A shared link (`#n=…`, `?example=<id>`, or the old
+  `?mode=swarm` / `?mode=live`) skips the screen.
+- Picking plays the start screen out while the workspace comes in (sidebar from the left, player from
+  the top, dock from the bottom, nodes popping in). Only the start screen loads networks: the
+  sidebar head's back button ("Networks") saves an edited network and returns to it.
+- The sidebar head: back, undo / redo (⌘Z, ⇧⌘Z), Share (copies a `#n=` link), then the network's name
+  (the example it came from; "edited" once changed).
+- **Engine:** IDEM (simulated, seeded) or NDN (real routers); for IDEM the protocols compared (MCP
+  direct, MCP + local cache, IDEM) and the seed.
+- **Player bar** (top centre of the stage): restart (R), play / pause (Space), virtual time, a
+  progress bar of calls answered, the speed menu; when the network cannot run, the first reason (no
+  agent, no producer, an agent without tools, a tool whose producer is unreachable or no longer
+  serves it) and the full list on a click.
 - **Add:** Agent, Forwarder, Producer. A click adds the node next to the selected one and links it
   (an agent next to an agent, or a producer next to a producer, joins the same forwarder); a drag
   drops it where it is released. An agent linked toward a producer gets that producer's public tools.
-- **Selected:** the node's or link's settings, each with an info tip: agent (calls, think time,
+- **Selection card** (right of the stage, titled with the node's name and kind): the node's or link's
+  settings, each with an info tip: agent (calls, think time,
   shared pages and popularity skew when it fetches pages, its tools per reachable producer with
   weights; stale entries flagged with a remove button), forwarder (CS size), producer (name,
   validated and unique; tools served with their freshness), link (latency, loss); "Connect to…" and
@@ -48,50 +55,47 @@ on a network they can build.
   pan; wheel, trackpad pinch or two fingers to zoom; click a node or a link to select it; drag from
   the selected node's handle (or Shift-drag a node) onto another node to link them, the line turning
   blue over a valid target; Delete removes, Escape deselects, arrows move the selected node (Shift:
-  further), F fits; zoom buttons and "fit" top right of the free area. Links an agent may not have
+  further), F fits; zoom buttons and "fit" bottom right of the network's area. Links an agent may not have
   (agent–agent, agent–producer, producer–producer) are refused, and the reason is given.
 - **Engines:** IDEM runs the network in `@idem/sim` once per compared protocol, side by side, each
   pane clipped to its frame and the camera shared; every edit but a move restarts it (debounced).
   NDN runs one YaNFD WebAssembly router per forwarder in the tab, in real time, with `@idem/ndn`
-  producers and consumers; its windows show its own log (calls, names, latency) and counters (calls
+  producers and consumers; its panels show its own log (calls, names, latency) and counters (calls
   answered and verified, CS hits and PIT aggregations read from the traffic, Interests to producers,
   calls kept off NDN, mean latency), and say that routers verify nothing and `private` and
   side-effect calls never travel on NDN.
 
-**Layout: an observatory (ADR-021)**
+**Layout: an observatory (ADR-021, ADR-029)**
 
 The sandbox is a full-viewport workspace under the site header (no page header, no footer), modelled
 on the GraphMan observatory and drawn in the flat cartoon style (ADR-017 amendment):
 
 - **Sidebar** (left, 264–420 px, resizable by a grip on its edge: drag, ←/→, double click resets;
   width remembered): the network head on top, then the controls in collapsible sections (the editor's
-  Run, Add, Selected, Attacks; Live's scenario and run), then the list of windows (open/close each,
-  `1`–`6`, "Tidy up" restores the default layout).
-- **Stage** (the rest): the topology canvas fills it, over a halftone of ink dots. Floating clusters:
-  status top centre (live: edge connection; swarm: play/pause and virtual time), legend bottom left,
-  keyboard cheat sheet bottom right (`?`).
-- **Windows** float over the stage: Event log, PIT & CS, Packet inspector, Metrics, Compare, Safety.
-  Dragged by the title bar (pointer capture, 1:1 from the grab point, rubber-band past the stage
-  edges, thrown with momentum and settled by a spring with a small landing squash), brought to front
-  on pointer or focus, collapsed (double click or chevron), closed and reopened from the sidebar
-  (or dragged from its sidebar button onto the stage: the window's frame shows where it will land and
-  it opens or moves there; elsewhere or Escape cancels), resized from the corner, always clamped inside the stage, moved with arrow keys from their grip
-  and resized with Alt + arrow keys from it (Escape closes); however a window is closed, focus
-  returns to its toggle in the sidebar. Live's description and each setting's meaning sit in info
-  bubbles (an "i" beside the network head and beside each label; hover, focus or tap). No scrollbars in the
-  workspace except the event log's. Open windows (one set for Live, one for the editor), positions, sizes, stacking and the sidebar width are saved
-  in `localStorage` (failures ignored). Windows open with a springy pop from their title bar and close
-  with a short shrink.
-- The network is drawn in the part of the stage the windows leave free (windows hugging an edge claim
-  a band along it), which glides on a spring when windows move, open or close. In the editor nodes
+  Engine, Add, Attacks; Live's scenario and attacks).
+- **Stage** (the rest): the topology canvas fills it, over a halftone of ink dots. Over it: the
+  player bar top centre (in a band of its own), the selection card on the right, the legend bottom
+  left and the zoom buttons bottom right, both above the dock.
+- **Dock** along the bottom of the stage: a tab bar that is always there (Event log, PIT & CS, Packet
+  inspector, Metrics, Compare, Safety; `1`–`6`; at its right end "reset the panels" and the keyboard
+  cheat sheet, `?`), and above it a drawer that rises when a panel opens and sinks when the last one
+  closes. Open panels sit side by side in it (the log wider); its top edge sets its height (drag,
+  ↑/↓, double click resets). Closing a panel returns focus to its tab. Live's description and each
+  setting's meaning sit in info bubbles (an "i" beside the network head and beside each label; hover,
+  focus or tap). No scrollbars in the workspace except the event log's. Open panels (one set for
+  Live, one for the editor), the drawer height and the sidebar width are saved in `localStorage`
+  (failures ignored). Panels pop up from the tab bar.
+- The network is drawn between the player band and the dock, and glides on a spring when the drawer
+  opens, closes or changes height. In the editor nodes
   keep the positions the visitor gave them, seen through the camera; Live lays its nodes out.
 - The canvas nodes that act on a click (live: agents and the edge; swarm: forwarders) are also
   invisible buttons over the canvas, one tab stop for all of them (arrow keys, Home, End; focus shows
   the node's path like a hover). If the renderer cannot be made, the stage retries with Canvas2D on
   a fresh canvas, then says so in a card; after a lost WebGPU device the stage, the hero globe and
   the halftone recreate their renderers on the new device (`useGpuGeneration`).
-- **Phone (≤ 840 px):** stage on top, a tabbed sheet below (Controls plus one tab per window).
-- `prefers-reduced-motion`: windows fade instead of popping, no throw or bounce, no packet squash,
+- **Phone (≤ 840 px):** stage on top (player bar on it, no zoom buttons: pinch), a tabbed sheet below
+  (Controls plus one tab per panel); the selection card sits along the bottom of the stage.
+- `prefers-reduced-motion`: screens, panels and the card fade instead of moving, no packet squash,
   the editor's runs never autoplay.
 
 **Canvas** (WebGPU with Canvas2D fallback, ADR-015): agents → edge → (optional core) → producer, in
@@ -104,7 +108,7 @@ agent to make it ask).
 
 - **Split comparison (IDEM engine):** the same seeded workload runs once per compared protocol, side
   by side on the stage (`mcp-direct` and `idem` by default, `mcp-local-cache` on request); the
-  Compare window puts their counters in one table. Same seed → same agent behavior → the difference
+  Compare panel puts their counters in one table. Same seed → same agent behavior → the difference
   is the protocol.
 - **Live counters (Metrics, Compare):** upstream calls, CS hit ratio, PIT aggregations, bytes on the
   producer link, p50/p95 latency, verify failures (should stay 0). Live mode counts only the calls the
@@ -119,7 +123,7 @@ agent to make it ask).
   the verification result (live: "verify again", timed), the trace or the name's recent events.
 - **"Attack" buttons** (sidebar, IDEM engine, with a target producer when there are several): tamper
   with a Data in flight; send a mismatched digest; request another user's `private` result. Each must be visibly rejected (demonstrates H3): the verdict lands
-  in the Safety window, which opens, and the canvas shows the rejection.
+  in the Safety panel, which opens, and the canvas shows the rejection.
 
 **Rules**
 

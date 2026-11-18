@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { type CSSProperties, useState } from "react";
 import { useMessages } from "@/lib/i18n/client";
 import { editor } from "@/lib/i18n/messages/editor";
 import { EXAMPLE_IDS, type ExampleId, example } from "@/lib/sandbox/examples";
 import type { Network } from "@/lib/sandbox/network";
+import { ArrowIcon, PlusIcon } from "../icons";
 
 /** The Live example is not a network; its card shows the deployed path instead. */
 const LIVE_PREVIEW: Pick<Network, "nodes" | "links"> = {
@@ -83,170 +83,110 @@ export function NetworkThumb({ net }: { net: Pick<Network, "nodes" | "links"> })
   );
 }
 
-/** The cards to start from: the saved network (if any), then every example. */
-function ExampleCards({
-  current,
-  saved,
-  onPick,
-  onResume,
-}: {
-  current?: string;
-  saved?: Network;
-  onPick: (id: ExampleId) => void;
-  onResume?: () => void;
-}) {
-  const t = useMessages(editor);
-  return (
-    <ul className="obs-picks">
-      {saved && onResume && (
-        <li>
-          <button type="button" className="obs-pick" data-resume="" onClick={onResume}>
-            <NetworkThumb net={saved} />
-            <span className="obs-pick-name">{t.picker.resume}</span>
-            <span className="obs-pick-blurb">
-              {t.picker.resumeBlurb(
-                (t.example as Record<string, { name: string }>)[saved.from]?.name ?? saved.from,
-                saved.nodes.length,
-              )}
-            </span>
-          </button>
-        </li>
-      )}
-      {EXAMPLE_IDS.map((id) => {
-        const net = example(id);
-        const e = t.example[id];
-        return (
-          <li key={id}>
-            <button
-              type="button"
-              className="obs-pick"
-              data-current={current === id ? "" : undefined}
-              onClick={() => onPick(id)}
-            >
-              <NetworkThumb net={net ?? LIVE_PREVIEW} />
-              <span className="obs-pick-name">
-                {e.name}
-                {current === id && <span className="obs-pick-tag">{t.picker.current}</span>}
-                {id === "live" && <span className="obs-pick-tag">{t.picker.locked}</span>}
-              </span>
-              <span className="obs-pick-blurb">{e.blurb}</span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 /**
- * The start screen: what the sandbox shows when it opens with nothing to load (no shared link). The
- * visitor picks an example, a blank canvas, Live, or the network this browser saved last.
+ * The start screen (ADR-029): what the sandbox shows when nothing is loaded. On the left, a blank
+ * canvas (the big plus) and the network this browser saved last; on the right, the examples in a
+ * column. Picking one plays the leave animation while the workspace comes in; the sidebar's back
+ * button returns here (no network is ever loaded over another).
  */
 export function StartScreen({
   saved,
+  leaving,
   onPick,
   onResume,
 }: {
   saved?: Network;
+  /** The visitor picked: the screen is animating out. */
+  leaving?: boolean;
   onPick: (id: ExampleId) => void;
   onResume: () => void;
 }) {
   const t = useMessages(editor);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    box.current?.querySelector<HTMLButtonElement>(".obs-pick")?.focus({ preventScroll: true });
-  }, []);
+  const [picked, setPicked] = useState<string>();
+  const examples = EXAMPLE_IDS.filter((id) => id !== "blank");
+  const pick = (id: ExampleId) => {
+    setPicked(id);
+    onPick(id);
+  };
+  const savedFrom = saved
+    ? ((t.example as Record<string, { name: string }>)[saved.from]?.name ?? saved.from)
+    : "";
   return (
-    <div ref={box} className="obs-start">
+    <div className="obs-start" data-leaving={leaving || undefined} inert={leaving || undefined}>
       <div className="obs-start-inner">
-        <h1 className="obs-start-title">{t.picker.startTitle}</h1>
-        <p className="obs-modal-intro">{t.picker.intro}</p>
-        <ExampleCards saved={saved} onPick={onPick} onResume={onResume} />
+        <header className="obs-start-head">
+          <h1 className="obs-start-title">{t.picker.startTitle}</h1>
+          <p className="obs-start-intro">{t.picker.intro}</p>
+        </header>
+        <div className="obs-start-grid">
+          <div className="obs-start-new">
+            <button
+              type="button"
+              className="obs-new"
+              data-picked={picked === "blank" || undefined}
+              onClick={() => pick("blank")}
+            >
+              <span className="obs-new-plus" aria-hidden="true">
+                <PlusIcon size={34} />
+              </span>
+              <span className="obs-new-name">{t.example.blank.name}</span>
+              <span className="obs-new-blurb">{t.example.blank.blurb}</span>
+            </button>
+            {saved && (
+              <button
+                type="button"
+                className="obs-row obs-resume"
+                data-picked={picked === "resume" || undefined}
+                onClick={() => {
+                  setPicked("resume");
+                  onResume();
+                }}
+              >
+                <NetworkThumb net={saved} />
+                <span className="obs-row-text">
+                  <span className="obs-row-name">{t.picker.resume}</span>
+                  <span className="obs-row-blurb">{t.picker.resumeBlurb(savedFrom, saved.nodes.length)}</span>
+                </span>
+                <span className="obs-row-go" aria-hidden="true">
+                  <ArrowIcon />
+                </span>
+              </button>
+            )}
+          </div>
+          <section className="obs-start-examples" aria-labelledby="obs-examples-title">
+            <h2 id="obs-examples-title" className="obs-start-sub">
+              {t.examples}
+            </h2>
+            <ul className="obs-rows">
+              {examples.map((id, i) => {
+                const e = t.example[id];
+                return (
+                  <li key={id} style={{ "--i": i } as CSSProperties}>
+                    <button
+                      type="button"
+                      className="obs-row"
+                      data-picked={picked === id || undefined}
+                      onClick={() => pick(id)}
+                    >
+                      <NetworkThumb net={example(id) ?? LIVE_PREVIEW} />
+                      <span className="obs-row-text">
+                        <span className="obs-row-name">
+                          {e.name}
+                          {id === "live" && <span className="obs-row-tag">{t.picker.locked}</span>}
+                        </span>
+                        <span className="obs-row-blurb">{e.blurb}</span>
+                      </span>
+                      <span className="obs-row-go" aria-hidden="true">
+                        <ArrowIcon />
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </div>
       </div>
     </div>
-  );
-}
-
-/** The example picker in the middle of a session: a dialog over the stage. Escape or a click outside closes it. */
-export function ExamplePicker({
-  open,
-  current,
-  onPick,
-  onClose,
-}: {
-  open: boolean;
-  /** The example the open network came from (`live` for Live). */
-  current: string | undefined;
-  onPick: (id: ExampleId) => void;
-  onClose: () => void;
-}) {
-  const t = useMessages(editor);
-  const box = useRef<HTMLDivElement>(null);
-  const opener = useRef<Element | null>(null);
-  // The parent may pass a new function every render: the dialog's setup must not rerun for it.
-  const close = useRef(onClose);
-  close.current = onClose;
-
-  useEffect(() => {
-    if (!open) return;
-    opener.current = document.activeElement;
-    const first =
-      box.current?.querySelector<HTMLButtonElement>("button[data-current]") ??
-      box.current?.querySelector<HTMLButtonElement>(".obs-pick");
-    first?.focus({ preventScroll: true });
-    const onKey = (e: KeyboardEvent) => {
-      // The page's own shortcuts (the editor's Delete, R, ⌘Z…) stay off while the dialog is open.
-      e.stopPropagation();
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close.current();
-      } else if (e.key === "Tab" && box.current) {
-        // Keep focus inside the dialog.
-        const f = [...box.current.querySelectorAll<HTMLElement>("button")];
-        const i = f.indexOf(document.activeElement as HTMLElement);
-        const j = e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : i === f.length - 1 ? 0 : i + 1;
-        f[j]?.focus();
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("keydown", onKey, true);
-      (opener.current as HTMLElement | null)?.focus?.({ preventScroll: true });
-    };
-  }, [open]);
-
-  if (!open) return null;
-  return createPortal(
-    <div
-      className="obs-modal-scrim"
-      onPointerDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div ref={box} className="obs-modal" role="dialog" aria-modal="true" aria-labelledby="obs-pick-title">
-        <div className="obs-modal-head">
-          <div>
-            <h2 id="obs-pick-title" className="obs-modal-title">
-              {t.picker.title}
-            </h2>
-            <p className="obs-modal-intro">{t.picker.intro}</p>
-          </div>
-          <button
-            type="button"
-            className="obs-win-btn"
-            aria-label={t.picker.close}
-            title={t.picker.close}
-            onClick={onClose}
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-              <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-        <ExampleCards current={current} onPick={onPick} />
-      </div>
-    </div>,
-    document.body,
   );
 }
