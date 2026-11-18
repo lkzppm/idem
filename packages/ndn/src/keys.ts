@@ -1,11 +1,14 @@
-import { IdemError, type IdemKeyPair, keyLocator } from "@idem/core";
-import { createSigner, createVerifier, Ed25519 } from "@ndn/keychain";
-import { type Name, Signer, SigType, type Verifier } from "@ndn/packet";
+import { type IdemKeyPair, keyLocator } from "@idem/core";
+import { LLSign, LLVerify, type Name, Signer, SigType, Verifier } from "@ndn/packet";
 import { toNdnName } from "./name";
 
 /**
- * An NDNts {@link Signer} bound to the NDN name its KeyLocator carries. Signing uses the NDNts
- * keychain's Ed25519 algorithm (ADR-005) over NDN's signed portion of the packet.
+ * An NDNts {@link Signer} bound to the NDN name its KeyLocator carries. Signing is Ed25519 (ADR-005)
+ * over NDN's signed portion of the packet, done by WebCrypto itself with the `CryptoKey` it is given.
+ *
+ * Not through `@ndn/keychain`: its browser build routes Ed25519 through a ponyfill that, in WebKit
+ * (Safari), replaces WebCrypto with a JavaScript implementation that cannot use a native
+ * `CryptoKey` ("Uint8Array expected"), so a producer in Safari could never sign.
  */
 export interface NdnSigner extends Signer {
   /** KeyLocator name written into every packet this signer signs. */
@@ -17,13 +20,14 @@ export interface NdnSigner extends Signer {
  * very same WebCrypto key `@idem/core` signs IDEM Data with; nothing is re-imported.
  */
 export function ndnSigner(privateKey: CryptoKey, locator: Name): NdnSigner {
-  const inner = createSigner(Ed25519, { privateKey, info: {} });
   return {
     keyLocator: locator,
     async sign(pkt) {
-      // The plain signer keeps an existing SigInfo; put ours first so the KeyLocator is set.
       Signer.putSigInfo(pkt, SigType.Ed25519, locator);
-      await inner.sign(pkt);
+      await pkt[LLSign.OP](
+        async (input) =>
+          new Uint8Array(await globalThis.crypto.subtle.sign("Ed25519", privateKey, input as BufferSource)),
+      );
     },
   };
 }
@@ -37,16 +41,24 @@ export function producerSigner(producer: string, key: IdemKeyPair): NdnSigner {
 }
 
 /**
- * An NDNts verifier for an Ed25519 public key (WebCrypto `CryptoKey`, extractable, as
- * `@idem/core`'s `TrustStore` hands out). It checks the NDN signature only; which key may sign
- * which name is decided by the caller ({@link verifyNdnData}).
+ * An NDNts verifier for an Ed25519 public key (a WebCrypto `CryptoKey`, as `@idem/core`'s
+ * `TrustStore` hands out), checked by WebCrypto itself (see {@link ndnSigner} for why not the
+ * keychain). It checks the SigType and the NDN signature only; which key may sign which name is
+ * decided by the caller ({@link verifyNdnData}).
  */
 export async function ndnVerifier(publicKey: CryptoKey): Promise<Verifier> {
-  let spki: Uint8Array;
-  try {
-    spki = new Uint8Array(await globalThis.crypto.subtle.exportKey("spki", publicKey));
-  } catch (e) {
-    throw new IdemError("CRYPTO_UNSUPPORTED", "could not export the Ed25519 public key", { cause: e });
-  }
-  return createVerifier(Ed25519, { publicKey, spki, info: {} });
+  return {
+    async verify(pkt) {
+      Verifier.checkSigType(pkt, SigType.Ed25519);
+      await pkt[LLVerify.OP](async (input, sig) => {
+        const ok = await globalThis.crypto.subtle.verify(
+          "Ed25519",
+          publicKey,
+          sig as BufferSource,
+          input as BufferSource,
+        );
+        Verifier.throwOnBadSig(ok);
+      });
+    },
+  };
 }

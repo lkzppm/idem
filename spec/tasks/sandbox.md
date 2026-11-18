@@ -83,3 +83,32 @@ Self-contained new files; no existing sandbox file was touched while the layout 
 - [ ] Browser check (Safari first): the tree and hex dump fit the inspector at 1440×900 and 390 px, light
   and dark; hover/focus highlight; Portuguese strings; `next build` with the component mounted (the NDNts
   keychain's Ed25519 ponyfill uses top-level await in its browser build)
+
+## The network editor (ADR-028), built 2026-11-18
+
+- [x] Model `lib/sandbox/network.ts` (nodes, links, run settings, link rules, reachability, issues,
+  sanitize, URL encoding, auto tools, sibling attach) and examples `lib/sandbox/examples.ts`; tested in
+  `network.test.ts` (every example runs to the end in every mode; IDEM sends fewer calls upstream than
+  MCP direct on the swarm)
+- [x] Start screen (examples, blank, Live, continue) and the in-session picker (`editor/picker.tsx`);
+  shared links skip it; `?mode=swarm` and `?mode=live` map to examples
+- [x] Network state with undo/redo and autosave (`editor/use-network.ts`)
+- [x] Stage gestures in `StageCanvas` (`editor` prop): drag, pan, wheel/pinch zoom, select node or
+  link, link handle and Shift-drag with a draft line, zoom/fit buttons, empty-canvas note; keys: Delete,
+  Esc, arrows, ⌘Z/⇧⌘Z, F
+- [x] Sidebar: network head (picker, undo, redo, share), Run (engine, compare, speed, seed, issues),
+  Add (click or drag, `useDragToStage` generalized to chips), Selected (`editor/properties.tsx`, info
+  tips), Attacks with a target producer
+- [x] IDEM engine: `NetworkRun` in `lib/sandbox/run.ts` (`networkToSim`), restart on edits, moves
+  without restart, comparison panes clipped (scissor) and fitted
+- [x] NDN engine: `lib/sandbox/ndn-net.ts` (YaNFD per forwarder, JS links, `serveNdn` producers,
+  `NdnConsumer` agents, CS/PIT read from traffic), tested in `ndn-net.test.ts` against the built wasm;
+  `components/sandbox/ndn-engine.tsx`; wasm built by `experiments/ndn/yanfd-wasm/build.sh`
+- [x] `@idem/ndn` signs and verifies with WebCrypto directly (the NDNts keychain's ponyfill broke
+  signing in WebKit)
+- [x] Strings in both languages: `lib/i18n/messages/editor.ts`
+- [x] Headless WebKit smoke (2026-11-18): start screen, pick, reload and continue, picker dialog,
+  build a network from blank (click and drag from the palette), move, link by handle, delete, undo,
+  zoom, NDN engine on the regional example (calls answered and verified), Live, 390 px; no console errors
+- [ ] Author check in Safari: start screen, every example, drag/link/configure/delete/undo, share
+  link in a new tab, NDN engine (load time on a cold cache), phone width, Portuguese, dark theme

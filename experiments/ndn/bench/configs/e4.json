@@ -1,0 +1,37 @@
+{
+  "experiment": "e4",
+  "kind": "emulation",
+  "title": "E4 — HTTP overlay vs native NDN (NFD) under loss (emulation)",
+  "description": "Docker topology of experiments/ndn/bench: NFD 24.07 forwarders and the @idem/gateway HTTP forwarders share each node's network namespace, so both bindings cross the same tc netem links. B0/B2/B3 run over the overlay (B0 relays plain calls), N2/N3 are B2/B3's star and tree on native NDN over UDP faces. W-syn at the E2 base point (pages capped to fit one NDN packet); every link gets the same loss in each direction. Same seeds in every mode; reductions are paired by (seed, loss) against B0.",
+  "seeds": { "first": 1, "count": 3 },
+  "modes": ["B0", "B2", "B3", "N2", "N3"],
+  "lossPct": [0, 1, 5],
+  "workload": {
+    "agents": 8,
+    "callsPerAgent": 20,
+    "catalogSize": 50,
+    "zipfAlpha": 0.8,
+    "overlap": 0.5,
+    "thinkTimeMs": 2000,
+    "surfaceVariation": 0.3
+  },
+  "links": {
+    "agentMs": 5,
+    "starProducerMs": 40,
+    "treeCoreMs": 10,
+    "treeProducerMs": 30,
+    "rateMbit": null
+  },
+  "producer": {
+    "serviceMedianMs": 150,
+    "serviceSigma": 0.5,
+    "ttlMs": 60000,
+    "pageBytesMedian": 2048,
+    "pageBytesSigma": 0.7,
+    "pageBytesMin": 512,
+    "pageBytesMax": 7168
+  },
+  "overlay": { "csMaxBytes": 8388608, "callTimeoutMs": 12000 },
+  "native": { "interestLifetimeMs": 1000, "retransmissions": 4 },
+  "guard": { "maxTimerGapMs": 250, "retries": 2 }
+}

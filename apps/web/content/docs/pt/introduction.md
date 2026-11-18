@@ -78,7 +78,7 @@ O IDEM é um protótipo de pesquisa da disciplina EEL878 (Redes de Computadores 
 | `@idem/mcp`: produtor e borda como endpoints MCP, verificação de resultados | implementado; o wrapper `withIdem(server)` está planejado |
 | `@idem/sim`: simulador determinístico sobre o motor real | implementado |
 | `@idem/ndn`: binding NDN nativo (NDNts) | implementado e testado sobre um forwarder NDN em processo; execuções no NFD do Mini-NDN pendentes |
-| Experimentos | veja o método em [Avaliação](/docs/evaluation) e o que já foi medido em [Resultados](/results) |
+| Experimentos | veja o método em [Avaliação](/docs/evaluation) e o que já foi medido em [Benchmarks](/benchmarks) |
 
 As hipóteses que o projeto testa são enunciadas antes de qualquer medição, e uma hipótese refutada com método correto é relatada como refutada.
 

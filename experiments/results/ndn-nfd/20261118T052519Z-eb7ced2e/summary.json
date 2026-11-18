@@ -1,0 +1,1061 @@
+{
+  "experiment": "ndn-nfd",
+  "runId": "20261118T052519Z-eb7ced2e",
+  "pass": false,
+  "passed": 8,
+  "total": 9,
+  "nfd": "24.07+git.23c53535",
+  "image": {
+    "id": "sha256:d9ffc6fb0a6171af4fc69c4d6a18f8e4d9d9dd130f28c768716c500c283504a5",
+    "repoDigests": [
+      "ghcr.io/named-data/nfd@sha256:d9ffc6fb0a6171af4fc69c4d6a18f8e4d9d9dd130f28c768716c500c283504a5"
+    ],
+    "tag": "ghcr.io/named-data/nfd:20261105"
+  },
+  "ndnts": "0.0.20260427",
+  "scenarios": [
+    {
+      "id": "S1",
+      "title": "Round trip: manifest bootstrap, one call, both signatures, name = IDEM name + PSDC",
+      "rules": [
+        "P-9.1",
+        "P-9.3",
+        "P-6.2"
+      ],
+      "pass": true,
+      "checks": [
+        {
+          "name": "manifest fetched over NFD = the producer's manifest",
+          "expected": {
+            "producer": "demo.idem.dev",
+            "version": 1,
+            "keys": [
+              {
+                "keyId": "--6IM5l0OosLj9yW",
+                "publicKeyJwk": {
+                  "kty": "OKP",
+                  "crv": "Ed25519",
+                  "x": "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"
+                }
+              }
+            ],
+            "tools": [
+              {
+                "tool": "fetch_page",
+                "schemaDigest": "U0cnv1s5IWQ9Pw_GAh2Uur",
+                "cacheable": true,
+                "ttlMs": 60000,
+                "scope": "public",
+                "normalizers": {
+                  "/url": [
+                    "url:sortQuery"
+                  ]
+                },
+                "policyVersion": 1
+              },
+              {
+                "tool": "quick",
+                "schemaDigest": "Bh1BB4mQ1txV9jrJ6EpldF",
+                "cacheable": true,
+                "ttlMs": 4000,
+                "scope": "public",
+                "normalizers": {},
+                "policyVersion": 1
+              },
+              {
+                "tool": "blob",
+                "schemaDigest": "m0eGEmhg8uRC3GQoIJyrCh",
+                "cacheable": true,
+                "ttlMs": 60000,
+                "scope": "public",
+                "normalizers": {},
+                "policyVersion": 1
+              },
+              {
+                "tool": "my_notes",
+                "schemaDigest": "eRpmUNaQRz9BOkcadDddhA",
+                "cacheable": true,
+                "ttlMs": 60000,
+                "scope": "private",
+                "normalizers": {},
+                "policyVersion": 1
+              }
+            ],
+            "signature": {
+              "alg": "Ed25519",
+              "keyId": "--6IM5l0OosLj9yW",
+              "value": "fwlyBupK6KUWY6pNUa9svJoZEKm8ZSArh1IjrvnunWYffjm_25jqKsUVSrI9_uF8cS3KCph4gpyA4MoagRhYDQ"
+            }
+          },
+          "actual": {
+            "keys": [
+              {
+                "keyId": "--6IM5l0OosLj9yW",
+                "publicKeyJwk": {
+                  "crv": "Ed25519",
+                  "kty": "OKP",
+                  "x": "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"
+                }
+              }
+            ],
+            "producer": "demo.idem.dev",
+            "signature": {
+              "alg": "Ed25519",
+              "keyId": "--6IM5l0OosLj9yW",
+              "value": "fwlyBupK6KUWY6pNUa9svJoZEKm8ZSArh1IjrvnunWYffjm_25jqKsUVSrI9_uF8cS3KCph4gpyA4MoagRhYDQ"
+            },
+            "tools": [
+              {
+                "cacheable": true,
+                "normalizers": {
+                  "/url": [
+                    "url:sortQuery"
+                  ]
+                },
+                "policyVersion": 1,
+                "schemaDigest": "U0cnv1s5IWQ9Pw_GAh2Uur",
+                "scope": "public",
+                "tool": "fetch_page",
+                "ttlMs": 60000
+              },
+              {
+                "cacheable": true,
+                "normalizers": {},
+                "policyVersion": 1,
+                "schemaDigest": "Bh1BB4mQ1txV9jrJ6EpldF",
+                "scope": "public",
+                "tool": "quick",
+                "ttlMs": 4000
+              },
+              {
+                "cacheable": true,
+                "normalizers": {},
+                "policyVersion": 1,
+                "schemaDigest": "m0eGEmhg8uRC3GQoIJyrCh",
+                "scope": "public",
+                "tool": "blob",
+                "ttlMs": 60000
+              },
+              {
+                "cacheable": true,
+                "normalizers": {},
+                "policyVersion": 1,
+                "schemaDigest": "eRpmUNaQRz9BOkcadDddhA",
+                "scope": "private",
+                "tool": "my_notes",
+                "ttlMs": 60000
+              }
+            ],
+            "version": 1
+          },
+          "pass": true
+        },
+        {
+          "name": "tool list fetched over NFD",
+          "expected": [
+            "fetch_page",
+            "quick",
+            "blob",
+            "my_notes"
+          ],
+          "actual": [
+            "fetch_page",
+            "quick",
+            "blob",
+            "my_notes"
+          ],
+          "pass": true
+        },
+        {
+          "name": "no error",
+          "pass": true
+        },
+        {
+          "name": "NDN (outer) signature verifies",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "IDEM (inner) signature and contentDigest verify",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "content",
+          "expected": [
+            {
+              "type": "text",
+              "text": "page https://corpus.idem.dev/doc/1"
+            }
+          ],
+          "actual": [
+            {
+              "text": "page https://corpus.idem.dev/doc/1",
+              "type": "text"
+            }
+          ],
+          "pass": true
+        },
+        {
+          "name": "IDEM name = core's overlay name",
+          "expected": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ",
+          "actual": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ",
+          "pass": true
+        },
+        {
+          "name": "Data name = Interest name",
+          "expected": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ",
+          "actual": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ",
+          "pass": true
+        },
+        {
+          "name": "NDN name = IDEM name + hand-computed ParametersSha256DigestComponent",
+          "expected": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ/params-sha256=7d004e29191c553b37fdc141981f75d45bab03df14d961a3524cf3e8c386a862",
+          "actual": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ/params-sha256=7d004e29191c553b37fdc141981f75d45bab03df14d961a3524cf3e8c386a862",
+          "pass": true
+        },
+        {
+          "name": "outer KeyLocator = IDEM key locator",
+          "expected": "/idem/v1/demo.idem.dev/_key/--6IM5l0OosLj9yW",
+          "actual": "/idem/v1/demo.idem.dev/_key/--6IM5l0OosLj9yW",
+          "pass": true
+        },
+        {
+          "name": "tool ran once",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "NFD sent 1 Interest to the producer face",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "FreshnessPeriod = manifest TTL",
+          "expected": 60000,
+          "actual": 60000,
+          "pass": true
+        },
+        {
+          "name": "ContentType BLOB",
+          "expected": 0,
+          "actual": 0,
+          "pass": true
+        },
+        {
+          "name": "packet within MAX_PACKET_SIZE",
+          "expected": true,
+          "actual": 705,
+          "pass": true
+        }
+      ],
+      "evidence": {
+        "ndnName": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ/params-sha256=7d004e29191c553b37fdc141981f75d45bab03df14d961a3524cf3e8c386a862",
+        "dataBytes": 705,
+        "producerFace": {
+          "inI": 0,
+          "inD": 1,
+          "inN": 0,
+          "outI": 1,
+          "outD": 0,
+          "outN": 0
+        },
+        "cs": {
+          "hits": 0,
+          "misses": 7
+        }
+      },
+      "durationMs": 1259
+    },
+    {
+      "id": "S2",
+      "title": "PIT aggregation: N concurrent identical calls on N faces, the tool runs once",
+      "rules": [
+        "P-9.1",
+        "P-9.3"
+      ],
+      "pass": true,
+      "checks": [
+        {
+          "name": "consumer faces at NFD",
+          "expected": 8,
+          "actual": 8,
+          "pass": true
+        },
+        {
+          "name": "every consumer got verified Data",
+          "expected": 8,
+          "actual": 8,
+          "pass": true
+        },
+        {
+          "name": "one NDN name",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "NFD received N Interests from the consumer faces",
+          "expected": 8,
+          "actual": 8,
+          "pass": true
+        },
+        {
+          "name": "NFD returned N Data to the consumer faces",
+          "expected": 8,
+          "actual": 8,
+          "pass": true
+        },
+        {
+          "name": "NFD forwarded 1 Interest to the producer",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "tool ran once",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        }
+      ],
+      "evidence": {
+        "consumerFaces": [
+          {
+            "inI": 1,
+            "inD": 0,
+            "inN": 0,
+            "outI": 0,
+            "outD": 1,
+            "outN": 0
+          },
+          {
+            "inI": 1,
+            "inD": 0,
+            "inN": 0,
+            "outI": 0,
+            "outD": 1,
+            "outN": 0
+          },
+          {
+            "inI": 1,
+            "inD": 0,
+            "inN": 0,
+            "outI": 0,
+            "outD": 1,
+            "outN": 0
+          },
+          {
+            "inI": 1,
+            "inD": 0,
+            "inN": 0,
+            "outI": 0,
+            "outD": 1,
+            "outN": 0
+          },
+          {
+            "inI": 1,
+            "inD": 0,
+            "inN": 0,
+            "outI": 0,
+            "outD": 1,
+            "outN": 0
+          },
+          {
+            "inI": 1,
+            "inD": 0,
+            "inN": 0,
+            "outI": 0,
+            "outD": 1,
+            "outN": 0
+          },
+          {
+            "inI": 1,
+            "inD": 0,
+            "inN": 0,
+            "outI": 0,
+            "outD": 1,
+            "outN": 0
+          },
+          {
+            "inI": 1,
+            "inD": 0,
+            "inN": 0,
+            "outI": 0,
+            "outD": 1,
+            "outN": 0
+          }
+        ],
+        "producerFace": {
+          "inI": 0,
+          "inD": 1,
+          "inN": 0,
+          "outI": 1,
+          "outD": 0,
+          "outN": 0
+        },
+        "cs": {
+          "hits": 0,
+          "misses": 14
+        },
+        "signatures": 1
+      },
+      "durationMs": 3445
+    },
+    {
+      "id": "S3",
+      "title": "Content Store and freshness: repeat from CS; MustBeFresh goes upstream after the TTL",
+      "rules": [
+        "P-9.1",
+        "P-5.3"
+      ],
+      "pass": true,
+      "checks": [
+        {
+          "name": "first call: verified",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "first call: tool ran, 1 Interest upstream",
+          "expected": [
+            1,
+            1
+          ],
+          "actual": [
+            1,
+            1
+          ],
+          "pass": true
+        },
+        {
+          "name": "repeat: verified",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "repeat: CS hit, no tool run, nothing upstream",
+          "expected": [
+            1,
+            0,
+            0
+          ],
+          "actual": [
+            1,
+            0,
+            0
+          ],
+          "pass": true
+        },
+        {
+          "name": "repeat: the very same signed Data",
+          "expected": "P2tSauVVKuyAreCV4MxOnbLc-jBRNYCRQFI_Hb2qy47lAhcFS7lcvXjGCLhQbCzsh-OSGulC3b2OchlnIAcBDA",
+          "actual": "P2tSauVVKuyAreCV4MxOnbLc-jBRNYCRQFI_Hb2qy47lAhcFS7lcvXjGCLhQbCzsh-OSGulC3b2OchlnIAcBDA",
+          "pass": true
+        },
+        {
+          "name": "after TTL: verified",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "after TTL: stale CS entry not used, tool ran again",
+          "expected": [
+            0,
+            1,
+            1
+          ],
+          "actual": [
+            0,
+            1,
+            1
+          ],
+          "pass": true
+        },
+        {
+          "name": "after TTL: newer producedAt",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "without MustBeFresh: stale Data from CS, no tool run",
+          "expected": [
+            1,
+            0,
+            0
+          ],
+          "actual": [
+            1,
+            0,
+            0
+          ],
+          "pass": true
+        },
+        {
+          "name": "without MustBeFresh: the Data is older than its TTL",
+          "expected": true,
+          "actual": 187336,
+          "pass": true
+        },
+        {
+          "name": "isError: FreshnessPeriod 0",
+          "expected": 0,
+          "actual": 0,
+          "pass": true
+        },
+        {
+          "name": "isError repeat: not served from CS, tool ran again",
+          "expected": [
+            0,
+            1,
+            1
+          ],
+          "actual": [
+            0,
+            1,
+            1
+          ],
+          "pass": true
+        }
+      ],
+      "evidence": {
+        "steps": [
+          {
+            "label": "first call",
+            "tool": "quick",
+            "atMs": 1794979525903,
+            "runs": 1,
+            "upstream": 1,
+            "hits": 0,
+            "misses": 7
+          },
+          {
+            "label": "repeat at once",
+            "tool": "quick",
+            "atMs": 1794979528197,
+            "runs": 0,
+            "upstream": 0,
+            "hits": 1,
+            "misses": 6
+          },
+          {
+            "label": "MustBeFresh after the TTL",
+            "tool": "quick",
+            "atMs": 1794979543268,
+            "runs": 1,
+            "upstream": 1,
+            "hits": 0,
+            "misses": 7
+          },
+          {
+            "label": "no MustBeFresh after the TTL",
+            "tool": "quick",
+            "atMs": 1794979712084,
+            "runs": 0,
+            "upstream": 0,
+            "hits": 1,
+            "misses": 6
+          },
+          {
+            "label": "isError result",
+            "tool": "fetch_page",
+            "atMs": 1794979714396,
+            "runs": 1,
+            "upstream": 1,
+            "hits": 0,
+            "misses": 7
+          },
+          {
+            "label": "isError repeat",
+            "tool": "fetch_page",
+            "atMs": 1794979723360,
+            "runs": 1,
+            "upstream": 1,
+            "hits": 0,
+            "misses": 7
+          }
+        ],
+        "ttlMs": 4000
+      },
+      "durationMs": 199737
+    },
+    {
+      "id": "S4",
+      "title": "Equivalent spellings: one name, shared PIT entry and CS entry",
+      "rules": [
+        "P-2.1",
+        "P-9.1"
+      ],
+      "pass": true,
+      "checks": [
+        {
+          "name": "all verified",
+          "expected": 4,
+          "actual": 4,
+          "pass": true
+        },
+        {
+          "name": "one NDN name for every spelling",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "concurrent spellings: tool ran once",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "concurrent spellings: 1 Interest upstream",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "later spelling: same name",
+          "expected": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/J4QUlyXCJz11HCpZkSqLvEh3dCUDmpK9l3oL8bU3tbw/params-sha256=ce6b29394815884fb43b84dff6514c088a345132a72c3351051e104f69cfbb9f",
+          "actual": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/J4QUlyXCJz11HCpZkSqLvEh3dCUDmpK9l3oL8bU3tbw/params-sha256=ce6b29394815884fb43b84dff6514c088a345132a72c3351051e104f69cfbb9f",
+          "pass": true
+        },
+        {
+          "name": "later spelling: CS hit, tool not run",
+          "expected": [
+            1,
+            0
+          ],
+          "actual": [
+            1,
+            0
+          ],
+          "pass": true
+        }
+      ],
+      "evidence": {
+        "ndnName": "/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/J4QUlyXCJz11HCpZkSqLvEh3dCUDmpK9l3oL8bU3tbw/params-sha256=ce6b29394815884fb43b84dff6514c088a345132a72c3351051e104f69cfbb9f",
+        "spellings": [
+          "https://corpus.idem.dev/doc/4?a=1&b=2",
+          "https://CORPUS.idem.dev:443/doc/4?b=2&a=1",
+          "https://corpus.idem.dev/doc/4?b=2&a=1#intro",
+          "HTTPS://corpus.IDEM.dev/doc/4?a=1&b=2"
+        ]
+      },
+      "durationMs": 3411
+    },
+    {
+      "id": "S5",
+      "title": "private never on NDN: not sent, Nacked without running, rejected if it ever arrives",
+      "rules": [
+        "P-9.4",
+        "P-8.3"
+      ],
+      "pass": true,
+      "checks": [
+        {
+          "name": "consumer: NOT_CACHEABLE without sending",
+          "expected": "NOT_CACHEABLE",
+          "actual": "NOT_CACHEABLE",
+          "pass": true
+        },
+        {
+          "name": "consumer: no Interest reached NFD from its face",
+          "expected": 0,
+          "actual": 0,
+          "pass": true
+        },
+        {
+          "name": "consumer: no content",
+          "pass": true
+        },
+        {
+          "name": "producer: NOT_CACHEABLE Nack",
+          "expected": "NOT_CACHEABLE",
+          "actual": "NOT_CACHEABLE",
+          "pass": true
+        },
+        {
+          "name": "producer: Interest did reach it",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "producer: private tool never ran",
+          "expected": 0,
+          "actual": 0,
+          "pass": true
+        },
+        {
+          "name": "crafted Data is signed private",
+          "expected": "private",
+          "actual": "private",
+          "pass": true
+        },
+        {
+          "name": "bob: both signatures are valid",
+          "expected": [
+            true,
+            true
+          ],
+          "actual": [
+            true,
+            true
+          ],
+          "pass": true
+        },
+        {
+          "name": "bob: rejected as private (NOT_CACHEABLE)",
+          "expected": [
+            false,
+            "NOT_CACHEABLE"
+          ],
+          "actual": [
+            false,
+            "NOT_CACHEABLE"
+          ],
+          "pass": true
+        },
+        {
+          "name": "carol: NFD served alice's private Data from its CS",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "carol: rejected as private (NOT_CACHEABLE)",
+          "expected": [
+            false,
+            "NOT_CACHEABLE"
+          ],
+          "actual": [
+            false,
+            "NOT_CACHEABLE"
+          ],
+          "pass": true
+        },
+        {
+          "name": "private tool still never ran on the real producer",
+          "expected": 0,
+          "actual": 0,
+          "pass": true
+        }
+      ],
+      "evidence": {
+        "rogueHits": 1,
+        "leakedContent": [
+          {
+            "text": "notes of alice",
+            "type": "text"
+          }
+        ]
+      },
+      "durationMs": 23790
+    },
+    {
+      "id": "S6",
+      "title": "Tampering on the path: altered Data is rejected; NFD caches it until it goes stale",
+      "rules": [
+        "P-9.3",
+        "P-5.5"
+      ],
+      "pass": true,
+      "checks": [
+        {
+          "name": "flipped-byte: call fails closed with BAD_SIGNATURE",
+          "expected": [
+            "BAD_SIGNATURE",
+            "BAD_SIGNATURE"
+          ],
+          "actual": [
+            "BAD_SIGNATURE",
+            "BAD_SIGNATURE"
+          ],
+          "pass": true
+        },
+        {
+          "name": "flipped-byte: no content returned",
+          "pass": true
+        },
+        {
+          "name": "flipped-byte: second consumer is served the same altered Data from CS and rejects it",
+          "expected": [
+            1,
+            "BAD_SIGNATURE"
+          ],
+          "actual": [
+            1,
+            "BAD_SIGNATURE"
+          ],
+          "pass": true
+        },
+        {
+          "name": "flipped-byte: real producer never asked",
+          "expected": 0,
+          "actual": 0,
+          "pass": true
+        },
+        {
+          "name": "flipped-byte: after the CS entry is gone, the real producer answers",
+          "expected": [
+            true,
+            1
+          ],
+          "actual": [
+            true,
+            1
+          ],
+          "pass": true
+        },
+        {
+          "name": "re-signed-outer-wrong-key: call fails closed with BAD_SIGNATURE",
+          "expected": [
+            "BAD_SIGNATURE",
+            "BAD_SIGNATURE"
+          ],
+          "actual": [
+            "BAD_SIGNATURE",
+            "BAD_SIGNATURE"
+          ],
+          "pass": true
+        },
+        {
+          "name": "re-signed-outer-wrong-key: no content returned",
+          "pass": true
+        },
+        {
+          "name": "re-signed-outer-wrong-key: second consumer is served the same altered Data from CS and rejects it",
+          "expected": [
+            1,
+            "BAD_SIGNATURE"
+          ],
+          "actual": [
+            1,
+            "BAD_SIGNATURE"
+          ],
+          "pass": true
+        },
+        {
+          "name": "re-signed-outer-wrong-key: real producer never asked",
+          "expected": 0,
+          "actual": 0,
+          "pass": true
+        },
+        {
+          "name": "re-signed-outer-wrong-key: after the CS entry is gone, the real producer answers",
+          "expected": [
+            true,
+            1
+          ],
+          "actual": [
+            true,
+            1
+          ],
+          "pass": true
+        },
+        {
+          "name": "re-signed-both-attacker-key: call fails closed with UNTRUSTED_KEY",
+          "expected": [
+            "UNTRUSTED_KEY",
+            "UNTRUSTED_KEY"
+          ],
+          "actual": [
+            "UNTRUSTED_KEY",
+            "UNTRUSTED_KEY"
+          ],
+          "pass": true
+        },
+        {
+          "name": "re-signed-both-attacker-key: no content returned",
+          "pass": true
+        },
+        {
+          "name": "re-signed-both-attacker-key: second consumer is served the same altered Data from CS and rejects it",
+          "expected": [
+            1,
+            "UNTRUSTED_KEY"
+          ],
+          "actual": [
+            1,
+            "UNTRUSTED_KEY"
+          ],
+          "pass": true
+        },
+        {
+          "name": "re-signed-both-attacker-key: real producer never asked",
+          "expected": 0,
+          "actual": 0,
+          "pass": true
+        },
+        {
+          "name": "re-signed-both-attacker-key: after the CS entry is gone, the real producer answers",
+          "expected": [
+            true,
+            1
+          ],
+          "actual": [
+            true,
+            1
+          ],
+          "pass": true
+        }
+      ],
+      "evidence": {
+        "variants": [
+          {
+            "variant": "flipped-byte",
+            "first": "BAD_SIGNATURE",
+            "reason": "NDN Ed25519 signature does not verify",
+            "second": "BAD_SIGNATURE",
+            "rogueHits": 1
+          },
+          {
+            "variant": "re-signed-outer-wrong-key",
+            "first": "BAD_SIGNATURE",
+            "reason": "NDN Ed25519 signature does not verify",
+            "second": "BAD_SIGNATURE",
+            "rogueHits": 1
+          },
+          {
+            "variant": "re-signed-both-attacker-key",
+            "first": "UNTRUSTED_KEY",
+            "reason": "key E916XTjJCK82vAib is not trusted for demo.idem.dev",
+            "second": "UNTRUSTED_KEY",
+            "rogueHits": 1
+          }
+        ]
+      },
+      "durationMs": 46638
+    },
+    {
+      "id": "S7",
+      "title": "Size limit: the largest Data under 8800 bytes crosses NFD (TCP and UDP); larger → UPSTREAM_ERROR",
+      "rules": [
+        "§9.2 size"
+      ],
+      "pass": true,
+      "checks": [
+        {
+          "name": "TCP: largest Data verified",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "UDP: largest Data verified (NDNLP fragmentation by NFD, reassembly by NDNts)",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "one byte more: UPSTREAM_ERROR Nack",
+          "expected": "UPSTREAM_ERROR",
+          "actual": "UPSTREAM_ERROR",
+          "pass": true
+        },
+        {
+          "name": "20 000 bytes: UPSTREAM_ERROR Nack",
+          "expected": "UPSTREAM_ERROR",
+          "actual": "UPSTREAM_ERROR",
+          "pass": true
+        }
+      ],
+      "evidence": {
+        "nMax": 8135,
+        "bytesAtNMax": 8800,
+        "overLimitMessage": "UPSTREAM_ERROR: BAD_ENCODING: Data of 8801 bytes exceeds 8800; the native binding does not segment (ADR-026)"
+      },
+      "durationMs": 137
+    },
+    {
+      "id": "S8",
+      "title": "Two-forwarder chain: edge1, edge2 → regional; regional CS serves the second edge",
+      "rules": [
+        "P-9.1",
+        "P-9.3"
+      ],
+      "pass": false,
+      "checks": [],
+      "evidence": {},
+      "durationMs": 101,
+      "error": "Error: Command failed: docker exec idem-nfd-edge1 nfdc route add /idem 366\nError 403 when adding route: authorization rejected\n\n    at genericNodeError (node:internal/errors:999:15)\n    at wrappedFn (node:internal/errors:544:14)\n    at ChildProcess.exithandler (node:child_process:417:12)\n    at ChildProcess.emit (node:events:514:20)\n    at maybeClose (node:internal/child_process:1125:16)\n    at ChildProcess._handle.onexit (node:internal/child_process:305:5)"
+    },
+    {
+      "id": "S9",
+      "title": "Browser transport: WebSocket face to NFD; TCP, UDP and WebSocket consumers aggregate together",
+      "rules": [
+        "P-9.1",
+        "P-9.3"
+      ],
+      "pass": true,
+      "checks": [
+        {
+          "name": "WebSocket consumer bootstrapped the manifest over NFD (TOFU)",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "name": "ws, tcp, udp: all verified",
+          "expected": [
+            true,
+            true,
+            true
+          ],
+          "actual": [
+            true,
+            true,
+            true
+          ],
+          "pass": true
+        },
+        {
+          "name": "tool ran once for the three transports",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "1 Interest upstream",
+          "expected": 1,
+          "actual": 1,
+          "pass": true
+        },
+        {
+          "name": "NFD lists a WebSocket face",
+          "expected": true,
+          "actual": [
+            "wsclient://172.22.0.1:62486"
+          ],
+          "pass": true
+        }
+      ],
+      "evidence": {
+        "producerFace": {
+          "inI": 0,
+          "inD": 1,
+          "inN": 0,
+          "outI": 1,
+          "outD": 0,
+          "outN": 0
+        },
+        "transports": [
+          "ws",
+          "tcp",
+          "udp"
+        ],
+        "wsFaces": [
+          "wsclient://172.22.0.1:62486"
+        ]
+      },
+      "durationMs": 1240
+    }
+  ]
+}

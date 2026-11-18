@@ -78,7 +78,7 @@ IDEM is a research prototype for the course EEL878 (Computer Networks I, UFRJ). 
 | `@idem/mcp`: producer and edge as MCP endpoints, result verification | implemented; the `withIdem(server)` wrapper is planned |
 | `@idem/sim`: deterministic simulator on the real engine | implemented |
 | `@idem/ndn`: native NDN binding (NDNts) | implemented and tested over an in-process NDN forwarder; runs on NFD in Mini-NDN are pending |
-| Experiments | see [Evaluation](/docs/evaluation) for the method and [Results](/results) for what has been measured |
+| Experiments | see [Evaluation](/docs/evaluation) for the method and [Benchmarks](/benchmarks) for what has been measured |
 
 The hypotheses the project tests are stated before any measurement, and a hypothesis refuted with sound method is reported as refuted.
 

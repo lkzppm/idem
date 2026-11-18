@@ -15,11 +15,15 @@ One CLI writes that layout (ADR-023): `pnpm sim -- --config experiments/configs/
   `packages/*/src/**` without tests, sorted by path, so a run names its code even without git.
 - `env.json` also records the load average at the start and end of the run (other work shares the
   machine) and the command line.
+- A virtual-clock run (E2) is bit-reproducible for a seed on the same platform, not across
+  platforms: `Math.log` differs in its last bits between macOS and Linux, and a Data's byte count
+  follows the digits of its `producedAt` (ADR-027). Reproduce a committed sweep on the platform in
+  its `env.json`; on another one expect close, not identical, numbers.
 - A sweep adds `summary.csv` (mean, sd, 95% CI half-width, min, max per mode, value and metric) and
   `latency_cdf.csv` (percentiles 0..100 of every call, pooled over seeds); E5 adds `trials.csv` (one
   line per trial).
 - `pnpm sim -- export-web` turns the run folders into `apps/web/lib/results/data.json`, the only
-  source of the `/results` page; a test fails if that file drifts from the folders.
+  source of the `/benchmarks` page; a test fails if that file drifts from the folders.
 
 ## 1. Modes compared
 
@@ -111,6 +115,58 @@ the run folder. Output: W-trace files for E2 and E4. This experiment is the only
   consumers; compare with the overlay.
 Plots: producer-link bytes and completion time vs loss; per-hop hit distribution. Supports H4.
 
+Before E4, a functional check of the native binding against a real NFD (not a measurement):
+`pnpm exp:ndn` starts three NFD forwarders in Docker (`experiments/ndn/nfd/`, edge1 and edge2 →
+regional, image `ghcr.io/named-data/nfd:20261105` pinned by digest), runs nine scenarios over NDNts
+TCP, UDP and WebSocket faces (round trip, PIT aggregation, CS and freshness, equivalent spellings,
+`private`, tampering, the size limit, the chain, the WebSocket face) and writes
+`experiments/results/ndn-nfd/<run-id>/` with the usual files plus `summary.json` (every check with its
+expected and actual value), `metrics.csv` (one row per check) and the NFD logs; `env.json` adds the
+NFD version, image digest and NDNts versions. Its config is `experiments/ndn/nfd/config.json`
+(`kind: "nfd-check"`, which `export-web` ignores). It is wall-clock and reports PASS/FAIL, not
+numbers for the report. The same scenarios run as `packages/ndn/src/nfd.test.ts` with
+`IDEM_NFD=1` against running forwarders; without it they are skipped.
+
+As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/configs/e4.json`):
+- **Topology.** Docker on one host instead of Mini-NDN (it needs a Linux host with Open vSwitch;
+  the author's machine is macOS). Each node is one network namespace holding an NFD 24.07 container
+  (`ghcr.io/named-data/nfd:20261105`, pinned by digest) and a Node 24 sidecar that runs the overlay
+  roles, so **both bindings cross the same interfaces and the same netem qdiscs**. One Docker network
+  per link: agents–edge1 (`a1`), agents–edge2 (`a2`), edge1–producer (`e1p`), edge1–regional (`e1r`),
+  edge2–regional (`e2r`), regional–producer (`rp`). `tc netem` on both ends of every link: the
+  link's one-way delay (as E2: 5 ms agent links, 40 ms in the star, 10 + 30 ms in the tree), the
+  run's loss on every link in each direction, no rate limit.
+- **Modes.** B0, B2, B3 on the overlay (`@idem/gateway` edge/regional, `createProducerHandler`;
+  B0 relays plain `/idem/v1/call` and the producer strips `_meta`), and **N2/N3**, the star and the
+  tree on native NDN: `NdnConsumer` per agent over its own UDP face to the edge NFD, permanent UDP
+  faces and static routes between NFDs, `serveNdn` on the producer's own NFD (registered over a
+  local TCP face; its CS stays on, as on any NDN host). B1 and B4 are not run (no network effect).
+- **Workload.** W-syn at the E2 base point (8 agents × 20 calls, think time 2 s), planned by
+  `planWorkload` with seed-derived think times, so every mode of a seed replays the same calls. The
+  plan is not the one E2 draws for the same seed (different RNG forks). Pages are log-normal around
+  2 KiB (σ = 0.7) clamped to [512, 7168] bytes so every result fits one NDN packet (v1 does not
+  segment, §9.2 of spec 01); B0–B3 serve the same pages.
+- **Loss recovery.** The overlay rides TCP. The native consumer re-expresses an unanswered Interest
+  with a fresh Nonce after its InterestLifetime (1 s, up to 4 retransmissions; NFD drops a name +
+  Nonce it has seen). Both are part of what is compared.
+- **Measured per run** (`metrics.csv`): calls answered/failed/timed out, upstream calls (tool
+  handler invocations) and repeats of a name, the oracle, latency p50/p95/p99 of answered calls,
+  requests sent and retransmissions, bytes and frames received over the producer link and over all
+  links (`/proc/net/dev` of both ends, Ethernet frames), TCP retransmitted segments of every
+  namespace, consumer verification time (native: both signatures, [P-9.3]; overlay: `verifyData`
+  timed once more on the same Data) and the forwarders' `verify_ok` time; per hop (`hops.csv`):
+  Interests in, CS hits, absorbed (PIT aggregation and suppressed retransmissions), sent upstream,
+  from the gateways' events or NFD's face and CS counters. Reductions are paired with B0 of the
+  same (seed, loss). Also `calls.csv` (every call), `summary.csv`, `latency_cdf.csv`.
+- **Validity guard.** Wall-clock: an agent-side 100 ms timer records its largest delay; a run where
+  it exceeds 250 ms (a suspended host or VM) is discarded and repeated up to twice, and the
+  experiment fails if it keeps happening. `env.json` records NFD, image digests, NDNts, `tc`, the
+  netem qdisc of every interface, Docker VM, the harness digest and the discarded runs.
+- Seeds 1..3 × loss {0, 1, 5} % × 5 modes = 45 runs of about a minute each. Three seeds keep the
+  run under the 45-minute target; the CIs are wide accordingly.
+- **Status.** Harness built and smoke-tested; the full run has not been executed (see roadmap M6).
+  No E4 number exists yet.
+
 ### E5 — Safety
 Adversarial runs: tamper with Data in flight, forge names (digest mismatch), replay stale Data,
 request `private` results across `authContext`s, poison attempts with a non-manifest key.
@@ -129,7 +185,7 @@ by a consumer that puts the victim's `authContext` in its own Interest (ADR-023,
 ## 5. Reporting rules
 
 - Every figure is produced by `experiments/plots/*.py` from committed results; the script name and run
-  ids go in the figure caption. The `/results` page draws its own charts from the same run folders
+  ids go in the figure caption. The `/benchmarks` page draws its own charts from the same run folders
   (through `data.json`) and names the runs under each figure.
 - A refuted hypothesis is reported as refuted, with the data.
 - Simulation results are labeled "simulation"; emulation results "emulation". They are not mixed in one

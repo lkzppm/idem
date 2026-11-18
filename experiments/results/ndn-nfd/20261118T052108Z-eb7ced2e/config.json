@@ -1,0 +1,30 @@
+{
+  "experiment": "ndn-nfd",
+  "title": "@idem/ndn against a real NFD",
+  "description": "The native binding (@idem/ndn) talking to NFD 24.07 in Docker (experiments/ndn/nfd): round trip, PIT aggregation, Content Store and freshness, equivalent spellings, private scope, tampering, the packet size limit, a two-forwarder chain and a WebSocket face. Wall-clock: NFD runs in real time.",
+  "kind": "nfd-check",
+  "seed": 7,
+  "host": "127.0.0.1",
+  "forwarders": {
+    "edge1": {
+      "container": "idem-nfd-edge1",
+      "tcpPort": 16363
+    },
+    "edge2": {
+      "container": "idem-nfd-edge2",
+      "tcpPort": 16364
+    },
+    "regional": {
+      "container": "idem-nfd-regional",
+      "tcpPort": 16365
+    }
+  },
+  "edge1UdpPort": 16363,
+  "edge1WsPort": 19696,
+  "producer": "demo.idem.dev",
+  "chainProducer": "chain.idem.dev",
+  "consumers": 8,
+  "handlerDelayMs": 300,
+  "ttlMs": 60000,
+  "shortTtlMs": 4000
+}

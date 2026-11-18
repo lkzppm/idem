@@ -62,9 +62,19 @@ func main() {
 		table.FibStrategyTable.InsertNextHopEnc(name, uint64(args[1].Int()), 0)
 		return nil
 	}))
+	// exit ends main, so Go's runtime stops and the page can let go of this instance's memory.
+	done := make(chan struct{})
+	api.Set("exit", js.FuncOf(func(this js.Value, args []js.Value) any {
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+		return nil
+	}))
 	js.Global().Set("yanfd", api)
 	if r := js.Global().Get("onYanfdReady"); r.Type() == js.TypeFunction {
 		r.Invoke()
 	}
-	select {}
+	<-done
 }

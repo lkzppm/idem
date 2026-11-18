@@ -9,7 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * `/results`: the experiments that have run (E1, E2, E5), drawn from the committed run folders
+ * `/benchmarks` (was `/results`): the experiments that have run (E1, E2, E5), drawn from the committed run folders
  * through `lib/results/data.json` (spec 04 §1, spec 05 §5). No number is typed into this page.
  */
 export default async function ResultsPage() {

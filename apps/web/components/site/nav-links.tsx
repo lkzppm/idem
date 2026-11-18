@@ -13,7 +13,7 @@ import { type StoryTab, TabStory } from "./tab-story";
 const TABS = [
   { href: "/sandbox", key: "sandbox" },
   { href: "/docs", key: "docs" },
-  { href: "/results", key: "results" },
+  { href: "/benchmarks", key: "results" },
 ] as const;
 
 /** The tab a pathname belongs to; `null` for home and for pages outside the tabs. */

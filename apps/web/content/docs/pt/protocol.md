@@ -1,4 +1,4 @@
-<!-- translated-from: spec/01-protocol.md sha256:055692f4affe045697f5791f1eb3c3a9ead0c2fd99a4b970a6a5c7e04a3e4872 -->
+<!-- translated-from: spec/01-protocol.md sha256:86c85a73b08092ada3f0fe9a93cae712e19f44b77e4eef7378eaa552fbbe070a -->
 # 01 — Protocolo IDEM v1 (normativo)
 
 MUST/SHOULD/MAY conforme RFC 2119/8174. Cada regra tem um id `[P-x.y]` que os testes citam.
@@ -312,7 +312,9 @@ NDN v0.3; nomear, assinar e verificar continuam sendo do `@idem/core`, sem mudan
   `JCS(args canônicos)`, exatamente os bytes que o `args-digest` resume; `MustBeFresh`,
   `InterestLifetime` e `HopLimit` mapeados a partir da §4; CanBePrefix desligado. O Nonce de 32 bits
   do NDN substitui o nonce IDEM (seus quatro primeiros bytes, quando houver); a detecção de laços é
-  do NFD.
+  do NFD, então todo Interest enviado, retransmissões incluídas, leva um nonce novo (o NFD descarta
+  um par nome e nonce que já viu). O consumidor sempre liga MustBeFresh (padrão da §4): sem ele, o
+  NFD responde com uma entrada vencida do CS, e o TTL deixaria de limitar o que o consumidor recebe.
   - **[P-9.1]** Um Interest nativo MUST NOT ser assinado, e seu ApplicationParameters MUST ser
     exatamente `JCS(args canônicos)`. Assim o ParametersSha256DigestComponent é função só dos args
     canônicos, e duas chamadas têm o mesmo nome nativo se e só se têm o mesmo nome IDEM [P-2.1].

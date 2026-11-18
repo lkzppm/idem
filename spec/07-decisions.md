@@ -105,7 +105,7 @@ WebGPU-rendered backgrounds and sandbox.
 static fallback when `navigator.gpu` is missing, honoring reduced motion. Labels are an HTML overlay.
 **Consequences.** One less dependency; we own the renderer. Fallback path must be kept working.
 
-## ADR-016 — Sandbox "Live" mode is real transport and the default
+## ADR-016 — Sandbox "Live" mode is real transport and the default (default superseded by ADR-028)
 **Context.** The owner requires the sandbox to exercise the real protocol, not only a simulation.
 **Decision.** `/sandbox` defaults to **Live**: browser agents send real HTTP Interests to the deployed
 edge (`/api/edge`), which forwards over HTTP to the deployed producer (`/api/producer`); the browser
@@ -217,7 +217,7 @@ through `lib/i18n/messages/landing.ts`, so a Portuguese string that runs longer 
 narrow drawing. Panels elsewhere that used `.t-eyebrow` for field labels now show the small mark;
 they can switch to `.t-label`.
 
-## ADR-021 — The sandbox is an observatory: sidebar, stage, floating windows
+## ADR-021 — The sandbox is an observatory: sidebar, stage, floating windows (amended by ADR-028)
 **Context.** The sandbox was a long scrolling page of panels (header, mode tabs, canvas, attacks,
 tables). The author asked for "something like the observatory I got in GraphMan, with a sidebar,
 draggable windows", in this project's flat cartoon style. GraphMan's observatory has the full-height
@@ -386,7 +386,7 @@ is accepted is recorded as accepted: nothing in the engine was changed to make t
 `safety.test.ts` names the open finding and the limits so that a fix fails the test until the results
 are rerun. The simulator's own agent follows ADR-024: the [P-5.5] retry must carry Data signed for
 the same name.
-(8) *The page is generated.* `/results` imports `apps/web/lib/results/data.json`, produced by
+(8) *The page is generated.* `/benchmarks` (then `/results`) imports `apps/web/lib/results/data.json`, produced by
 `pnpm sim -- export-web` from the run folders; a test compares the file with the folders. Verdicts
 on H1 to H3 are computed from that data by stated rules, not written by hand. The matplotlib figures
 for the report come from the same folders (`experiments/plots/make_figures.py`, uv).
@@ -451,6 +451,116 @@ behaviour; that is E4's job in Mini-NDN (still open). A native-only consumer can
 plain-call retry of [P-5.5] and fails closed instead. A native forwarder that is not NFD (none in
 v1) would have to apply [P-7.1]; NFD does not verify Data signatures, so on the native binding
 cache poisoning is stopped at the consumer [P-9.3], not at the forwarder.
+*Checked against NFD 24.07 (2026-11-18, `pnpm exp:ndn`, `experiments/results/ndn-nfd/`):* nine
+scenarios pass over TCP, UDP and WebSocket faces, including aggregation of 8 concurrent calls into
+one tool run, CS hits and MustBeFresh past the TTL, and a two-forwarder chain. What the check showed:
+(a) an altered Data stays in NFD's CS and every consumer of that name rejects it until the entry goes
+stale or is evicted, so tampering costs availability, never integrity; (b) NFD likewise caches a
+`private` Data a non-conforming producer sends and serves it to the next user of the name, which is
+why [P-9.4] has a consumer-side check; (c) `NdnConsumer` reported every verification failure as
+`BAD_SIGNATURE`; it now reports `UNTRUSTED_KEY` and `NOT_CACHEABLE` as [P-9.3] and [P-9.4] say
+(test in `e2e.test.ts`). The §9.2 text on nonces and MustBeFresh records NFD behaviour the binding
+already relied on; no rule changed.
+
+## ADR-027 — Sim: arbitrary graphs, multiple producers, per-agent workloads
+**Context.** The sandbox is becoming a network editor: any graph of agents, forwarders and
+producers, several producers each with its own tools, a tool list per agent. `@idem/sim` assumed one
+producer (`SIM_PRODUCER`, routes by hop-count BFS toward the first producer node only, other producer
+nodes silently dropping packets), agents on their first link only, three fixed tools, plans matched to
+agents by index, and upstream calls counted only toward a node literally called `producer`.
+**Decision.** (1) *Producers are configuration.* `SimConfig.producers?: SimProducerConfig[]` puts
+one `Producer` on each listed producer-kind node, with its own name, tools and key (derived from the
+run seed and the node id, so reordering the list changes no key); every manifest goes into the shared
+`TrustStore`. Absent, the configuration means what it always meant: one producer named
+`SIM_PRODUCER` on the first producer-kind node, serving `fetch_page`, `my_notes`, `send_email` with
+`producer.ttlMs`, keyed and timed from the same random streams as before. (2) *Routing is shortest
+latency, per producer.* Dijkstra on link latency, one tree per producer node, ties broken by next-hop
+id then link index (deterministic, loop-free). Only forwarders relay: never an agent, never another
+producer. Each forwarder gets `fib.addProducer(name, face)` for every producer it reaches; an agent
+with several links sends each call on the link of its shortest path to that call's producer. A call
+to a producer the agent cannot reach fails at once, recorded with `error: "NO_ROUTE"` and counted in
+`Metrics.noRoute`, instead of vanishing on a link. (3) *Tools live in `tools.ts`* with a
+`TOOL_CATALOG` that mirrors the live demo producer: `search_corpus` (normalizers `trim`,
+`lowercase`) and `weather` (`trim`, `lowercase`, `nfc`; 15 s TTL, 15 s buckets) are added, their
+results generated from the seed and the canonical arguments (no corpus, no network). Explicit
+producers take each tool's TTL from the config or the catalog, not from `producer.ttlMs`. (4) *A
+per-agent workload* (`kind: "per-agent"`) gives each agent node a call count, think time and a
+weighted mix of `{producer, tool}`; `fetch_page` keeps overlap, Zipf and catalog per agent;
+`search_corpus` and `weather` draw from small fixed catalogs with surface variation, so the
+normalizers decide which calls share a name. (5) `Metrics.upstreamCalls` counts calls reaching any
+producer-kind node; attacks take an optional target producer (default: the first). (6) A forwarder
+node may set `csMaxBytes` to size its own Content Store (default `cs.maxBytes`). (7) A configuration
+error is a `SimConfigError` (`code: "BAD_CONFIG"`, with the path of the field). There is no
+live-mutation API: the editor restarts a run on every edit.
+**Consequences.** Every configuration without `producers` runs exactly as before: a fingerprint of
+every run (metrics, call records, transmissions, forwarder events) of every E2 sweep in
+`experiments/configs/` was recorded on the old code and matches for all 4620 runs (30 seeds) on
+macOS and on Linux, and a one-seed subset plus the default, tree-with-loss, attack and trace runs is
+a test (`legacy.test.ts`); `pnpm --filter @idem/sim run fingerprint` reprints the full set. *Runs are
+reproducible per platform, not across platforms:* V8's `Math.log` is not correctly rounded and
+differs in the last bits between macOS and Linux, think and service times inherit that, and since a
+Data's JSON carries `producedAt`, a packet's byte count (and the CPU time charged for it) follows the
+decimal digits of a virtual timestamp. So the same seed gives slightly different times and byte
+counts on macOS and on Linux (in the one-seed pinned set, 59 of 162 runs are bit-identical across
+the two). The test therefore pins one set of hashes per `process.platform`, each recorded from the
+pre-change code on that platform. The committed results were produced on macOS and reproduce
+exactly there; a rerun on Linux would give close but not identical numbers. Making them portable
+(a pure-JS `log` in `Rng`, timestamps rounded before they are serialized) changes every number and
+needs its own decision and a rerun. The only
+behaviour differences are on graphs no committed config uses: a cyclic topology without `producers`
+now routes by latency rather than hop count, an agent whose producer is unreachable fails its calls
+with `NO_ROUTE` instead of retrying against a Nack, and a producer node not named `producer` is now
+counted as upstream (a fix). The source digest of `packages/*/src` changes, so by ADR-023 a run made
+after this change carries a new run id; the committed E1, E2 and E5 results are not relabeled. Their
+numbers would come out identical (the fingerprints show it for E2; E1 and E5 do not run the
+`Simulation`), so no rerun is required for correctness, only to name the current code.
+
+## ADR-028 — The sandbox is a network editor; NDN routers in the page are YaNFD on WebAssembly
+**Context.** The author asked for the sandbox to let visitors build agent networks (several edges and
+producers, every node draggable and configurable, a tool list per agent), to open on a screen that
+picks what to load (examples or a blank canvas) rather than on a network, to drop the Live / Swarm
+switch (the swarm becomes one example), and to run the native NDN binding in the page. NDNts' in-page
+forwarder neither aggregates nor caches, and nothing hosts a persistent shared NFD for free (Vercel
+functions are per request; Vercel Sandbox sessions end after 45 min on the free tier, checked
+2026-11-18). ndnd's forwarder (YaNFD, MIT) builds for `js/wasm` with a small JS face bridge, and its
+PIT aggregation, Content Store and a 3-router chain were shown on real packets
+(`experiments/ndn/yanfd-wasm/`).
+**Decision.** (1) *Start screen.* `/sandbox` opens on a screen of cards: the examples (Swarm, Two
+producers, Regional tree), a blank canvas, Live (real HTTP), and "continue where you left off" when
+this browser saved a network. A shared link opens its network directly (`#n=` carries the network as
+base64url JSON, validated and repaired on read; `?example=<id>`; the old `?mode=swarm` and
+`?mode=live` map to their examples). (2) *The editor.* A network is plain data
+(`lib/sandbox/network.ts`): agents (calls, think time, shared-page overlap, Zipf, a weighted list of
+`{producer, tool}`), forwarders (CS size), producers (name, tools served with their TTL, service
+time), links (latency, loss) and run settings (seed, speed, compared protocols, engine). Agents link
+only to forwarders, never to producers or each other (where IDEM aggregates and caches is the point);
+an agent's tool list offers what the producers it reaches serve; what stops a network from running is
+listed. The stage edits it: drag a node (no restart), drag empty space to pan, wheel or pinch to
+zoom, click a node or a link to select it, drag from the selected node's handle (or Shift-drag) onto
+another node to link them, Delete, arrow keys, undo and redo. The sidebar is the network head
+(example name, undo, redo, Share), Run, Add (chips to click, linking the new node to the selection,
+or to drag onto the stage), Selected (the properties form, an info tip on every field), Attacks
+(target producer), Windows. The network autosaves in `localStorage`. (3) *Two engines.* **IDEM**:
+`@idem/sim` (ADR-027) runs the network once per compared protocol, side by side, seeded, on the
+virtual clock; every edit but a move restarts it (debounced). **NDN**: one YaNFD instance per
+forwarder node, each its own WebAssembly instance (own memory, one realm, no workers needed), JS
+links with the network's latency and loss, producers as `@idem/ndn` `serveNdn` over the simulator's
+deterministic tools, agents as `NdnConsumer`s replaying the simulator's plan for the seed. It runs in
+real time (Go timers), one network, no protocol comparison; routers verify nothing (agents verify
+both signatures) and `private` and side-effect calls stay off NDN (ADR-026). Cache hits and
+aggregation are read from the traffic the links carry, since the routers report nothing. The router
+is built by `experiments/ndn/yanfd-wasm/build.sh` from a pinned ndnd commit into
+`apps/web/public/ndn/` with a `build.json` record, and loaded only when the NDN engine is chosen
+(9.7 MB, 2.6 MB gzipped). (4) *Live* stays as the example over real HTTP, with its own runner,
+unchanged. (5) Connecting the editor to the public NDN testbed is future work (roadmap).
+**Consequences.** Supersedes ADR-016's "Live is the default" (Live is one choice on the start screen)
+and amends ADR-021 (the mode switch is gone; the shell keeps one window set for Live and one for the
+editor, old saved layouts carry over). The swarm's URL parameters (`?a=8&ov=60…`) are gone; links
+carry the whole network instead. The NDN engine's numbers are wall-clock, per visit and not seeded
+end to end, so they are shown as live counters only and never quoted as results. Signing through
+the NDNts keychain failed in WebKit (its Ed25519 ponyfill cannot use a native `CryptoKey`), so
+`@idem/ndn` now signs and verifies with WebCrypto directly. Comparison panes are clipped to their
+frames (scissor rectangles), since a shared camera can carry a network past its pane.
 
 ## Open questions
 

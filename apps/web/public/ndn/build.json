@@ -1,0 +1,12 @@
+{
+  "what": "YaNFD (named-data/ndnd fw) compiled to WebAssembly with the IDEM JS face bridge",
+  "license": "MIT (ndnd and the bridge); wasm_exec.js is BSD-3-Clause (the Go project)",
+  "ndnd": "4593618b9a271e04560a2c4e142ca127cc78da0e",
+  "go": "go1.27.4",
+  "bridgeSha256": "214cbc3e7975cab7c95b23516786807a320dde6f078c357f9cca282d9f06c3b1",
+  "wasmSha256": "e755016a6d1b4243e8fbeafac3c1d0b1b605eac7b118157fbd020b181baae209",
+  "wasmBytes": 9680301,
+  "wasmGzipBytes": 2642334,
+  "wasmExecSha256": "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14",
+  "builtBy": "experiments/ndn/yanfd-wasm/build.sh"
+}

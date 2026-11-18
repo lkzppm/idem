@@ -1,11 +1,13 @@
 // End to end over a real in-process NDN forwarder (@ndn/fw): Interest → Data and back.
 // @ndn/fw has no Interest aggregation and no Content Store; those are NFD's in Mini-NDN (spec 05 E4).
-import { jcs, keyPairFromSeed, TrustStore, utf8 } from "@idem/core";
-import { consume } from "@ndn/endpoint";
-import { Interest as NdnInterest } from "@ndn/packet";
+import { jcs, keyPairFromSeed, Producer, signData, TrustStore, utf8 } from "@idem/core";
+import { consume, produce } from "@ndn/endpoint";
+import { Forwarder } from "@ndn/fw";
+import { Data as NdnData, Interest as NdnInterest } from "@ndn/packet";
 import { afterEach, describe, expect, it } from "vitest";
-import { decodeData, encodeInterest } from "./codec";
+import { decodeData, encodeData, encodeInterest } from "./codec";
 import { NdnConsumer } from "./consumer";
+import { producerSigner } from "./keys";
 import { ndnUri, toNdnName } from "./name";
 import { serveNdn } from "./producer";
 import { calls, idemInterest, PRODUCER, setupNetwork, setupProducer } from "./testkit.test-helpers";
@@ -84,6 +86,66 @@ describe("native round trip", () => {
   });
 });
 
+describe("consumer verdicts on forged native Data [P-9.3]", () => {
+  // A rogue producer on a longer prefix answers first (longest-prefix match), as on NFD.
+  async function forge(scope: "public" | "private", keyByte: number) {
+    const { producer, fw, consumer, key } = await net();
+    await consumer.init();
+    const I = await idemInterest(producer, "fetch_page", { url: URL3 });
+    const signer = keyByte === 7 ? key : await keyPairFromSeed(new Uint8Array(32).fill(keyByte));
+    const forged = await signData(
+      {
+        name: I.name,
+        content: { content: [{ type: "text", text: "forged" }] },
+        producedAt: 0,
+        freshnessMs: 60_000,
+        scope,
+        policyVersion: 1,
+      },
+      signer,
+    );
+    const sign = producerSigner(PRODUCER, signer);
+    const rogue = produce(
+      toNdnName(I.name),
+      async (i) => {
+        if (scope === "public") return encodeData(forged, i.name, sign);
+        // encodeData refuses private Data [P-9.4]: build the packet by hand, as a rogue would.
+        const pkt = new NdnData(
+          i.name,
+          NdnData.FreshnessPeriod(60_000),
+          utf8(jcs({ content: forged.content, meta: forged.meta, signature: forged.signature })),
+        );
+        await sign.sign(pkt);
+        return pkt;
+      },
+      { fw },
+    );
+    const closeNet = close;
+    close = () => {
+      rogue.close();
+      closeNet?.();
+    };
+    return consumer.call("fetch_page", { url: URL3 });
+  }
+
+  it("MUST fail closed with UNTRUSTED_KEY when a key is not the producer's trusted key [P-9.3]", async () => {
+    const out = await forge("public", 9);
+    expect(out.error?.code).toBe("UNTRUSTED_KEY");
+    expect(out.verify?.code).toBe("UNTRUSTED_KEY");
+    expect(out.data).toBeUndefined();
+    expect(out.result.isError).toBe(true);
+    expect(calls.fetch_page).toBeUndefined();
+  });
+
+  it("MUST reject validly signed private Data with NOT_CACHEABLE [P-9.4]", async () => {
+    const out = await forge("private", 7);
+    expect(out.verify?.outer.ok).toBe(true);
+    expect(out.verify?.inner.ok).toBe(true);
+    expect(out.error?.code).toBe("NOT_CACHEABLE");
+    expect(out.data).toBeUndefined();
+  });
+});
+
 describe("producer checks on the native binding", () => {
   it("MUST reject forged ApplicationParameters with DIGEST_MISMATCH [P-4.3] [P-9.2]", async () => {
     const { producer, fw } = await net();
@@ -138,5 +200,62 @@ describe("private never leaks on the native binding (golden rule 4)", () => {
     const again = decodeData(await consume(await encodeInterest({ ...I, nonce: "BBBBBBBBBBB" }), { fw }));
     expect(again.kind).toBe("nack");
     expect(JSON.stringify(again)).not.toContain("notes of");
+  });
+});
+
+describe("retransmission on the native binding", () => {
+  /** A producer whose first `slow` call outlives the consumer's InterestLifetime. */
+  async function slowNet() {
+    let runs = 0;
+    const key = await keyPairFromSeed(new Uint8Array(32).fill(5));
+    const producer = new Producer({
+      producer: PRODUCER,
+      key,
+      tools: [
+        {
+          name: "slow",
+          inputSchema: { type: "object", properties: { q: { type: "string" } }, required: ["q"] },
+          annotations: { readOnlyHint: true },
+          policy: { cacheable: true, ttlMs: 60_000, scope: "public" },
+          handler: async (args) => {
+            runs++;
+            if (runs === 1) await new Promise((r) => setTimeout(r, 400));
+            return { content: [{ type: "text", text: `answer ${(args as { q: string }).q}` }] };
+          },
+        },
+      ],
+    });
+    const fw = Forwarder.create();
+    const served = await serveNdn({ producer, key, fw });
+    close = () => served.close();
+    const nonces: number[] = [];
+    fw.addEventListener("pktrx", (e) => {
+      const l3 = e.packet.l3;
+      if (l3 instanceof NdnInterest && l3.appParameters) nonces.push(l3.nonce ?? -1);
+    });
+    return { fw, nonces, runs: () => runs };
+  }
+
+  it("sends a timed-out Interest again with a fresh Nonce and the same name", async () => {
+    const { fw, nonces, runs } = await slowNet();
+    const consumer = new NdnConsumer({ producer: PRODUCER, fw, interestLifetimeMs: 200, retransmissions: 2 });
+    const out = await consumer.call("slow", { q: "x" });
+    expect(out.error).toBeUndefined();
+    expect(out.verify?.ok).toBe(true);
+    expect(out.attempts).toBe(2);
+    expect(out.verifyMs).toBeGreaterThan(0);
+    expect(runs()).toBe(2);
+    expect(nonces).toHaveLength(2);
+    expect(nonces[0]).not.toBe(nonces[1]);
+  });
+
+  it("fails with TIMEOUT after the last attempt, and sends one Interest by default", async () => {
+    const { fw, nonces } = await slowNet();
+    const consumer = new NdnConsumer({ producer: PRODUCER, fw, interestLifetimeMs: 200 });
+    const out = await consumer.call("slow", { q: "y" });
+    expect(out.error?.code).toBe("TIMEOUT");
+    expect(out.attempts).toBe(1);
+    expect(out.data).toBeUndefined();
+    expect(nonces).toHaveLength(1);
   });
 });

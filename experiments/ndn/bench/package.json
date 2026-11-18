@@ -1,0 +1,24 @@
+{
+  "name": "@idem/bench-ndn",
+  "version": "0.0.0",
+  "private": true,
+  "description": "E4 harness: IDEM over the HTTP overlay and over native NDN (NFD) on the same Docker topology with tc netem links (spec/05-evaluation.md).",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "e4": "node --import ../../../packages/sim/scripts/ts-resolve.mjs src/run.ts"
+  },
+  "dependencies": {
+    "@idem/core": "workspace:*",
+    "@idem/gateway": "workspace:*",
+    "@idem/ndn": "workspace:*",
+    "@idem/sim": "workspace:*",
+    "@ndn/endpoint": "0.0.20260427",
+    "@ndn/fw": "0.0.20260427",
+    "@ndn/nfdmgmt": "0.0.20260427",
+    "@ndn/node-transport": "0.0.20260427",
+    "@ndn/packet": "0.0.20260427",
+    "undici": "8.12.4"
+  }
+}

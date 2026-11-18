@@ -308,7 +308,10 @@ format v0.3; naming, signing and verification are `@idem/core`'s, unchanged.
 - **NDN Interest.** Name = IDEM name + ParametersSha256DigestComponent; ApplicationParameters =
   `JCS(canonical args)`, the exact bytes `args-digest` hashes; `MustBeFresh`, `InterestLifetime` and
   `HopLimit` mapped from §4; CanBePrefix unset. NDN's 32-bit Nonce replaces the IDEM nonce (the
-  first four bytes of it when present); loop detection is NFD's.
+  first four bytes of it when present); loop detection is NFD's, so every Interest sent, a
+  retransmission included, carries a fresh nonce (NFD drops a name and nonce pair it has seen).
+  The consumer always sets MustBeFresh (§4 default): NFD answers an Interest without it from a
+  stale CS entry, so the TTL would no longer bound what the consumer gets.
   - **[P-9.1]** A native Interest MUST NOT be signed and its ApplicationParameters MUST be exactly
     `JCS(canonical args)`. Then the ParametersSha256DigestComponent is a function of the canonical
     args only, and two calls share a native name iff they share an IDEM name [P-2.1].
@@ -324,6 +327,9 @@ format v0.3; naming, signing and verification are `@idem/core`'s, unchanged.
     the IDEM `keyLocator` names, [P-5.2]), and the IDEM signature and `contentDigest` exactly as in
     [P-5.5]. A Data that fails either check is not delivered (`BAD_SIGNATURE` / `UNTRUSTED_KEY`).
     The plain-call retry of [P-5.5] needs the overlay; a native-only consumer fails closed.
+  - Loss is recovered by the consumer: an Interest left unanswered for its InterestLifetime MAY be
+    expressed again for the same name with a fresh Nonce (NFD drops a name + Nonce pair it has
+    seen). `NdnConsumer` does so `retransmissions` times (default 0).
   - A Data larger than 8800 bytes (NFD's packet limit) is not segmented in v1: the producer answers
     `UPSTREAM_ERROR`.
 - **Errors.** An application-level Nack: a Data with the Interest's name, ContentType NACK,

@@ -2,17 +2,18 @@ O [sandbox](/sandbox) é onde o protocolo pode ser observado em vez de lido. Est
 
 Uma regra o torna confiável: o sandbox executa a **mesma** classe `Forwarder` do gateway. Só mudam os enlaces e o relógio. O que você observa é o comportamento real do protocolo, não uma encenação.
 
-## Dois modos {#modes}
+## O que dá para rodar {#modes}
 
-| | Ao vivo (Live) | Enxame (Swarm) |
+O sandbox abre numa escolha: uma rede de **exemplo** (um enxame numa borda, dois produtores, uma árvore regional), uma **tela em branco**, o modo **Ao vivo**, ou a rede que você editava da última vez. Toda rede, exceto a Ao vivo, pode ser editada.
+
+| | Uma rede no editor | Ao vivo |
 |---|---|---|
-| O que roda | requisições HTTP reais do seu navegador ao gateway de borda do site, que encaminha ao produtor de demonstração | uma simulação determinística, inteira no seu navegador |
-| Motor | o `Forwarder` da borda, no servidor, no relógio real | o mesmo `Forwarder`, na página, em um relógio virtual |
-| Agentes | alguns consumidores na página, cada um um `IdemClient` com a sua credencial | quantos agentes simulados você definir |
-| Tempo | real: um período de frescor precisa passar de verdade | virtual: a execução salta de evento em evento, na velocidade que você escolher |
-| Serve para | ver que o protocolo funciona sobre uma rede real, e verificar as assinaturas você mesmo | ver agregação e cache em escala, e comparar modos na mesma carga |
+| O que roda | uma rede que você monta, no seu navegador: o motor IDEM (uma simulação determinística) ou o motor NDN (roteadores NDN reais compilados para WebAssembly) | pedidos HTTP reais do seu navegador ao gateway de borda do site, que encaminha ao produtor de demonstração |
+| Motor | IDEM: o mesmo `Forwarder`, na página, num relógio virtual. NDN: YaNFD, um roteador por forwarder, em tempo real | o `Forwarder` da borda, no servidor, no relógio de parede |
+| Agentes | quantos você adicionar, cada um com sua lista de ferramentas | alguns consumidores na página, cada um um `IdemClient` com sua própria credencial |
+| Bom para | ver agregação e cache em qualquer topologia, e comparar protocolos na mesma carga | ver que o protocolo funciona numa rede real, e verificar as assinaturas você mesmo |
 
-Nenhum dos dois modos produz um resultado do projeto. Os contadores descrevem a execução que está na sua frente. Os números medidos, com suas sementes e configurações, estão na página de [resultados](/results).
+Nada aqui produz um resultado do projeto. Os contadores descrevem a execução à sua frente. Os números medidos, com sementes e configurações, estão na página de [benchmarks](/benchmarks).
 
 ### Ao vivo {#live}
 
@@ -31,39 +32,56 @@ O produtor de demonstração serve cinco ferramentas sobre um pequeno corpus ver
 > [!NOTE]
 > Em produção, o Content Store da borda fica na memória de uma instância de função. Se o seu pedido cair em outra instância, uma chamada que você esperava acertar vai faltar. Isso é a implantação, não o protocolo.
 
-### Enxame {#swarm}
+## O editor de rede {#editor}
 
-O modo enxame executa o `@idem/sim`: agentes simulados fazem chamadas de ferramenta sobre enlaces virtuais, com um relógio virtual. Tudo é derivado de uma **semente**, então a mesma semente com os mesmos ajustes dá a mesma execução, evento por evento, e uma execução pode ser compartilhada pelo seu endereço.
+Uma rede é feita de agentes, forwarders e produtores ligados por enlaces. **Agentes** fazem chamadas de ferramenta: cada um tem um número de chamadas, um tempo de pensar entre elas e uma lista de ferramentas dos produtores que alcança, cada uma com um peso. **Forwarders** são gateways IDEM (uma borda, um nó regional): agregam chamadas idênticas pendentes na PIT e guardam respostas assinadas no Content Store, cujo tamanho você define. **Produtores** são servidores MCP que assinam seus resultados: cada um tem um nome (que entra em todo nome de Data que assina), as ferramentas que oferece e por quanto tempo o resultado de cada uma fica fresco. **Enlaces** têm latência e taxa de perda.
 
-Sua visão mais útil é a **comparação**: a mesma carga, com a mesma semente, roda em mais de um modo, sempre `mcp-direct` e `idem`, e também `mcp-local-cache` quando a opção de rodar o MCP com um cache local por agente está marcada. Os agentes pedem exatamente as mesmas coisas, exatamente nos mesmos instantes, então o que diferir entre as execuções é o protocolo.
+Agentes se ligam só a forwarders, nunca direto a um produtor nem entre si: o forwarder é onde o IDEM agrega e guarda, então o editor recusa essas ligações e diz por quê.
 
-| Modo | O que acontece com uma chamada |
+| Para | Faça isto |
 |---|---|
-| `mcp-direct` | vai direto ao produtor. Nada é guardado em cache |
-| `mcp-local-cache` | cada agente lembra as próprias respostas. A repetição do mesmo agente é local; a repetição de outro agente vai ao produtor |
-| `idem` | vai ao forwarder de borda compartilhado: é agregada no PIT, respondida pelo CS ou encaminhada |
+| adicionar um nó | clique em *Agente*, *Forwarder* ou *Produtor*: ele aparece ao lado do nó selecionado, já ligado (ou arraste o botão até a rede) |
+| mover um nó | arraste-o. Uma execução nunca reinicia por um movimento |
+| ligar dois nós | selecione um e arraste da alça azul até o outro (ou segure `Shift` e arraste a partir de um nó) |
+| mudar um nó ou enlace | selecione-o e use a seção *Selecionado*. Todo campo tem um balão de informação |
+| remover | selecione e aperte `Delete` |
+| olhar em volta | arraste o fundo para deslocar; role, faça pinça ou use os botões para zoom; `F` enquadra a rede |
+| desfazer | `⌘Z` (`⇧⌘Z` para refazer) |
+| compartilhar | *Compartilhar* copia um link que carrega a rede inteira |
 
-## O que os controles mudam {#controls}
+Quando algo impede a rede de rodar (nenhum agente, um agente sem ferramentas, uma ferramenta cujo produtor ele não alcança), a seção *Execução* lista.
 
-Cada controle é um parâmetro da carga, da rede ou do cache. Mudar um deles e observar o que se move é o caminho mais rápido para criar intuição.
+### O motor IDEM {#idem-engine}
 
-| Controle | O que define | O que observar |
+O motor IDEM roda a rede no `@idem/sim`: as chamadas dos agentes, sobre enlaces virtuais, com um relógio virtual. Tudo deriva de uma **semente**, então a mesma rede e a mesma semente dão a mesma execução, evento por evento. Qualquer mudança, exceto mover um nó, reinicia a execução.
+
+Sua visão mais útil é a **comparação**: a mesma carga, com a mesma semente, roda uma vez por protocolo marcado, lado a lado. Os agentes pedem exatamente as mesmas coisas nos mesmos instantes, então o que difere entre os painéis é o protocolo.
+
+| Protocolo | O que acontece com uma chamada |
+|---|---|
+| `mcp-direct` | vai direto ao produtor. Nada é guardado |
+| `mcp-local-cache` | cada agente lembra as próprias respostas. Uma repetição do mesmo agente é local; a de outro agente vai ao produtor |
+| `idem` | passa pelos forwarders: agregada numa PIT, respondida por um CS, ou encaminhada |
+
+### O motor NDN {#ndn-engine}
+
+O motor NDN roda a mesma rede em roteadores NDN reais: cada forwarder é uma instância do YaNFD (o forwarder do ndnd, do projeto NDN), compilado para WebAssembly e rodando nesta aba. Produtores e agentes falam o binding nativo (`@idem/ndn`): Interests e Data são pacotes NDN TLV, e os agentes verificam as duas assinaturas de cada resposta. Roda em tempo real, então os períodos de frescor passam de verdade. Os roteadores encaminham e guardam, mas não verificam assinaturas, e chamadas a ferramentas `private` ou com efeito colateral nunca viajam no NDN. O roteador é baixado na primeira vez que você escolhe este motor.
+
+### O que as configurações mudam {#controls}
+
+| Configuração | O que define | O que observar |
 |---|---|---|
-| Agentes | quantos consumidores fazem chamadas | mais agentes, mais pedidos idênticos em trânsito ao mesmo tempo |
-| Chamadas por agente | o tamanho da carga de cada agente | uma execução mais longa dá tempo ao Content Store de encher e compensar |
-| Sobreposição entre agentes | a parte dos pedidos de cada agente tirada de um conjunto comum a todos | em zero, os agentes nunca pedem a mesma coisa e um cache compartilhado não tem o que compartilhar |
-| Zipf α | o quanto a popularidade é concentrada dentro do catálogo | um α maior concentra os pedidos em poucos nomes |
-| Tamanho do catálogo | quantas páginas distintas existem | um catálogo pequeno se repete mais cedo |
-| TTL | o frescor que o manifesto do produtor permite | um TTL curto transforma acertos posteriores de volta em faltas |
-| Tamanho do CS | o orçamento em bytes do Content Store | um armazenamento pequeno remove entradas (`cs_evict`) antes de elas serem reutilizadas |
-| Latência agente ↔ borda | o atraso dos enlaces dos agentes | espalha no tempo a chegada de pedidos idênticos à borda |
-| Latência borda ↔ produtor | o atraso do enlace até o produtor | um enlace lento até o produtor deixa os Interests pendentes por mais tempo, e mais deles se agregam |
-| Perda no enlace | a parte dos pacotes que um enlace descarta | pacotes perdidos aparecem como timeouts e novas tentativas |
-| Chamadas privadas | a parte das chamadas a `my_notes` | são particionadas por agente e nunca compartilhadas |
-| Chamadas com efeito colateral | a parte das chamadas a `send_email` | sempre passam direto |
-| Topologia | estrela (uma borda) ou árvore (bordas e um forwarder regional) | em uma árvore, acertos também podem acontecer além da borda |
+| Chamadas (agente) | o tamanho da carga de um agente | uma execução mais longa dá tempo ao Content Store de encher e compensar |
+| Páginas compartilhadas (agente) | a parte das chamadas `fetch_page` tirada de um catálogo que todos os agentes compartilham | em zero, os agentes nunca pedem a mesma página e um cache compartilhado não tem o que compartilhar |
+| Concentração da popularidade (agente) | quão concentrada é a popularidade desse catálogo (α de Zipf) | mais concentração põe os pedidos em poucos nomes |
+| Ferramentas e pesos (agente) | quais ferramentas chama, em qual produtor, com que frequência | `my_notes` é privada, `send_email` tem efeito colateral: nenhuma é compartilhada |
+| Content Store (forwarder) | o orçamento em bytes do store | um store pequeno despeja (`cs_evict`) antes de as entradas serem reusadas |
+| Fresco por (produtor) | o frescor que o manifesto permite por ferramenta | um frescor curto transforma acertos posteriores em faltas |
+| Tempo de serviço (produtor) | quanto ele leva para rodar uma ferramenta | um produtor lento deixa Interests pendentes por mais tempo, e mais deles agregam |
+| Latência (enlace) | o atraso num sentido do enlace | espalha a chegada de pedidos idênticos a um forwarder |
+| Perda (enlace) | a parte dos pacotes que o enlace descarta | pacotes perdidos aparecem como timeouts e novas tentativas |
 | Semente | a origem de toda escolha aleatória | a mesma semente repete a mesma execução |
-| Velocidade | o quão rápido o tempo virtual avança na tela | muda a animação, nunca o resultado |
+| Velocidade | quão rápido o tempo virtual avança na tela | muda a animação, nunca o resultado |
 
 ## Como ler o estado {#reading}
 
@@ -145,9 +163,12 @@ O sandbox pode ser operado sem ponteiro:
 | Tecla | O que faz |
 |---|---|
 | `1`–`6` | abre ou fecha uma janela, na ordem acima |
-| `Espaço` | uma rajada (ao vivo) · executar ou pausar (enxame) |
-| `R` | reinicia a execução (enxame) |
-| `Esc` | fecha a lista de atalhos, limpa o destaque; na alça de uma janela, fecha essa janela |
+| `Espaço` | uma rajada (ao vivo) · executar ou pausar (editor) |
+| `R` | reinicia a execução (editor) |
+| `Delete` | remove o nó ou enlace selecionado (editor) |
+| `⌘Z`, `⇧⌘Z` | desfazer, refazer (editor) |
+| `F` | enquadra a rede (editor) |
+| `Esc` | fecha a lista de atalhos, limpa o destaque e a seleção; na alça de uma janela, fecha essa janela |
 | `←` `↑` `→` `↓` | move uma janela, pela alça na barra de título (`Shift` para passos maiores) |
 | `Alt` + `←` `↑` `→` `↓` | redimensiona uma janela, pela mesma alça |
 | `Tab`, depois `←` `→` | alcança os agentes e forwarders do palco (uma parada de Tab); `Enter` age como um clique |

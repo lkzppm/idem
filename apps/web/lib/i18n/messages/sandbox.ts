@@ -15,11 +15,6 @@ export const sandbox = defineMessages(
     },
     shell: {
       modeAbout: (mode: string) => `About ${mode} mode`,
-      modeLabel: "Sandbox mode",
-      live: "Live",
-      liveHint: "real HTTP",
-      swarm: "Swarm",
-      swarmHint: "simulation",
       windows: "Windows",
       tidy: "Tidy up",
       tidyTitle: "Put every window back in its default place",
@@ -218,7 +213,7 @@ export const sandbox = defineMessages(
       },
       compare: {
         title: "Latency by path",
-        note: "Medians of this page's own calls over the real network. Not a benchmark: measured results live on /results.",
+        note: "Medians of this page's own calls over the real network. Not a benchmark: measured results live on /benchmarks.",
         paths: { cs: "edge CS", pit: "edge PIT", producer: "producer", call: "plain call" },
         calls: "calls",
         p50: "p50",
@@ -231,31 +226,7 @@ export const sandbox = defineMessages(
         speed:
           "How fast virtual time runs against your clock. It changes only how fast you watch: the run and its counters stay the same.",
         seed: "Seeds the random choices (which documents, think times, losses). The same seed and settings give the same run.",
-        localCache:
-          "Adds a third run: plain MCP where each agent keeps its own cache. It shows what one shared cache on the path adds.",
-        agents: "How many agents run the workload, each on its own link to an edge forwarder.",
-        callsPerAgent:
-          "How many tool calls each agent makes, one after another, with a short random think time between them.",
-        overlap:
-          "The share of each agent's fetch_page calls that go to the shared catalog. The rest ask for documents no other agent wants.",
-        zipf: "How skewed the shared catalog's popularity is. 0 is uniform; higher values make a few documents take most of the calls.",
-        catalog: "How many distinct documents the shared catalog holds.",
-        privatePct:
-          "The share of calls to my_notes. Their results are private: cached per credential at the edge, never served to another agent.",
-        sideEffectPct:
-          "The share of calls to send_email. A side effect is never cached or aggregated: it passes through as a plain call.",
-        topology:
-          "Star: every agent on one edge forwarder. Tree: agents split across two edges that share a regional forwarder before the producer.",
-        agentLink: "One-way latency of each agent's link to its edge.",
-        producerLink:
-          "One-way latency of the link to the producer. In the tree, the edge-to-regional links take a quarter of it.",
-        loss: "The chance that a packet is lost on any link. A lost call times out and the agent asks again.",
-        ttl: "How long the producer says an answer stays fresh. A stale cached answer is no longer served; the next Interest goes upstream.",
-        csSize:
-          "Each forwarder's Content Store size. When it fills up, the least recently used answers are evicted.",
       },
-      intro:
-        "A deterministic simulation in your browser: the real @idem/core forwarder and producer over virtual links, on a virtual clock. Same seed, same run. The counters come from this run only; measured results live on",
       run: "Run",
       play: "Play",
       pause: "Pause",
@@ -265,30 +236,9 @@ export const sandbox = defineMessages(
       virtual: "virtual",
       done: "workload complete",
       resolveHint: "Attacks resolve as virtual time advances: press Play.",
-      workload: "Workload",
-      agents: "Agents",
-      callsPerAgent: "Calls per agent",
-      overlap: "Cross-agent overlap",
-      zipf: "Zipf α",
-      catalog: "Catalog size",
-      privatePct: "Private calls (my_notes)",
-      sideEffectPct: "Side-effect calls (send_email)",
-      network: "Network",
-      topology: "Topology",
-      star: "Star",
-      tree: "Tree (2 edges)",
-      agentLink: "Agent ↔ edge latency",
-      producerLink: "Edge ↔ producer latency",
-      loss: "Link loss",
-      ttl: "TTL",
-      csSize: "CS size",
       seed: "Seed",
       shuffle: "Shuffle",
       shuffleTitle: "Pick a random seed",
-      localCache: "Also run MCP with a per-agent local cache",
-      replay: "Replay a real trace (after E3)",
-      replayTitle: "Available once experiment E3 records a real trace",
-      defaults: "Defaults",
       attacks: "Attacks on the IDEM run",
       attack: {
         tamper: "Tamper with Data in flight",
@@ -428,11 +378,6 @@ export const sandbox = defineMessages(
     },
     shell: {
       modeAbout: (mode: string) => `Sobre o modo ${mode}`,
-      modeLabel: "Modo do sandbox",
-      live: "Ao vivo",
-      liveHint: "HTTP real",
-      swarm: "Enxame",
-      swarmHint: "simulação",
       windows: "Janelas",
       tidy: "Arrumar",
       tidyTitle: "Devolver cada janela ao seu lugar padrão",
@@ -639,7 +584,7 @@ export const sandbox = defineMessages(
       },
       compare: {
         title: "Latência por caminho",
-        note: "Medianas das chamadas desta página pela rede real. Não é um benchmark: os resultados medidos ficam em /results.",
+        note: "Medianas das chamadas desta página pela rede real. Não é um benchmark: os resultados medidos ficam em /benchmarks.",
         paths: { cs: "CS da borda", pit: "PIT da borda", producer: "produtor", call: "chamada comum" },
         calls: "chamadas",
         p50: "p50",
@@ -652,31 +597,7 @@ export const sandbox = defineMessages(
         speed:
           "A velocidade do tempo virtual em relação ao seu relógio. Muda só a rapidez com que você assiste: a execução e os contadores continuam os mesmos.",
         seed: "Alimenta as escolhas aleatórias (quais documentos, tempos de espera, perdas). Mesma semente e mesmos ajustes dão a mesma execução.",
-        localCache:
-          "Acrescenta uma terceira execução: MCP comum em que cada agente tem o próprio cache. Mostra o que um cache compartilhado no caminho acrescenta.",
-        agents: "Quantos agentes executam a carga, cada um com o próprio enlace até um forwarder de borda.",
-        callsPerAgent:
-          "Quantas chamadas de ferramenta cada agente faz, uma após a outra, com uma pequena espera aleatória entre elas.",
-        overlap:
-          "A fração das chamadas fetch_page de cada agente que vai ao catálogo compartilhado. As demais pedem documentos que nenhum outro agente quer.",
-        zipf: "O quanto a popularidade do catálogo compartilhado é desigual. 0 é uniforme; valores maiores fazem poucos documentos levarem a maior parte das chamadas.",
-        catalog: "Quantos documentos distintos o catálogo compartilhado tem.",
-        privatePct:
-          "A fração de chamadas a my_notes. O resultado é privado: vai para o cache por credencial na borda e nunca é entregue a outro agente.",
-        sideEffectPct:
-          "A fração de chamadas a send_email. Um efeito colateral nunca vai para o cache nem é agregado: passa como chamada comum.",
-        topology:
-          "Estrela: todos os agentes numa só borda. Árvore: agentes divididos entre duas bordas que compartilham um forwarder regional antes do produtor.",
-        agentLink: "Latência de ida do enlace de cada agente até a sua borda.",
-        producerLink:
-          "Latência de ida do enlace até o produtor. Na árvore, os enlaces borda–regional levam um quarto disso.",
-        loss: "A chance de um pacote se perder em qualquer enlace. Uma chamada perdida estoura o tempo e o agente pergunta de novo.",
-        ttl: "Por quanto tempo o produtor diz que uma resposta continua fresca. Uma resposta vencida no cache deixa de ser servida; o próximo Interest sobe.",
-        csSize:
-          "O tamanho do Content Store de cada forwarder. Quando enche, as respostas usadas há mais tempo saem primeiro.",
       },
-      intro:
-        "Uma simulação determinística no seu navegador: o forwarder e o produtor reais do @idem/core sobre enlaces virtuais, num relógio virtual. Mesma semente, mesma execução. Os contadores vêm só desta execução; os resultados medidos ficam em",
       run: "Execução",
       play: "Executar",
       pause: "Pausar",
@@ -686,30 +607,9 @@ export const sandbox = defineMessages(
       virtual: "virtual",
       done: "carga concluída",
       resolveHint: "Os ataques se resolvem conforme o tempo virtual avança: aperte Executar.",
-      workload: "Carga",
-      agents: "Agentes",
-      callsPerAgent: "Chamadas por agente",
-      overlap: "Sobreposição entre agentes",
-      zipf: "Zipf α",
-      catalog: "Tamanho do catálogo",
-      privatePct: "Chamadas privadas (my_notes)",
-      sideEffectPct: "Chamadas com efeito colateral (send_email)",
-      network: "Rede",
-      topology: "Topologia",
-      star: "Estrela",
-      tree: "Árvore (2 bordas)",
-      agentLink: "Latência agente ↔ borda",
-      producerLink: "Latência borda ↔ produtor",
-      loss: "Perda no enlace",
-      ttl: "TTL",
-      csSize: "Tamanho do CS",
       seed: "Semente",
       shuffle: "Sortear",
       shuffleTitle: "Escolher uma semente aleatória",
-      localCache: "Rodar também MCP com cache local por agente",
-      replay: "Reproduzir um rastro real (após o E3)",
-      replayTitle: "Disponível quando o experimento E3 gravar um rastro real",
-      defaults: "Padrões",
       attacks: "Ataques à execução IDEM",
       attack: {
         tamper: "Adulterar um Data em trânsito",

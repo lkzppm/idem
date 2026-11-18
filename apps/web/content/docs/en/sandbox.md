@@ -2,17 +2,18 @@ The [sandbox](/sandbox) is where the protocol can be watched instead of read abo
 
 One rule makes it trustworthy: the sandbox runs the **same** `Forwarder` class as the gateway. Only the links and the clock differ. What you watch is the protocol's real behaviour, not a re-enactment.
 
-## Two modes {#modes}
+## What you can run {#modes}
 
-| | Live | Swarm |
+The sandbox opens on a choice: an **example** network (a swarm on one edge, two producers, a regional tree), a **blank canvas**, **Live**, or the network you were editing last time. Every network but Live can be edited.
+
+| | A network in the editor | Live |
 |---|---|---|
-| What runs | real HTTP requests from your browser to the site's edge gateway, which forwards to the demo producer | a deterministic simulation, entirely in your browser |
-| Engine | the edge's `Forwarder`, on the server, on the wall clock | the same `Forwarder`, in the page, on a virtual clock |
-| Agents | a few consumers in the page, each an `IdemClient` with its own credential | as many simulated agents as you set |
-| Time | real: a freshness period has to actually pass | virtual: the run jumps from event to event, at the speed you choose |
-| Good for | seeing that the protocol works over a real network, and verifying signatures yourself | seeing aggregation and caching at scale, and comparing modes on the same workload |
+| What runs | a network you build, in your browser: the IDEM engine (a deterministic simulation) or the NDN engine (real NDN routers compiled to WebAssembly) | real HTTP requests from your browser to the site's edge gateway, which forwards to the demo producer |
+| Engine | IDEM: the same `Forwarder`, in the page, on a virtual clock. NDN: YaNFD, one router per forwarder, in real time | the edge's `Forwarder`, on the server, on the wall clock |
+| Agents | as many as you add, each with its own list of tools | a few consumers in the page, each an `IdemClient` with its own credential |
+| Good for | seeing aggregation and caching on any topology, and comparing protocols on the same workload | seeing that the protocol works over a real network, and verifying signatures yourself |
 
-Neither mode produces a result of the project. The counters describe the run in front of you. Measured numbers, with their seeds and configurations, are on the [results](/results) page.
+Nothing here produces a result of the project. The counters describe the run in front of you. Measured numbers, with their seeds and configurations, are on the [benchmarks](/benchmarks) page.
 
 ### Live {#live}
 
@@ -31,37 +32,54 @@ The demo producer serves five tools over a small corpus committed with the site.
 > [!NOTE]
 > In the deployment the edge's Content Store lives in the memory of one function instance. If your request lands on a different instance, a call you expected to hit will miss. That is the deployment, not the protocol.
 
-### Swarm {#swarm}
+## The network editor {#editor}
 
-Swarm mode runs `@idem/sim`: simulated agents issue tool calls over virtual links, with a virtual clock. Everything is derived from one **seed**, so the same seed and the same settings give the same run, event for event, and a run can be shared by its address.
+A network is agents, forwarders and producers joined by links. **Agents** make tool calls: each has a number of calls, a think time between them, and a list of tools from the producers it can reach, each with a weight. **Forwarders** are IDEM gateways (an edge, a regional node): they aggregate identical pending calls in the PIT and keep signed answers in the Content Store, whose size you set. **Producers** are MCP servers that sign their results: each has a name (it goes into every Data name it signs), the tools it serves, and how long each tool's results stay fresh. **Links** have a latency and a loss rate.
 
-Its most useful view is the **comparison**: the same seeded workload runs in more than one mode, always `mcp-direct` and `idem`, plus `mcp-local-cache` when *Also run MCP with a per-agent local cache* is ticked. The agents ask for exactly the same things at exactly the same times, so whatever differs between the runs is the protocol.
+Agents connect only to forwarders, never straight to a producer or to each other: the forwarder is where IDEM aggregates and caches, so the editor refuses those links and says why.
 
-| Mode | What happens to a call |
+| To | Do this |
+|---|---|
+| add a node | click *Agent*, *Forwarder* or *Producer*: it appears next to the selected node, already linked (or drag the chip onto the network) |
+| move a node | drag it. A run never restarts for a move |
+| link two nodes | select one, then drag from its blue handle onto the other (or hold `Shift` and drag from a node) |
+| change a node or a link | select it, and use the *Selected* section. Every field has an info bubble |
+| remove | select, then `Delete` |
+| look around | drag empty space to pan; scroll, pinch or use the buttons to zoom; `F` fits the network |
+| undo | `⌘Z` (`⇧⌘Z` to redo) |
+| share | *Share* copies a link that carries the whole network |
+
+When something stops the network from running (no agent, an agent with no tools, a tool whose producer it cannot reach), the *Run* section lists it.
+
+### The IDEM engine {#idem-engine}
+
+The IDEM engine runs the network in `@idem/sim`: the agents' calls, over virtual links, with a virtual clock. Everything is derived from one **seed**, so the same network and seed give the same run, event for event. Any change but moving a node restarts it.
+
+Its most useful view is the **comparison**: the same seeded workload runs once per protocol you tick, side by side. The agents ask for exactly the same things at exactly the same times, so whatever differs between the panes is the protocol.
+
+| Protocol | What happens to a call |
 |---|---|
 | `mcp-direct` | goes straight to the producer. Nothing is cached |
 | `mcp-local-cache` | each agent remembers its own answers. A repeat by the same agent is local; a repeat by another agent goes to the producer |
-| `idem` | goes to the shared edge forwarder: aggregated in the PIT, answered from the CS, or forwarded |
+| `idem` | goes through the forwarders: aggregated in a PIT, answered from a CS, or forwarded |
 
-## What the controls change {#controls}
+### The NDN engine {#ndn-engine}
 
-Each control is a parameter of the workload, the network or the cache. Changing one and watching what moves is the quickest way to build intuition.
+The NDN engine runs the same network on real NDN routers: each forwarder is an instance of YaNFD (the forwarder of the NDN project's ndnd), compiled to WebAssembly and running in this tab. Producers and agents speak the native binding (`@idem/ndn`): Interests and Data are NDN TLV packets, and agents verify both signatures of every answer. It runs in real time, so freshness periods really pass. The routers forward and cache but check no signature, and calls to `private` or side-effect tools never travel on NDN. The router is downloaded the first time you choose this engine.
 
-| Control | What it sets | What to watch |
+### What the settings change {#controls}
+
+| Setting | What it sets | What to watch |
 |---|---|---|
-| Agents | how many consumers issue calls | more agents mean more identical requests in flight together |
-| Calls per agent | how long each agent's workload is | a longer run gives the Content Store time to fill and pay off |
-| Cross-agent overlap | the share of each agent's requests drawn from a pool all agents share | at zero, agents never ask the same thing and a shared cache has nothing to share |
-| Zipf α | how skewed popularity is within the catalog | a higher α concentrates requests on a few names |
-| Catalog size | how many distinct pages exist | a small catalog repeats sooner |
-| TTL | the freshness the producer's manifest allows | a short TTL turns later hits back into misses |
-| CS size | the Content Store's byte budget | a small store evicts (`cs_evict`) before entries are reused |
-| Agent ↔ edge latency | the delay of the agents' links | it spreads out when identical requests reach the edge |
-| Edge ↔ producer latency | the delay of the link to the producer | a slow producer link keeps Interests pending longer, so more of them aggregate |
-| Link loss | the share of packets a link drops | lost packets surface as timeouts and retries |
-| Private calls | the share of calls to `my_notes` | they are partitioned per agent and never shared |
-| Side-effect calls | the share of calls to `send_email` | they always pass through |
-| Topology | star (one edge) or tree (edges and a regional forwarder) | in a tree, hits can also happen beyond the edge |
+| Calls (agent) | how long an agent's workload is | a longer run gives the Content Store time to fill and pay off |
+| Shared pages (agent) | the share of its `fetch_page` calls drawn from a catalog every agent shares | at zero, agents never ask the same page and a shared cache has nothing to share |
+| Popularity skew (agent) | how concentrated that catalog's popularity is (Zipf α) | a higher skew concentrates requests on a few names |
+| Tools and weights (agent) | which tools it calls, on which producer, how often | `my_notes` is private, `send_email` has a side effect: neither is ever shared |
+| Content Store (forwarder) | the store's byte budget | a small store evicts (`cs_evict`) before entries are reused |
+| Fresh for (producer) | the freshness its manifest allows per tool | a short freshness turns later hits back into misses |
+| Service time (producer) | how long it takes to run a tool | a slow producer keeps Interests pending longer, so more of them aggregate |
+| Latency (link) | the link's one-way delay | it spreads out when identical requests reach a forwarder |
+| Loss (link) | the share of packets the link drops | lost packets surface as timeouts and retries |
 | Seed | the source of every random choice | the same seed replays the same run |
 | Speed | how fast virtual time advances on screen | it changes the animation, never the outcome |
 
@@ -145,9 +163,12 @@ The sandbox can be driven without a pointer:
 | Key | What it does |
 |---|---|
 | `1`–`6` | open or close a window, in the order above |
-| `Space` | a burst (live) · play or pause (swarm) |
-| `R` | restart the run (swarm) |
-| `Esc` | close the shortcut list, clear the highlight; on a window's grip, close that window |
+| `Space` | a burst (live) · play or pause (editor) |
+| `R` | restart the run (editor) |
+| `Delete` | remove the selected node or link (editor) |
+| `⌘Z`, `⇧⌘Z` | undo, redo (editor) |
+| `F` | fit the network (editor) |
+| `Esc` | close the shortcut list, clear the highlight and the selection; on a window's grip, close that window |
 | `←` `↑` `→` `↓` | move a window, from the grip in its title bar (`Shift` for bigger steps) |
 | `Alt` + `←` `↑` `→` `↓` | resize a window, from the same grip |
 | `Tab`, then `←` `→` | reach the agents and forwarders on the stage (one tab stop); `Enter` acts as a click |

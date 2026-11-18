@@ -9,10 +9,10 @@ Vercel Functions.
 | Route | What | Data source |
 |---|---|---|
 | `/` | Landing: the problem in one scene (N agents fetching the same page), the thesis, one headline result, links | Headline number from `experiments/results` only; if none exists yet, show no number |
-| `/sandbox` (Live tab, default) | Browser agents over real HTTP through the deployed edge to the deployed producer (ADR-016) | `/api/edge/*`, `/api/producer/*`, `@idem/gateway` `IdemClient` |
-| `/sandbox` (Swarm tab) | Deterministic simulation at scale, fully in the browser | `@idem/sim` + `@idem/core` (real code, virtual clock) |
+| `/sandbox` | Start screen, then the network editor (ADR-028): examples or a blank canvas, run by the simulator (IDEM engine) or by YaNFD routers in WebAssembly (NDN engine) | `@idem/sim` + `@idem/core` (real code, virtual clock); `apps/web/public/ndn/yanfd.wasm` + `@idem/ndn` |
+| `/sandbox` (Live example) | Browser agents over real HTTP through the deployed edge to the deployed producer (ADR-016) | `/api/edge/*`, `/api/producer/*`, `@idem/gateway` `IdemClient` |
 | `/docs`, `/docs/<slug>` | Docs: the single tab for the protocol and the library docs (§4, ADR-022). `/docs` is the introduction; `/spec` permanently redirects to `/docs/protocol` | Markdown read at render time: `apps/web/content/docs/<locale>/<slug>.md`, and `spec/01-protocol.md`, `spec/07-decisions.md`, `spec/08-references.md` rendered as they are |
-| `/results` | Charts of experiments E1–E5 | JSON exported from `experiments/results` at build time |
+| `/benchmarks` | Charts of experiments E1–E5 (the tab was "Results"; `/results` redirects here) | JSON exported from `experiments/results` at build time |
 | `/api/producer/*` | Demo producer: IDEM HTTP endpoints + `/api/producer/mcp` (MCP) | static corpus `apps/web/corpus/` |
 | `/api/edge/*` | Edge gateway (IDEM HTTP: interest, call, manifest, tools) | `@idem/gateway` |
 | `/api/mcp` | Edge gateway as a plain MCP endpoint (any MCP client) | `@idem/mcp` |
@@ -20,7 +20,43 @@ Vercel Functions.
 
 ## 2. Sandbox (`/sandbox`)
 
-Goal: in under a minute, a visitor *sees* aggregation and caching happen and how the numbers change.
+Goal: in under a minute, a visitor *sees* aggregation and caching happen and how the numbers change,
+on a network they can build.
+
+**Start screen and the editor (ADR-028)**
+
+- `/sandbox` opens on a start screen with nothing loaded: one card per example (Swarm: 8 agents, one
+  edge, one producer; Two producers: docs and weather, a tool list per agent; Regional tree: three
+  edges under a regional forwarder), a blank canvas, Live (real HTTP, a fixed network), and "continue
+  where you left off" when this browser saved a network. Each card draws its graph. A shared link
+  (`#n=…`, `?example=<id>`, or the old `?mode=swarm` / `?mode=live`) skips the screen.
+- The sidebar head names the example the network came from (· edited once changed) and opens the
+  picker; undo / redo (⌘Z, ⇧⌘Z) and Share (copies a `#n=` link) sit beside it.
+- **Run:** the "can't run yet" list (no agent, no producer, an agent without tools, a tool whose
+  producer is unreachable or no longer serves it), the engine (IDEM: simulated, seeded; NDN: real
+  routers), and for IDEM play / pause, restart, the protocols compared (MCP direct, MCP + local
+  cache, IDEM), speed and seed.
+- **Add:** Agent, Forwarder, Producer. A click adds the node next to the selected one and links it
+  (an agent next to an agent, or a producer next to a producer, joins the same forwarder); a drag
+  drops it where it is released. An agent linked toward a producer gets that producer's public tools.
+- **Selected:** the node's or link's settings, each with an info tip: agent (calls, think time,
+  shared pages and popularity skew when it fetches pages, its tools per reachable producer with
+  weights; stale entries flagged with a remove button), forwarder (CS size), producer (name,
+  validated and unique; tools served with their freshness), link (latency, loss); "Connect to…" and
+  Delete for every node.
+- **Stage gestures:** drag a node to move it (a run never restarts for a move); drag empty space to
+  pan; wheel, trackpad pinch or two fingers to zoom; click a node or a link to select it; drag from
+  the selected node's handle (or Shift-drag a node) onto another node to link them, the line turning
+  blue over a valid target; Delete removes, Escape deselects, arrows move the selected node (Shift:
+  further), F fits; zoom buttons and "fit" top right of the free area. Links an agent may not have
+  (agent–agent, agent–producer, producer–producer) are refused, and the reason is given.
+- **Engines:** IDEM runs the network in `@idem/sim` once per compared protocol, side by side, each
+  pane clipped to its frame and the camera shared; every edit but a move restarts it (debounced).
+  NDN runs one YaNFD WebAssembly router per forwarder in the tab, in real time, with `@idem/ndn`
+  producers and consumers; its windows show its own log (calls, names, latency) and counters (calls
+  answered and verified, CS hits and PIT aggregations read from the traffic, Interests to producers,
+  calls kept off NDN, mean latency), and say that routers verify nothing and `private` and
+  side-effect calls never travel on NDN.
 
 **Layout: an observatory (ADR-021)**
 
@@ -28,9 +64,9 @@ The sandbox is a full-viewport workspace under the site header (no page header, 
 on the GraphMan observatory and drawn in the flat cartoon style (ADR-017 amendment):
 
 - **Sidebar** (left, 264–420 px, resizable by a grip on its edge: drag, ←/→, double click resets;
-  width remembered): the Live / Swarm switch on top, then the mode's controls in collapsible sections
-  (scenario or workload, network, run, attacks), then the list of windows (open/close each, `1`–`6`,
-  "Tidy up" restores the default layout).
+  width remembered): the network head on top, then the controls in collapsible sections (the editor's
+  Run, Add, Selected, Attacks; Live's scenario and run), then the list of windows (open/close each,
+  `1`–`6`, "Tidy up" restores the default layout).
 - **Stage** (the rest): the topology canvas fills it, over a halftone of ink dots. Floating clusters:
   status top centre (live: edge connection; swarm: play/pause and virtual time), legend bottom left,
   keyboard cheat sheet bottom right (`?`).
@@ -41,13 +77,14 @@ on the GraphMan observatory and drawn in the flat cartoon style (ADR-017 amendme
   (or dragged from its sidebar button onto the stage: the window's frame shows where it will land and
   it opens or moves there; elsewhere or Escape cancels), resized from the corner, always clamped inside the stage, moved with arrow keys from their grip
   and resized with Alt + arrow keys from it (Escape closes); however a window is closed, focus
-  returns to its toggle in the sidebar. The mode's description and each setting's meaning sit in info
-  bubbles (an "i" beside the mode switch and beside each label; hover, focus or tap). No scrollbars in the
-  workspace except the event log's. Open windows per mode, positions, sizes, stacking and the sidebar width are saved
+  returns to its toggle in the sidebar. Live's description and each setting's meaning sit in info
+  bubbles (an "i" beside the network head and beside each label; hover, focus or tap). No scrollbars in the
+  workspace except the event log's. Open windows (one set for Live, one for the editor), positions, sizes, stacking and the sidebar width are saved
   in `localStorage` (failures ignored). Windows open with a springy pop from their title bar and close
   with a short shrink.
-- The network is laid out in the part of the stage the windows leave free (windows hugging an edge
-  claim a band along it) and glides there on a spring when windows move, open or close.
+- The network is drawn in the part of the stage the windows leave free (windows hugging an edge claim
+  a band along it), which glides on a spring when windows move, open or close. In the editor nodes
+  keep the positions the visitor gave them, seen through the camera; Live lays its nodes out.
 - The canvas nodes that act on a click (live: agents and the edge; swarm: forwarders) are also
   invisible buttons over the canvas, one tab stop for all of them (arrow keys, Home, End; focus shows
   the node's path like a hover). If the renderer cannot be made, the stage retries with Canvas2D on
@@ -55,7 +92,7 @@ on the GraphMan observatory and drawn in the flat cartoon style (ADR-017 amendme
   the halftone recreate their renderers on the new device (`useGpuGeneration`).
 - **Phone (≤ 840 px):** stage on top, a tabbed sheet below (Controls plus one tab per window).
 - `prefers-reduced-motion`: windows fade instead of popping, no throw or bounce, no packet squash,
-  the swarm never autoplays.
+  the editor's runs never autoplay.
 
 **Canvas** (WebGPU with Canvas2D fallback, ADR-015): agents → edge → (optional core) → producer, in
 the hero globe's vocabulary: solid shapes with a background-coloured outline, dashed agent links,
@@ -65,11 +102,10 @@ ink = rejection (a × pops over the node). Forwarders show their PIT and CS coun
 Hover a node to see its path to the producer; click a forwarder to open its tables (live: click an
 agent to make it ask).
 
-- **Split comparison:** the same seeded workload runs twice, side by side on the stage, in
-  `mcp-direct` and `idem` mode (toggle to add `mcp-local-cache`); the Compare window puts their
-  counters in one table. Same seed → same agent behavior → the difference is the protocol.
-- **Controls:** agents (1–32), cross-agent overlap (0–100%), Zipf α, catalog size, TTL, CS size,
-  link latency and loss, simulation speed, seed, "replay real trace" (bundled trace from E3).
+- **Split comparison (IDEM engine):** the same seeded workload runs once per compared protocol, side
+  by side on the stage (`mcp-direct` and `idem` by default, `mcp-local-cache` on request); the
+  Compare window puts their counters in one table. Same seed → same agent behavior → the difference
+  is the protocol.
 - **Live counters (Metrics, Compare):** upstream calls, CS hit ratio, PIT aggregations, bytes on the
   producer link, p50/p95 latency, verify failures (should stay 0). Live mode counts only the calls the
   page made (served by edge CS / edge PIT / producer / plain call, verified here, latency by path).
@@ -81,15 +117,19 @@ agent to make it ask).
 - **Packet inspector:** the name split into producer / tool / schema digest / args digest, the Data
   meta and signature block, the content digest (and, live, the args digest) recomputed in the page,
   the verification result (live: "verify again", timed), the trace or the name's recent events.
-- **"Attack" buttons** (sidebar): tamper with a Data in flight; send a mismatched digest; request
-  another user's `private` result. Each must be visibly rejected (demonstrates H3): the verdict lands
+- **"Attack" buttons** (sidebar, IDEM engine, with a target producer when there are several): tamper
+  with a Data in flight; send a mismatched digest; request another user's `private` result. Each must be visibly rejected (demonstrates H3): the verdict lands
   in the Safety window, which opens, and the canvas shows the rejection.
 
 **Rules**
 
 - The sandbox runs the **same** `Forwarder` as production; only faces and clock differ.
-- Everything is deterministic for a given seed; the URL encodes the full config (shareable links).
-- The page must say plainly that this is a simulation and link to `/results` for measured numbers.
+- The IDEM engine is deterministic for a given seed (on one platform, ADR-027); a share link carries
+  the whole network and its run settings.
+- The NDN engine runs in real time: its counters describe this visit only and are never quoted as
+  results.
+- The page must say plainly what is simulated and what runs for real, and link to `/benchmarks` for
+  measured numbers.
 
 ## 3. Live mode (`/sandbox/live`)
 
@@ -120,7 +160,7 @@ Information architecture (reading order; it drives the sidebar and the previous 
 | Specification | **Security** — threat model from protocol §11: each attack and the rule behind its defence; what v1 leaves open | `/docs/security` | `content/docs/<locale>/security.md` |
 | Use | **API reference** — the exports of `@idem/core`, `gateway`, `mcp`, `sim`, checked against `packages/*/src`, with a producer / edge / consumer example | `/docs/api` | `content/docs/<locale>/api.md` |
 | Use | **Using the sandbox** — what each mode runs, what each control changes, how to read the PIT, CS, log and attacks | `/docs/sandbox` | `content/docs/<locale>/sandbox.md` |
-| Research | **Evaluation** — method only (hypotheses, modes, workloads, metrics, E1–E5); no numbers, which live on `/results` | `/docs/evaluation` | `content/docs/<locale>/evaluation.md` |
+| Research | **Evaluation** — method only (hypotheses, modes, workloads, metrics, E1–E5); no numbers, which live on `/benchmarks` | `/docs/evaluation` | `content/docs/<locale>/evaluation.md` |
 | Research | **Decisions** — the ADRs | `/docs/decisions` | `spec/07-decisions.md` itself |
 | Research | **References** — the bibliography | `/docs/references` | `spec/08-references.md` itself |
 
@@ -151,7 +191,7 @@ bindings are a section of Architecture, and the threat model is the Security pag
 
 Technical and calm, in the register of a modern developer tool: dark-first with a light theme,
 monospace for names and packets, one accent color for Interests (blue) and one for Data (amber) used
-consistently across canvas, figures, charts and docs. Charts follow one palette across `/results` and
+consistently across canvas, figures, charts and docs. Charts follow one palette across `/benchmarks` and
 the sandbox. See ADR-017.
 
 - **Mark.** ⇌ (`IdemMark`, `components/brand/mark.tsx`): the upper harpoon is the Interest (blue), the
