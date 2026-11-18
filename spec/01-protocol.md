@@ -327,6 +327,9 @@ format v0.3; naming, signing and verification are `@idem/core`'s, unchanged.
     the IDEM `keyLocator` names, [P-5.2]), and the IDEM signature and `contentDigest` exactly as in
     [P-5.5]. A Data that fails either check is not delivered (`BAD_SIGNATURE` / `UNTRUSTED_KEY`).
     The plain-call retry of [P-5.5] needs the overlay; a native-only consumer fails closed.
+  - Loss is recovered by the consumer: an Interest left unanswered for its InterestLifetime MAY be
+    expressed again for the same name with a fresh Nonce (NFD drops a name + Nonce pair it has
+    seen). `NdnConsumer` does so `retransmissions` times (default 0).
   - A Data larger than 8800 bytes (NFD's packet limit) is not segmented in v1: the producer answers
     `UPSTREAM_ERROR`.
 - **Errors.** An application-level Nack: a Data with the Interest's name, ContentType NACK,

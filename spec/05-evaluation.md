@@ -127,6 +127,46 @@ NFD version, image digest and NDNts versions. Its config is `experiments/ndn/nfd
 numbers for the report. The same scenarios run as `packages/ndn/src/nfd.test.ts` with
 `IDEM_NFD=1` against running forwarders; without it they are skipped.
 
+As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/configs/e4.json`):
+- **Topology.** Docker on one host instead of Mini-NDN (it needs a Linux host with Open vSwitch;
+  the author's machine is macOS). Each node is one network namespace holding an NFD 24.07 container
+  (`ghcr.io/named-data/nfd:20261105`, pinned by digest) and a Node 24 sidecar that runs the overlay
+  roles, so **both bindings cross the same interfaces and the same netem qdiscs**. One Docker network
+  per link: agents–edge1 (`a1`), agents–edge2 (`a2`), edge1–producer (`e1p`), edge1–regional (`e1r`),
+  edge2–regional (`e2r`), regional–producer (`rp`). `tc netem` on both ends of every link: the
+  link's one-way delay (as E2: 5 ms agent links, 40 ms in the star, 10 + 30 ms in the tree), the
+  run's loss on every link in each direction, no rate limit.
+- **Modes.** B0, B2, B3 on the overlay (`@idem/gateway` edge/regional, `createProducerHandler`;
+  B0 relays plain `/idem/v1/call` and the producer strips `_meta`), and **N2/N3**, the star and the
+  tree on native NDN: `NdnConsumer` per agent over its own UDP face to the edge NFD, permanent UDP
+  faces and static routes between NFDs, `serveNdn` on the producer's own NFD (registered over a
+  local TCP face; its CS stays on, as on any NDN host). B1 and B4 are not run (no network effect).
+- **Workload.** W-syn at the E2 base point (8 agents × 20 calls, think time 2 s), planned by
+  `planWorkload` with seed-derived think times, so every mode of a seed replays the same calls. The
+  plan is not the one E2 draws for the same seed (different RNG forks). Pages are log-normal around
+  2 KiB (σ = 0.7) clamped to [512, 7168] bytes so every result fits one NDN packet (v1 does not
+  segment, §9.2 of spec 01); B0–B3 serve the same pages.
+- **Loss recovery.** The overlay rides TCP. The native consumer re-expresses an unanswered Interest
+  with a fresh Nonce after its InterestLifetime (1 s, up to 4 retransmissions; NFD drops a name +
+  Nonce it has seen). Both are part of what is compared.
+- **Measured per run** (`metrics.csv`): calls answered/failed/timed out, upstream calls (tool
+  handler invocations) and repeats of a name, the oracle, latency p50/p95/p99 of answered calls,
+  requests sent and retransmissions, bytes and frames received over the producer link and over all
+  links (`/proc/net/dev` of both ends, Ethernet frames), TCP retransmitted segments of every
+  namespace, consumer verification time (native: both signatures, [P-9.3]; overlay: `verifyData`
+  timed once more on the same Data) and the forwarders' `verify_ok` time; per hop (`hops.csv`):
+  Interests in, CS hits, absorbed (PIT aggregation and suppressed retransmissions), sent upstream,
+  from the gateways' events or NFD's face and CS counters. Reductions are paired with B0 of the
+  same (seed, loss). Also `calls.csv` (every call), `summary.csv`, `latency_cdf.csv`.
+- **Validity guard.** Wall-clock: an agent-side 100 ms timer records its largest delay; a run where
+  it exceeds 250 ms (a suspended host or VM) is discarded and repeated up to twice, and the
+  experiment fails if it keeps happening. `env.json` records NFD, image digests, NDNts, `tc`, the
+  netem qdisc of every interface, Docker VM, the harness digest and the discarded runs.
+- Seeds 1..3 × loss {0, 1, 5} % × 5 modes = 45 runs of about a minute each. Three seeds keep the
+  run under the 45-minute target; the CIs are wide accordingly.
+- **Status.** Harness built and smoke-tested; the full run has not been executed (see roadmap M6).
+  No E4 number exists yet.
+
 ### E5 — Safety
 Adversarial runs: tamper with Data in flight, forge names (digest mismatch), replay stale Data,
 request `private` results across `authContext`s, poison attempts with a non-manifest key.
