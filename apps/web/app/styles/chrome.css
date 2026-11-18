@@ -576,3 +576,9 @@
     transform: none;
   }
 }
+
+/* A section the nav jumps to takes focus for screen readers; the ring around the whole section
+   would only be noise. */
+[data-nav-section][tabindex="-1"]:focus {
+  outline: none;
+}

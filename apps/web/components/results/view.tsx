@@ -306,7 +306,7 @@ export function ResultsView({
           )}
           {v.h1.base && (
             <li className="r-tile t-data">
-              <span className="r-tile-value">{f.pct(-v.h1.base.vsB0.mean)}</span>
+              <span className="r-tile-value">{f.pct(Math.abs(v.h1.base.vsB0.mean))}</span>
               <span className="r-tile-label">{t.tiles.upstream.label}</span>
               <span className="r-tile-sub">
                 {t.tiles.upstream.sub(baseAgents, f.points(v.h1.base.vsB0.ci95))}
