@@ -1,0 +1,9 @@
+# What `vercel deploy` uploads from the repository root (the project's root directory is apps/web).
+.claude
+.git
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+experiments/ndn/bench/.work
+.env*
