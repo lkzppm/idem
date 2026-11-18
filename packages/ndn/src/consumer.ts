@@ -8,6 +8,7 @@ import {
   isIdemError,
   type Manifest,
   producerPrefix,
+  randomNonce,
   type ToolIdentity,
   type ToolInfo,
   type ToolPolicy,
@@ -32,6 +33,17 @@ export interface NdnConsumerOptions {
   trust?: TrustStore;
   /** InterestLifetime of the manifest and tool-list Interests, in ms. Default `4000`. */
   lifetimeMs?: number;
+  /**
+   * InterestLifetime of tool-call Interests, in ms: also how long one attempt waits for its Data.
+   * Default: `@idem/core`'s `INTEREST_DEFAULTS.lifetimeMs`.
+   */
+  interestLifetimeMs?: number;
+  /**
+   * How many times a tool-call Interest that got no Data within its lifetime is sent again, each
+   * time with a fresh Nonce (NFD drops a name + Nonce pair it has already seen, Dead Nonce List).
+   * Default `0`: one Interest per call. Loss on the native binding is recovered only this way.
+   */
+  retransmissions?: number;
 }
 
 /** Outcome of {@link NdnConsumer.call}. */
@@ -47,6 +59,10 @@ export interface NdnCallOutcome {
   /** The verified result, or an `isError` result describing `error`. */
   result: CallToolResult;
   error?: { code: IdemWireErrorCode; message: string };
+  /** Interests sent for this call: `0` when it could not travel natively, `1 + retransmissions` at most. */
+  attempts: number;
+  /** Time spent in {@link verifyNdnData} (both signatures), in ms, when an answer was verified. */
+  verifyMs?: number;
 }
 
 function errorResult(code: string, message: string): CallToolResult {
@@ -142,8 +158,16 @@ export class NdnConsumer {
     const c = this.#policies.get(tool);
     if (!c) return undefined;
     try {
-      return (await buildInterest({ producer: this.producer, identity: c.identity, policy: c.policy, args }))
-        .interest;
+      const lifetimeMs = this.#o.interestLifetimeMs;
+      return (
+        await buildInterest({
+          producer: this.producer,
+          identity: c.identity,
+          policy: c.policy,
+          args,
+          ...(lifetimeMs !== undefined && { lifetimeMs }),
+        })
+      ).interest;
     } catch (e) {
       if (isIdemError(e)) return undefined;
       throw e;
@@ -161,15 +185,27 @@ export class NdnConsumer {
         ndnName: "",
         result: errorResult("NOT_CACHEABLE", message),
         error: { code: "NOT_CACHEABLE", message },
+        attempts: 0,
       };
     }
-    const pkt = await encodeInterest(interest);
-    const base = { tool, name: interest.name, ndnName: ndnUri(pkt.name) };
-    let answer: NdnData;
-    try {
-      answer = await this.#fetch(pkt);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "no Data";
+    const tries = 1 + Math.max(0, Math.floor(this.#o.retransmissions ?? 0));
+    let answer: NdnData | undefined;
+    let ndnName = "";
+    let attempts = 0;
+    let message = "no Data";
+    while (!answer && attempts < tries) {
+      // A retransmission is a new Interest for the same name: same name, fresh Nonce.
+      const pkt = await encodeInterest(attempts === 0 ? interest : { ...interest, nonce: randomNonce() });
+      ndnName ||= ndnUri(pkt.name);
+      attempts++;
+      try {
+        answer = await this.#fetch(pkt);
+      } catch (e) {
+        message = e instanceof Error ? e.message : "no Data";
+      }
+    }
+    const base = { tool, name: interest.name, ndnName, attempts };
+    if (!answer) {
       return { ...base, result: errorResult("TIMEOUT", message), error: { code: "TIMEOUT", message } };
     }
     let decoded: ReturnType<typeof decodeData>;
@@ -190,7 +226,9 @@ export class NdnConsumer {
         error: { code: decoded.code, message: decoded.message },
       };
     }
+    const t0 = performance.now();
     const verify = await verifyNdnData(answer, this.trust);
+    const verifyMs = performance.now() - t0;
     if (!verify.ok || verify.data?.name !== interest.name) {
       // [P-9.3]: a key the trust store does not hold is UNTRUSTED_KEY, any other failure
       // BAD_SIGNATURE; a valid but `private` Data is NOT_CACHEABLE [P-9.4].
@@ -205,10 +243,11 @@ export class NdnConsumer {
       return {
         ...base,
         verify,
+        verifyMs,
         result: errorResult(code, reason),
         error: { code, message: reason },
       };
     }
-    return { ...base, verify, data: verify.data, result: verify.data.content };
+    return { ...base, verify, verifyMs, data: verify.data, result: verify.data.content };
   }
 }

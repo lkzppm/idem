@@ -18,6 +18,7 @@
     "format": "biome check --write .",
     "sim": "pnpm --filter @idem/sim run cli",
     "exp:e1": "pnpm sim -- --config experiments/configs/e1-node.json",
+    "exp:e4": "pnpm --filter @idem/bench-ndn run e4 --",
     "exp:all": "bash experiments/run-all.sh",
     "exp:ndn": "bash experiments/ndn/nfd/run.sh"
   },

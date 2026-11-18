@@ -88,6 +88,39 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  experiments/ndn/bench:
+    dependencies:
+      '@idem/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      '@idem/gateway':
+        specifier: workspace:*
+        version: link:../../../packages/gateway
+      '@idem/ndn':
+        specifier: workspace:*
+        version: link:../../../packages/ndn
+      '@idem/sim':
+        specifier: workspace:*
+        version: link:../../../packages/sim
+      '@ndn/endpoint':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      '@ndn/fw':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      '@ndn/nfdmgmt':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      '@ndn/node-transport':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      '@ndn/packet':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      undici:
+        specifier: 8.12.4
+        version: 8.12.4
+
   packages/core: {}
 
   packages/gateway:
@@ -1801,6 +1834,10 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
+  undici@8.12.4:
+    resolution: {integrity: sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==}
+    engines: {node: '>=22.19.0'}
+
   url-format-lax@2.0.0:
     resolution: {integrity: sha512-CkiFchmVicSktYp7Ide7BEJ1iUU4qFtqjawRQXmwW25e32nxzfFNFTn9+6SgQUvl1n6k3DbPz7vxmy+XtiSRLw==}
     engines: {node: '>=12'}
@@ -3395,6 +3432,8 @@ snapshots:
   undici-types@7.24.6: {}
 
   undici-types@8.9.0: {}
+
+  undici@8.12.4: {}
 
   url-format-lax@2.0.0: {}
 

@@ -66,11 +66,11 @@ Each milestone ends with its acceptance criteria met and the checklist ticked.
 - [x] Sandbox: native NDN view of a Live exchange (`apps/web/lib/sandbox/ndn.ts`, `components/sandbox/ndn-packet.tsx`; not wired in yet)
 - [x] `@idem/ndn` against a real NFD: TCP, UDP and WebSocket faces, 9 scenarios, `pnpm exp:ndn` (2026-11-18)
 - [ ] Runnable native producer/consumer (CLI) for Mini-NDN
-- [ ] Mini-NDN topologies (star, tree) + netem scripts
-- [ ] E3 real-agent traces (budgeted); E4 overlay vs native under loss
+- [ ] Mini-NDN topologies (star, tree) + netem scripts. Replaced by a Docker bench (`experiments/ndn/bench`: NFD 24.07 + overlay sidecars per namespace, star and tree, `tc netem` per link, `pnpm exp:e4`); built and smoke-tested, Mini-NDN itself not used (needs a Linux host)
+- [ ] E3 real-agent traces (budgeted); E4 overlay vs native under loss (harness, config and figures script ready; the full run has not been executed, so there is no E4 number yet)
 - [x] YaNFD (ndnd's forwarder) compiled to WebAssembly with a JS face bridge: PIT aggregation, Content Store and a 3-router chain pass on real NDN packets (`experiments/ndn/yanfd-wasm/`, 2026-11-18)
 - [ ] Sandbox as a network editor (examples or a blank canvas; draggable, configurable agents, forwarders and producers); NDN routers in the editor are YaNFD on WebAssembly, one per forwarder node, in the visitor's browser
-- [ ] Docker benchmarks of the native version (E4 and native-only measurements, NFD containers + netem)
+- [ ] Docker benchmarks of the native version (E4 and native-only measurements, NFD containers + netem): harness built (`pnpm exp:e4`), full run pending on a machine that stays awake
 
 **Accept:** same workload runs on overlay and native NDN; E4 figures produced.
 

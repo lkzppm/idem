@@ -12,3 +12,6 @@ next-env.d.ts
 
 # Local Claude Code tooling (not part of IDEM)
 .claude/
+
+# E4 bench scratch (control files of the run in progress)
+experiments/ndn/bench/.work/
