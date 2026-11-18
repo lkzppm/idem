@@ -759,9 +759,7 @@ export function LiveMode() {
                 [VISITORS]: (
                   <>
                     <span className="obs-node-box-title">{tl.card.visitorsBox}</span>
-                    <span className="obs-node-box-sub">
-                      {others > 0 ? tl.feed.othersSeen(others) : tl.card.visitorsNone}
-                    </span>
+                    <span className="obs-node-box-sub">· {others > 0 ? others : tl.card.visitorsNone}</span>
                   </>
                 ),
               },

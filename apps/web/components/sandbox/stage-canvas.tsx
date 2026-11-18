@@ -207,7 +207,12 @@ export function StageCanvas({
         const s = p.scene.screen(fr, n.id);
         if (!s) continue;
         const el = labels.current.get(`${p.key}:${n.id}`);
-        if (el) {
+        if (el?.dataset.box) {
+          // A boxed node: the box sits on the node (its links leave from it), kept inside the pane.
+          const half = el.offsetWidth / 2;
+          const x = Math.min(Math.max(s[0], fr.x + 10 + half), fr.x + fr.w - 10 - half);
+          el.style.transform = `translate3d(${x}px, ${s[1]}px, 0) translate(-50%, -50%)`;
+        } else if (el) {
           const dy = (n.kind === "agent" ? 9 : n.kind === "forwarder" ? 15 : 17) * k;
           el.style.transform = `translate3d(${s[0]}px, ${s[1] + dy}px, 0) translateX(-50%)`;
         }
