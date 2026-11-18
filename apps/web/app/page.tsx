@@ -239,8 +239,8 @@ export default async function Home() {
             </div>
             <p className="mx-auto mt-10 max-w-xl text-[13px] leading-relaxed text-pretty text-faint">
               {t.cta.fine[0]}
-              <Link href="/results" className={linkClass}>
-                /results
+              <Link href="/benchmarks" className={linkClass}>
+                /benchmarks
               </Link>
               {t.cta.fine[1]}
             </p>

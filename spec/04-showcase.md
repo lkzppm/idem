@@ -12,7 +12,7 @@ Vercel Functions.
 | `/sandbox` (Live tab, default) | Browser agents over real HTTP through the deployed edge to the deployed producer (ADR-016) | `/api/edge/*`, `/api/producer/*`, `@idem/gateway` `IdemClient` |
 | `/sandbox` (Swarm tab) | Deterministic simulation at scale, fully in the browser | `@idem/sim` + `@idem/core` (real code, virtual clock) |
 | `/docs`, `/docs/<slug>` | Docs: the single tab for the protocol and the library docs (§4, ADR-022). `/docs` is the introduction; `/spec` permanently redirects to `/docs/protocol` | Markdown read at render time: `apps/web/content/docs/<locale>/<slug>.md`, and `spec/01-protocol.md`, `spec/07-decisions.md`, `spec/08-references.md` rendered as they are |
-| `/results` | Charts of experiments E1–E5 | JSON exported from `experiments/results` at build time |
+| `/benchmarks` | Charts of experiments E1–E5 (the tab was "Results"; `/results` redirects here) | JSON exported from `experiments/results` at build time |
 | `/api/producer/*` | Demo producer: IDEM HTTP endpoints + `/api/producer/mcp` (MCP) | static corpus `apps/web/corpus/` |
 | `/api/edge/*` | Edge gateway (IDEM HTTP: interest, call, manifest, tools) | `@idem/gateway` |
 | `/api/mcp` | Edge gateway as a plain MCP endpoint (any MCP client) | `@idem/mcp` |
@@ -89,7 +89,7 @@ agent to make it ask).
 
 - The sandbox runs the **same** `Forwarder` as production; only faces and clock differ.
 - Everything is deterministic for a given seed; the URL encodes the full config (shareable links).
-- The page must say plainly that this is a simulation and link to `/results` for measured numbers.
+- The page must say plainly that this is a simulation and link to `/benchmarks` for measured numbers.
 
 ## 3. Live mode (`/sandbox/live`)
 
@@ -120,7 +120,7 @@ Information architecture (reading order; it drives the sidebar and the previous 
 | Specification | **Security** — threat model from protocol §11: each attack and the rule behind its defence; what v1 leaves open | `/docs/security` | `content/docs/<locale>/security.md` |
 | Use | **API reference** — the exports of `@idem/core`, `gateway`, `mcp`, `sim`, checked against `packages/*/src`, with a producer / edge / consumer example | `/docs/api` | `content/docs/<locale>/api.md` |
 | Use | **Using the sandbox** — what each mode runs, what each control changes, how to read the PIT, CS, log and attacks | `/docs/sandbox` | `content/docs/<locale>/sandbox.md` |
-| Research | **Evaluation** — method only (hypotheses, modes, workloads, metrics, E1–E5); no numbers, which live on `/results` | `/docs/evaluation` | `content/docs/<locale>/evaluation.md` |
+| Research | **Evaluation** — method only (hypotheses, modes, workloads, metrics, E1–E5); no numbers, which live on `/benchmarks` | `/docs/evaluation` | `content/docs/<locale>/evaluation.md` |
 | Research | **Decisions** — the ADRs | `/docs/decisions` | `spec/07-decisions.md` itself |
 | Research | **References** — the bibliography | `/docs/references` | `spec/08-references.md` itself |
 
@@ -151,7 +151,7 @@ bindings are a section of Architecture, and the threat model is the Security pag
 
 Technical and calm, in the register of a modern developer tool: dark-first with a light theme,
 monospace for names and packets, one accent color for Interests (blue) and one for Data (amber) used
-consistently across canvas, figures, charts and docs. Charts follow one palette across `/results` and
+consistently across canvas, figures, charts and docs. Charts follow one palette across `/benchmarks` and
 the sandbox. See ADR-017.
 
 - **Mark.** ⇌ (`IdemMark`, `components/brand/mark.tsx`): the upper harpoon is the Interest (blue), the

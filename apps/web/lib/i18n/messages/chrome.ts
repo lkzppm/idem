@@ -17,7 +17,7 @@ export const chrome = defineMessages(
       home: "IDEM, home",
       /** Accessible name of the main nav landmark. */
       nav: "Main",
-      tabs: { sandbox: "Sandbox", docs: "Docs", results: "Results" },
+      tabs: { sandbox: "Sandbox", docs: "Docs", results: "Benchmarks" },
     },
     theme: { toLight: "Switch to light theme", toDark: "Switch to dark theme" },
     language: {
@@ -36,7 +36,7 @@ export const chrome = defineMessages(
       site: "Site",
       author: "Author",
       portfolio: "Portfolio",
-      links: { home: "Home", sandbox: "Sandbox", docs: "Docs", results: "Results", brand: "Brand" },
+      links: { home: "Home", sandbox: "Sandbox", docs: "Docs", results: "Benchmarks", brand: "Brand" },
       newTab: "opens in a new tab",
       prototype: "Research prototype",
       course: "EEL878 Computer Networks I",
@@ -54,7 +54,7 @@ export const chrome = defineMessages(
     header: {
       home: "IDEM, início",
       nav: "Principal",
-      tabs: { sandbox: "Sandbox", docs: "Docs", results: "Resultados" },
+      tabs: { sandbox: "Sandbox", docs: "Docs", results: "Benchmarks" },
     },
     theme: { toLight: "Mudar para o tema claro", toDark: "Mudar para o tema escuro" },
     language: {
@@ -71,7 +71,7 @@ export const chrome = defineMessages(
       site: "Site",
       author: "Autor",
       portfolio: "Portfólio",
-      links: { home: "Início", sandbox: "Sandbox", docs: "Docs", results: "Resultados", brand: "Marca" },
+      links: { home: "Início", sandbox: "Sandbox", docs: "Docs", results: "Benchmarks", brand: "Marca" },
       newTab: "abre em uma nova aba",
       prototype: "Protótipo de pesquisa",
       course: "EEL878 Redes de Computadores I",

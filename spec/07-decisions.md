@@ -386,7 +386,7 @@ is accepted is recorded as accepted: nothing in the engine was changed to make t
 `safety.test.ts` names the open finding and the limits so that a fix fails the test until the results
 are rerun. The simulator's own agent follows ADR-024: the [P-5.5] retry must carry Data signed for
 the same name.
-(8) *The page is generated.* `/results` imports `apps/web/lib/results/data.json`, produced by
+(8) *The page is generated.* `/benchmarks` (then `/results`) imports `apps/web/lib/results/data.json`, produced by
 `pnpm sim -- export-web` from the run folders; a test compares the file with the folders. Verdicts
 on H1 to H3 are computed from that data by stated rules, not written by hand. The matplotlib figures
 for the report come from the same folders (`experiments/plots/make_figures.py`, uv).

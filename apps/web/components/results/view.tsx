@@ -107,7 +107,7 @@ function durationOf(f: Format, ms: number): string {
 
 /**
  * The results page. A pure function of the committed data and the dictionary, so it renders the
- * same on the server for any request; `app/results/page.tsx` only chooses the locale.
+ * same on the server for any request; `app/benchmarks/page.tsx` only chooses the locale.
  */
 export function ResultsView({
   locale,

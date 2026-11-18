@@ -100,7 +100,7 @@ export async function SiteFooter() {
     { href: "/", label: t.links.home },
     { href: "/sandbox", label: t.links.sandbox },
     { href: "/docs", label: t.links.docs },
-    { href: "/results", label: t.links.results },
+    { href: "/benchmarks", label: t.links.results },
     { href: "/brand", label: t.links.brand },
   ];
   const profiles = [

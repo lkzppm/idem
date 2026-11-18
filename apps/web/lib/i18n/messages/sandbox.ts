@@ -218,7 +218,7 @@ export const sandbox = defineMessages(
       },
       compare: {
         title: "Latency by path",
-        note: "Medians of this page's own calls over the real network. Not a benchmark: measured results live on /results.",
+        note: "Medians of this page's own calls over the real network. Not a benchmark: measured results live on /benchmarks.",
         paths: { cs: "edge CS", pit: "edge PIT", producer: "producer", call: "plain call" },
         calls: "calls",
         p50: "p50",
@@ -639,7 +639,7 @@ export const sandbox = defineMessages(
       },
       compare: {
         title: "Latência por caminho",
-        note: "Medianas das chamadas desta página pela rede real. Não é um benchmark: os resultados medidos ficam em /results.",
+        note: "Medianas das chamadas desta página pela rede real. Não é um benchmark: os resultados medidos ficam em /benchmarks.",
         paths: { cs: "CS da borda", pit: "PIT da borda", producer: "produtor", call: "chamada comum" },
         calls: "chamadas",
         p50: "p50",
