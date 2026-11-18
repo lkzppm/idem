@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`names (protocol §2) > is stable across runs (golden vector) 1`] = `"/idem/v1/demo.idem.dev/echo/_RdPA5N068-YGqFBcDbvvR/zasGfp876zLRJSz9Y-SSWS_sv1kbDQjK2yS7F_OGQkY"`;

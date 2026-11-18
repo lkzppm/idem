@@ -1,0 +1,578 @@
+/* Header, nav, section nav, locale switch, footer. Imported by app/globals.css; owned by that area. */
+
+/* ------------------------------------------------------------------
+   Ink drop (components/site/goo.ts): a selector clipped to its item, whose two edges move on
+   their own transitions. The edge in the direction of travel leads with an overshoot; the other
+   follows a beat later, pulls back a hair first (anticipation) and lands with a bounce.
+   ------------------------------------------------------------------ */
+@property --goo-l {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --goo-r {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+.goo {
+  --goo-lead: 260ms cubic-bezier(0.22, 1.32, 0.36, 1);
+  --goo-trail: 380ms cubic-bezier(0.45, -0.18, 0.22, 1.28) 30ms;
+  clip-path: inset(0 var(--goo-r) 0 var(--goo-l) round var(--goo-round, 8px));
+  transition: var(--goo-also, opacity 0s);
+}
+.goo[data-goo="right"] {
+  transition:
+    --goo-r var(--goo-lead),
+    --goo-l var(--goo-trail),
+    var(--goo-also, opacity 0s);
+}
+.goo[data-goo="left"] {
+  transition:
+    --goo-l var(--goo-lead),
+    --goo-r var(--goo-trail),
+    var(--goo-also, opacity 0s);
+}
+
+/* ------------------------------------------------------------------
+   The mark (components/brand/mark.tsx, IdemMarkSplit). On a hovered logo link the harpoons slide
+   past each other (an exchange). Hover moves the `translate` property and the tab story animates
+   `transform`, so the two never fight.
+   ------------------------------------------------------------------ */
+.mark-harpoon {
+  overflow: visible;
+  transition: translate 500ms var(--ease-spring);
+}
+/* The upper harpoon recoils toward its tail; the lower one pops from its middle. */
+.mark-harpoon[data-harpoon="interest"] {
+  transform-origin: 22% 39%;
+}
+.mark-harpoon[data-harpoon="data"] {
+  transform-origin: 50% 61%;
+}
+@media (hover: hover) and (pointer: fine) {
+  .logo-link:hover .mark-harpoon[data-harpoon="interest"] {
+    translate: 1.5px 0;
+  }
+  .logo-link:hover .mark-harpoon[data-harpoon="data"] {
+    translate: -1.5px 0;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Header tabs (components/site/nav-links.tsx).
+   ------------------------------------------------------------------ */
+.nav-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px;
+  font-size: 14px;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  /* The tab story lights a label when its Interest lands (`--on-delay`). */
+  transition: color 200ms ease var(--on-delay, 0ms);
+}
+.nav-tab-label {
+  display: inline-block;
+  transition: transform 160ms var(--ease);
+}
+.nav-tab:active .nav-tab-label {
+  transform: scale(0.94);
+  transition-duration: 90ms;
+}
+.nav-tabs[data-story] .nav-tab[data-on],
+.nav-tabs:not([data-story]) .nav-tab[aria-current="page"] {
+  color: var(--fg);
+}
+@media (hover: hover) and (pointer: fine) {
+  .nav-tab:hover {
+    color: var(--fg);
+    transition-delay: 0ms;
+  }
+}
+/* Until the story mounts (first paint, no script), the underline is drawn by CSS. */
+.nav-tabs:not([data-story]) .nav-tab[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--interest);
+}
+
+/* A phone: the mark alone is the home link, and the tabs pack closer. */
+@media (max-width: 639px) {
+  .site-header .logo-word {
+    display: none;
+  }
+  .nav-tab {
+    padding: 0 8px;
+  }
+  .nav-tabs:not([data-story]) .nav-tab[aria-current="page"]::after {
+    left: 6px;
+    right: 6px;
+  }
+}
+
+/* The hover drop: a soft ink shape behind the link under the pointer. */
+.nav-hover {
+  --goo-round: 9px;
+  --goo-also: opacity 140ms ease, transform 320ms var(--ease-spring);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% - 16px);
+  height: 32px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.88);
+}
+.nav-hover[data-show] {
+  opacity: 1;
+  transform: none;
+}
+
+/* The tab story (components/site/tab-story.ts): packets, ripples and the underline. Transient
+   pieces are invisible by default; their animations set every visible frame. */
+.tab-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.tab-underline {
+  position: absolute;
+  left: 0;
+  top: calc(100% - 3px);
+  width: 0;
+  height: 3px;
+  border-radius: 2px;
+  /* Half request, half answer: a hard split into two flat colours (no blend between them). */
+  background: linear-gradient(90deg, var(--interest) 0 50%, var(--data-bright) 50% 100%);
+  opacity: 0;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+.tab-packet,
+.tab-puff,
+.tab-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+/* A solid ball with an outline in the background colour, like the globe's packets. */
+.tab-packet {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  background: var(--interest);
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+/* A home loop turns from Interest to Data on the way: a yellow coat fades in over the blue. */
+.tab-packet > i {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--data-bright);
+  opacity: 0;
+}
+.tab-puff {
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  background: var(--interest);
+}
+.tab-puff-sm {
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+}
+.tab-ring {
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 1.5px solid var(--interest);
+}
+.tab-packet[data-kind="data"],
+.tab-puff[data-kind="data"] {
+  background: var(--data-bright);
+}
+.tab-ring[data-kind="data"] {
+  border-color: var(--data-bright);
+}
+
+/* ------------------------------------------------------------------
+   Language switch (components/site/locale-switch.tsx).
+   ------------------------------------------------------------------ */
+.locale-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex-shrink: 0;
+  width: 68px;
+  height: 34px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--veil);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.locale-switch:has(:focus-visible) {
+  outline: 2px solid var(--interest);
+  outline-offset: 2px;
+}
+.locale-switch[data-pending] {
+  cursor: progress;
+}
+.locale-option {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--fg-muted);
+  transition: color 160ms ease;
+}
+.locale-option:focus-visible {
+  outline: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .locale-option[aria-checked="false"]:hover {
+    color: var(--fg);
+  }
+}
+/* The drop: solid ink with the labels in the inverse colour, clipped to the chosen side. */
+.locale-drop {
+  --goo-round: 6px;
+  position: absolute;
+  inset: 3px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 6px;
+  background: var(--fg);
+  color: var(--bg);
+  pointer-events: none;
+}
+.locale-drop > span {
+  display: grid;
+  place-items: center;
+}
+
+/* ------------------------------------------------------------------
+   Home section nav (components/site/section-nav.tsx): a floating bar of glass under the header.
+   ------------------------------------------------------------------ */
+.section-nav {
+  position: fixed;
+  z-index: 40;
+  top: 74px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+  pointer-events: none;
+}
+.section-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: 44px;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  /* A flat cartoon shadow: a solid offset sliver of ink, no blur, no glow. */
+  box-shadow: 0 3px 0 0 color-mix(in srgb, var(--fg) 7%, transparent);
+  pointer-events: auto;
+  transform-origin: 50% 0;
+  /* Leaving: a small wind-up, then up and away under the header. */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-16px) scale(0.96);
+  transition:
+    opacity 180ms ease 40ms,
+    transform 240ms cubic-bezier(0.6, -0.28, 0.74, 0.05),
+    visibility 0s linear 240ms;
+}
+/* Arriving: drops in from under the header and lands with a little overshoot. */
+.section-nav[data-shown] .section-nav-bar {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 160ms ease-out,
+    transform 520ms var(--ease-spring),
+    visibility 0s;
+}
+.section-nav-top {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--fg-muted);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+.section-nav-top svg {
+  transition: transform 320ms var(--ease-spring);
+}
+.section-nav-top:active svg {
+  transform: translateY(-3px) scale(0.92);
+  transition-duration: 90ms;
+}
+@media (hover: hover) and (pointer: fine) {
+  .section-nav-top:hover {
+    color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+  }
+  .section-nav-top:hover svg {
+    transform: translateY(-2px);
+  }
+}
+/* A dashed divider, the site's line for "a link, not a wall". */
+.section-nav-sep {
+  flex-shrink: 0;
+  height: 18px;
+  border-left: 1.5px dashed var(--line-strong);
+}
+.section-nav-scroller {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  border-radius: 8px;
+}
+.section-nav-scroller::-webkit-scrollbar {
+  display: none;
+}
+.section-nav-track {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  width: max-content;
+}
+.section-nav-item {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  transition: color 160ms ease;
+}
+.section-nav-item:focus-visible,
+.section-nav-item[data-focus] {
+  outline: 2px solid var(--interest);
+  outline-offset: -2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  a.section-nav-item:hover {
+    color: var(--fg);
+  }
+}
+/* The drop: solid ink, the labels again in the inverse colour, clipped to the current section. */
+.section-nav-drop {
+  --goo-round: 8px;
+  --goo-also: opacity 160ms ease;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 2px;
+  background: var(--fg);
+  pointer-events: none;
+  opacity: 0;
+}
+.section-nav-drop[data-on] {
+  opacity: 1;
+}
+.section-nav-drop > .section-nav-item {
+  color: var(--bg);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .section-nav-bar {
+    background: var(--bg-elev);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Footer (components/site/footer.tsx).
+   ------------------------------------------------------------------ */
+.footer-dots {
+  display: block;
+  fill: color-mix(in srgb, var(--fg) 16%, transparent);
+}
+.footer-grid {
+  display: grid;
+  gap: 40px;
+  padding: 40px 0 48px;
+}
+@media (min-width: 640px) {
+  .footer-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 48px;
+  }
+}
+.footer-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.footer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 14px;
+}
+/* Site links: on hover an Interest (a blue dot) rolls in from the left and the label makes room. */
+.footer-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--fg-muted);
+  transition: color 200ms ease;
+}
+.footer-link::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--interest);
+  box-shadow: 0 0 0 1.5px var(--bg);
+  opacity: 0;
+  transform: translateX(-10px) scale(0.5);
+  transition:
+    opacity 140ms ease,
+    transform 360ms var(--ease-spring);
+}
+.footer-link > span {
+  transition: transform 360ms var(--ease-spring);
+}
+/* External profiles: the icon pops, the arrow leans out. */
+.footer-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-muted);
+  transition: color 200ms ease;
+}
+.footer-profile-icon {
+  display: grid;
+  place-items: center;
+  transition: transform 360ms var(--ease-spring);
+}
+.footer-out {
+  opacity: 0.6;
+  transition:
+    transform 300ms var(--ease-spring),
+    opacity 200ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .footer-link:hover,
+  .footer-profile:hover {
+    color: var(--fg);
+  }
+  .footer-link:hover::before {
+    opacity: 1;
+    transform: none;
+  }
+  .footer-link:hover > span {
+    transform: translateX(12px);
+  }
+  .footer-profile:hover .footer-profile-icon {
+    transform: scale(1.14) rotate(-6deg);
+  }
+  .footer-profile:hover .footer-out {
+    opacity: 1;
+    transform: translate(2px, -2px);
+  }
+}
+.footer-base {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 0 28px;
+  border-top: 1.5px dashed var(--line);
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+@media (min-width: 640px) {
+  .footer-base {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Reduced motion: edges jump, things fade; nothing travels or bounces.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .goo {
+    --goo-lead: 0s;
+    --goo-trail: 0s;
+  }
+  .nav-hover {
+    --goo-also: opacity 140ms ease;
+    transform: none;
+  }
+  .mark-harpoon {
+    transition: none;
+  }
+  .nav-tab {
+    transition-delay: 0ms;
+  }
+  .nav-tab-label,
+  .nav-tab:active .nav-tab-label {
+    transform: none;
+    transition: none;
+  }
+  .section-nav-bar,
+  .section-nav[data-shown] .section-nav-bar {
+    transform: none;
+    transition:
+      opacity 180ms ease,
+      visibility 0s linear 180ms;
+  }
+  .section-nav[data-shown] .section-nav-bar {
+    transition:
+      opacity 180ms ease,
+      visibility 0s;
+  }
+  .section-nav-top svg,
+  .footer-profile-icon,
+  .footer-out {
+    transition: opacity 160ms ease;
+  }
+  /* The rolling dot is movement; the colour change is enough. */
+  .footer-link::before {
+    display: none;
+  }
+  .footer-link:hover > span,
+  .footer-profile:hover .footer-profile-icon,
+  .footer-profile:hover .footer-out,
+  .section-nav-top:hover svg,
+  .section-nav-top:active svg {
+    transform: none;
+  }
+}

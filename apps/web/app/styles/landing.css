@@ -1,0 +1,1029 @@
+/* Home page sections and their figures. Imported by app/globals.css; owned by that area. */
+
+/*
+ * The flat cartoon kit for the landing's animated figures (components/landing/figures/*):
+ * solid shapes with an outline in the figure's background colour, halftone dots, dashed lines,
+ * two accents with one meaning each. No glow, no gradients, no soft shadows. Motion is written by
+ * the figures' frame functions (transform and opacity only); CSS here only colours and eases
+ * state changes (fills), and draws the section label's entrance.
+ */
+
+/* ---------- Section label: the mark's two harpoons meet ---------- */
+.eyebrow-mark {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  overflow: visible;
+  fill: none;
+  stroke-width: 3.2;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+.eyebrow-i {
+  stroke: var(--interest);
+}
+.eyebrow-d {
+  stroke: var(--data-bright);
+}
+@keyframes eyebrow-in-i {
+  0% {
+    opacity: 0;
+    transform: translateX(-11px) scaleX(1.5);
+  }
+  55% {
+    opacity: 1;
+    transform: translateX(1.6px) scaleX(0.86);
+  }
+  78% {
+    transform: translateX(-0.5px) scaleX(1.04);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes eyebrow-in-d {
+  0% {
+    opacity: 0;
+    transform: translateX(11px) scaleX(1.5);
+  }
+  55% {
+    opacity: 1;
+    transform: translateX(-1.6px) scaleX(0.86);
+  }
+  78% {
+    transform: translateX(0.5px) scaleX(1.04);
+  }
+  100% {
+    transform: none;
+  }
+}
+.eyebrow-i,
+.eyebrow-d {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.js .reveal .eyebrow-i,
+.js .reveal .eyebrow-d {
+  opacity: 0;
+}
+.js .reveal.is-visible .eyebrow-i,
+.js .reveal.is-visible .eyebrow-d {
+  /* The keyframes end without an opacity: the landed mark takes this one, not the hidden 0. */
+  opacity: 1;
+}
+.js .reveal.is-visible .eyebrow-i {
+  animation: eyebrow-in-i 620ms cubic-bezier(0.3, 0.7, 0.4, 1) calc(var(--delay, 0s) + 120ms) both;
+}
+.js .reveal.is-visible .eyebrow-d {
+  animation: eyebrow-in-d 620ms cubic-bezier(0.3, 0.7, 0.4, 1) calc(var(--delay, 0s) + 200ms) both;
+}
+@media (hover: hover) and (pointer: fine) {
+  .eyebrow:hover .eyebrow-i {
+    transform: translateX(1.5px);
+  }
+  .eyebrow:hover .eyebrow-d {
+    transform: translateX(-1.5px);
+  }
+  .eyebrow .eyebrow-i,
+  .eyebrow .eyebrow-d {
+    transition: transform 500ms var(--ease-spring);
+  }
+}
+
+/* ---------- Figure cards ---------- */
+.fig-card {
+  --fig-bg: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--fig-bg);
+}
+.fig-ground {
+  --fig-bg: var(--ground);
+}
+
+/* ---------- Figure parts (figures/parts.tsx) ---------- */
+.mfig {
+  -webkit-tap-highlight-color: transparent;
+}
+.mfig .o-fill {
+  fill: var(--fig-bg, var(--bg));
+}
+.mfig .lbl {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  fill: var(--fg-muted);
+}
+.mfig .lbl-strong {
+  font-weight: 600;
+  fill: var(--fg);
+}
+.mfig .mono {
+  font-family: var(--font-mono);
+}
+.mfig .tiny {
+  font-size: 10.5px;
+}
+.mfig .f-db {
+  fill: var(--data-bright);
+}
+.mfig .ln {
+  fill: none;
+  stroke: color-mix(in srgb, var(--fg) 26%, transparent);
+  stroke-width: 1.5;
+}
+.mfig .ln-dash {
+  stroke-dasharray: 4 5;
+}
+.mfig .ln-i {
+  stroke: var(--interest);
+}
+.mfig .ln-d {
+  stroke: var(--data-bright);
+}
+.mfig .ht-dot {
+  fill: var(--fg);
+  opacity: 0.16;
+}
+.mfig .pk-body {
+  stroke: var(--fig-bg, var(--bg));
+  stroke-width: 2.2;
+  paint-order: stroke;
+}
+.mfig .pk-i .pk-body,
+.mfig .pk-i .pk-puff {
+  fill: var(--interest);
+}
+.mfig .pk-d .pk-body,
+.mfig .pk-d .pk-puff {
+  fill: var(--data-bright);
+}
+/* A plain MCP message (no name, no signature): the packet's outline only. */
+.mfig .pk-o .pk-body {
+  fill: var(--fig-bg, var(--bg));
+  stroke: var(--fg-muted);
+  stroke-width: 1.8;
+  paint-order: normal;
+}
+.mfig .pk-o .pk-puff {
+  fill: var(--fg-muted);
+}
+.mfig .nd-agent-dot {
+  fill: var(--fg);
+  transition: fill 260ms ease;
+}
+.mfig .is-wait .nd-agent-dot {
+  fill: var(--interest);
+}
+.mfig .is-done .nd-agent-dot {
+  fill: var(--data-bright);
+}
+.mfig .nd-fwd-body {
+  fill: color-mix(in srgb, var(--fg) 7%, var(--fig-bg, var(--bg)));
+  stroke: var(--fg);
+  stroke-width: 2;
+  transition: fill 260ms ease;
+}
+.mfig .is-pit .nd-fwd-body {
+  fill: var(--interest);
+}
+.mfig .is-cs .nd-fwd-body {
+  fill: color-mix(in srgb, var(--data-bright) 60%, var(--fig-bg, var(--bg)));
+}
+.mfig .nd-core-ring {
+  fill: color-mix(in srgb, var(--fg) 7%, var(--fig-bg, var(--bg)));
+  stroke: var(--fg);
+  stroke-width: 2.2;
+  transition: fill 260ms ease;
+}
+.mfig .nd-core-dot {
+  fill: var(--fg);
+  transition: fill 260ms ease;
+}
+.mfig .is-cs .nd-core-dot {
+  fill: var(--data-bright);
+}
+.mfig .is-pit .nd-core-dot {
+  fill: var(--interest);
+}
+.mfig .mk {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mfig .mk-d {
+  stroke: var(--data-bright);
+}
+.mfig .mk-i {
+  stroke: var(--interest);
+}
+.mfig .mk-fg {
+  stroke: var(--fg);
+}
+.mfig .seal-body {
+  fill: var(--data-bright);
+  stroke: var(--fig-bg, var(--bg));
+  stroke-width: 2;
+  paint-order: stroke;
+}
+.mfig .seal-tick {
+  fill: none;
+  stroke: #0a0a0a;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mfig .burst {
+  fill: none;
+  stroke-width: 2.4;
+}
+.mfig .burst-i {
+  stroke: var(--interest);
+}
+.mfig .burst-d {
+  stroke: var(--data-bright);
+}
+/* A table or a box inside a figure: the figure's background with a hairline. */
+.mfig .tbl {
+  fill: var(--fig-bg, var(--bg));
+  stroke: color-mix(in srgb, var(--fg) 22%, transparent);
+  stroke-width: 1.2;
+}
+.mfig .tbl-dash {
+  stroke-dasharray: 4 4;
+}
+.mfig .face {
+  fill: var(--interest);
+}
+.mfig .face-l {
+  font-family: var(--font-sans);
+  font-size: 8px;
+  font-weight: 700;
+  fill: var(--bg);
+}
+.mfig .card-d {
+  fill: var(--data-bright);
+}
+.mfig .card-d-t {
+  fill: #0a0a0a;
+}
+.mfig .run-mark {
+  fill: var(--fg);
+}
+.mfig .hit {
+  fill: transparent;
+}
+
+/* ---------- The swarm scene (figures/swarm.tsx) ---------- */
+.swarm .swarm-agent {
+  cursor: pointer;
+  outline: none;
+}
+.swarm .swarm-agent:focus-visible .nd-agent-dot {
+  stroke: var(--interest);
+  stroke-width: 3;
+  paint-order: stroke;
+}
+@media (hover: hover) and (pointer: fine) {
+  .swarm .swarm-agent:hover .o-fill {
+    fill: color-mix(in srgb, var(--interest) 30%, var(--fig-bg));
+  }
+}
+.swarm-tables {
+  transform-box: fill-box;
+  transition:
+    opacity 260ms ease,
+    transform 520ms var(--ease-spring);
+}
+.swarm-tables[data-on="0"] {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+/* A two-option switch: a solid thumb slides under the chosen option (never a pill). */
+.seg {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.seg-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 7px;
+  background: var(--fg);
+  transition: transform 460ms var(--ease-spring);
+}
+.seg[data-on="1"] .seg-thumb {
+  transform: translateX(100%);
+  background: var(--interest);
+}
+.seg-btn {
+  position: relative;
+  z-index: 1;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  transition:
+    color 200ms ease,
+    transform 160ms ease-out;
+}
+.seg-btn[aria-checked="true"] {
+  color: var(--bg);
+}
+@media (hover: hover) and (pointer: fine) {
+  .seg-btn[aria-checked="false"]:hover {
+    color: var(--fg);
+  }
+}
+.seg-btn:active {
+  transform: scale(0.96);
+}
+
+/* The beats beside a scene: muted until the scene shows them, then they light up. */
+.beats {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-self: center;
+}
+.beat {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  transition: color 300ms ease;
+}
+.beat strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+.beat-mark {
+  position: relative;
+  margin-top: 6px;
+  width: 22px;
+  height: 11px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+  transition:
+    background-color 260ms ease,
+    transform 520ms var(--ease-spring);
+}
+.beat.is-on .beat-mark {
+  transform: translateX(3px) scaleX(1.12);
+}
+.beat-i.is-on .beat-mark {
+  background: var(--interest);
+}
+.beat-d.is-on .beat-mark {
+  background: var(--data-bright);
+}
+.beat-fg.is-on .beat-mark {
+  background: var(--fg);
+}
+.beat.is-on {
+  color: var(--fg);
+}
+
+.run-glyph {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal .eyebrow-i,
+  .js .reveal .eyebrow-d {
+    opacity: 1;
+    animation: none;
+  }
+  .beat-mark,
+  .seg-thumb,
+  .swarm-tables {
+    transition: none;
+  }
+  .beat.is-on .beat-mark {
+    transform: none;
+  }
+}
+
+/* ---------- The forwarder pipeline (figures/sorter.tsx) ---------- */
+.mfig .lbl-i {
+  fill: var(--interest);
+  font-weight: 600;
+}
+.mfig .lbl-d {
+  fill: var(--data);
+  font-weight: 600;
+}
+.mfig .ln-faint {
+  stroke: color-mix(in srgb, var(--fg) 14%, transparent);
+}
+.sorter .sbox-r {
+  fill: var(--fig-bg);
+  stroke: color-mix(in srgb, var(--fg) 30%, transparent);
+  stroke-width: 1.3;
+  transition:
+    stroke 220ms ease,
+    fill 220ms ease;
+}
+.sorter .sbox-t {
+  font-size: 12.5px;
+}
+.sorter .sbox-s {
+  font-size: 11px;
+  fill: var(--fg-subtle);
+}
+.sorter .sbox.is-i .sbox-r {
+  stroke: var(--interest);
+  stroke-width: 2;
+}
+.sorter .sbox.is-d .sbox-r {
+  stroke: var(--data-bright);
+  stroke-width: 2;
+}
+.sorter .sbox.is-end.is-i .sbox-r {
+  fill: color-mix(in srgb, var(--interest) 22%, var(--fig-bg));
+}
+.sorter .sbox.is-end.is-d .sbox-r {
+  fill: color-mix(in srgb, var(--data-bright) 26%, var(--fig-bg));
+}
+.sorter .say {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--fg-subtle);
+  transition: fill 200ms ease;
+}
+.sorter .say.is-on {
+  fill: var(--interest);
+}
+.sorter .sorter-fail {
+  font-size: 11.5px;
+}
+
+/* Scenario picker: hairline buttons; the chosen one carries a blue packet and fills a bar while it plays. */
+.pick {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  overflow: hidden;
+  padding: 7px 12px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  text-align: left;
+  transition:
+    border-color 200ms ease,
+    background-color 200ms ease,
+    transform 160ms ease-out;
+}
+.pick-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  transition: color 200ms ease;
+}
+.pick-call {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+.pick-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--interest);
+  transform-origin: left;
+}
+.pick[aria-pressed="true"] {
+  border-color: var(--interest);
+  background: var(--interest-soft);
+}
+.pick[aria-pressed="true"] .pick-label {
+  color: var(--fg);
+}
+.pick[aria-pressed="false"] .pick-bar {
+  visibility: hidden;
+}
+@media (hover: hover) and (pointer: fine) {
+  .pick:hover .pick-label {
+    color: var(--fg);
+  }
+  .pick[aria-pressed="false"]:hover {
+    border-color: color-mix(in srgb, var(--interest) 50%, var(--line-strong));
+  }
+}
+.pick:active {
+  transform: scale(0.97);
+}
+
+/* ---------- The stack (figures/stack.tsx): slabs drop, land, and lift under the pointer ---------- */
+.stack .slab-top {
+  fill: color-mix(in srgb, var(--fg) 4%, var(--fig-bg));
+  stroke: color-mix(in srgb, var(--fg) 34%, transparent);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+.stack .slab-side {
+  fill: color-mix(in srgb, var(--fg) 11%, var(--fig-bg));
+  stroke: color-mix(in srgb, var(--fg) 34%, transparent);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+.stack .slab-idem .slab-top {
+  fill: color-mix(in srgb, var(--interest) 20%, var(--fig-bg));
+  stroke: var(--interest);
+  stroke-width: 1.8;
+}
+.stack .slab-idem .slab-side {
+  fill: color-mix(in srgb, var(--interest) 36%, var(--fig-bg));
+  stroke: var(--interest);
+  stroke-width: 1.8;
+}
+.stack .slab-name-i {
+  fill: var(--interest);
+}
+.stack .slab,
+.stack .slab-body {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.stack .slab-body {
+  transition: transform 520ms var(--ease-spring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .stack .slab:hover .slab-body {
+    transform: translateY(-6px);
+  }
+}
+@keyframes slab-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-54px) scale(0.97, 1.06);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.45);
+  }
+  48% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05, 0.88);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  72% {
+    transform: translateY(-5px) scale(0.99, 1.03);
+  }
+  100% {
+    transform: none;
+  }
+}
+.js .reveal .stack .slab {
+  opacity: 0;
+}
+.js .reveal.is-visible .stack .slab {
+  /* The keyframes end without an opacity, so the landed slab takes this one (not the hidden 0). */
+  opacity: 1;
+  animation: slab-drop 760ms calc(var(--delay, 0s) + 160ms + var(--i) * 120ms) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal .stack .slab {
+    opacity: 1;
+    animation: none;
+  }
+  .stack .slab-body,
+  .sorter .sbox-r,
+  .pick {
+    transition: none;
+  }
+}
+
+/* ---------- Guarantee vignettes (figures/vignettes.tsx) ---------- */
+.mfig .lbl-fg {
+  fill: var(--fg);
+}
+
+/* ---------- How it works: the step tabs (components/landing/steps.tsx) ---------- */
+.step-tab {
+  position: relative;
+  display: flex;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  transition:
+    color 200ms ease,
+    background-color 200ms ease;
+}
+.step-tab[aria-selected="true"] {
+  color: var(--fg);
+  font-weight: 600;
+}
+.step-icon {
+  transition: transform 420ms var(--ease-spring);
+}
+.step-tab[aria-selected="true"] .step-icon {
+  color: var(--interest);
+}
+@media (hover: hover) and (pointer: fine) {
+  .step-tab:hover {
+    color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 4%, transparent);
+  }
+  .step-tab:hover .step-icon {
+    transform: scale(1.12) rotate(-6deg);
+    color: var(--interest);
+  }
+  .step-tab:hover .step-hover {
+    transform: scaleX(1);
+  }
+}
+.step-hover {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--interest) 50%, transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 300ms var(--ease);
+}
+.step-bar {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--interest);
+  transform-origin: left;
+}
+.step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--interest);
+  color: var(--bg);
+  font-size: 12.5px;
+  font-weight: 700;
+  transform: translateY(-1px);
+}
+
+/* A figure's takeaway: a sentence under it that lands with a tick when the figure gets there. */
+.takeaway {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 300ms ease,
+    transform 520ms var(--ease-spring);
+}
+.takeaway.is-on {
+  opacity: 1;
+  transform: none;
+}
+.takeaway-tick {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--data-bright);
+  -webkit-mask: var(--tick) center / 14px no-repeat;
+  mask: var(--tick) center / 14px no-repeat;
+  transform: scale(0.4);
+  transition: transform 520ms var(--ease-spring) 80ms;
+}
+.takeaway.is-on .takeaway-tick {
+  transform: none;
+}
+.takeaway,
+.takeaway-tick {
+  --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.4l3.2 3.2L13 4.6' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* 01 Canonicalize */
+.mfig .canon-box-a {
+  fill: var(--fig-bg);
+  stroke: color-mix(in srgb, var(--fg) 30%, transparent);
+  stroke-width: 1.3;
+}
+.mfig .canon-box {
+  fill: var(--fig-bg);
+  stroke: color-mix(in srgb, var(--fg) 30%, transparent);
+  stroke-width: 1.3;
+  transition:
+    fill 260ms ease,
+    stroke 260ms ease;
+}
+.mfig .is-canon .canon-box {
+  fill: color-mix(in srgb, var(--interest) 16%, var(--fig-bg));
+  stroke: var(--interest);
+  stroke-width: 2;
+}
+.mfig .canon-t,
+.mfig .chip-t {
+  fill: var(--fg);
+}
+.mfig .chip-hot {
+  fill: var(--interest);
+  font-weight: 600;
+}
+.mfig .raw {
+  fill: var(--fg-subtle);
+}
+.mfig .rule-dot {
+  fill: color-mix(in srgb, var(--fg) 20%, transparent);
+}
+.mfig .rule-on {
+  fill: var(--interest);
+}
+.mfig .rule-k {
+  stroke: var(--bg);
+}
+.mfig .rule text {
+  transition: fill 200ms ease;
+}
+.mfig .rule.is-on text {
+  fill: var(--fg);
+}
+
+/* 02 Name */
+.mfig .tbl-i {
+  stroke: var(--interest);
+  stroke-width: 1.6;
+}
+.mfig .hashbox {
+  fill: var(--fg);
+}
+.mfig .hash-t {
+  fill: var(--bg);
+  font-weight: 600;
+}
+.mfig .slot {
+  fill: none;
+  stroke: color-mix(in srgb, var(--fg) 22%, transparent);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+  transition:
+    stroke 260ms ease,
+    fill 260ms ease;
+}
+.mfig .name-bar.is-on .slot {
+  stroke: color-mix(in srgb, var(--fg) 40%, transparent);
+  stroke-dasharray: none;
+  fill: var(--fig-bg);
+}
+.mfig .name-bar.is-on .slot-i {
+  stroke: var(--interest);
+  fill: color-mix(in srgb, var(--interest) 14%, var(--fig-bg));
+}
+.mfig .seg-fg {
+  fill: var(--fg);
+}
+.mfig .seg-faint {
+  fill: var(--fg-muted);
+}
+.mfig .seg-i {
+  fill: var(--interest);
+  font-weight: 600;
+}
+
+/* 03 Sign */
+.mfig .hl-d {
+  fill: color-mix(in srgb, var(--data-bright) 16%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .takeaway,
+  .takeaway-tick,
+  .step-icon,
+  .step-hover {
+    transition: none;
+  }
+}
+
+/* ---------- Live: the name builder (components/landing/name-builder.tsx) ---------- */
+.nb-tag {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+}
+/* The verdict on the seam between the two calls: "=" in the answer's yellow, or "≠". */
+.nb-seal {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 11px;
+  border: 3px solid var(--fig-bg);
+  background: var(--bg-subtle);
+  color: var(--fg-muted);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  animation: seal-pop 560ms cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+.nb-seal.is-same {
+  background: var(--data-fill);
+  color: #0a0a0a;
+}
+@keyframes seal-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-14deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.14) rotate(4deg);
+  }
+  78% {
+    transform: scale(0.96) rotate(-1deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+@media (max-width: 767px) {
+  .nb-seal {
+    left: auto;
+    right: 20px;
+  }
+}
+/* A digest recomputed from a preset: its characters roll in one after another. */
+.roll {
+  display: inline-block;
+  animation: roll-in 300ms cubic-bezier(0.3, 0.7, 0.4, 1) calc(var(--i) * 7ms) both;
+}
+@keyframes roll-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.55em);
+  }
+}
+
+/* ---------- Live: the packets (components/landing/packet-anatomy.tsx) ---------- */
+.jf {
+  position: relative;
+  display: block;
+  padding: 0 8px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1.5px transparent;
+  transition: box-shadow 160ms ease;
+}
+.jf-signed {
+  background: color-mix(in srgb, var(--data-bright) 13%, transparent);
+}
+.jf-signed + .jf-signed {
+  margin-top: 2px;
+}
+/* The name's marker: a straight bar with round ends standing beside the line (an inset shadow
+   would follow the field's rounded corners and bend into a bracket). */
+.jf-name::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--interest);
+}
+.jf.is-hot {
+  box-shadow: inset 0 0 0 1.5px var(--interest);
+}
+.note {
+  transition: background-color 160ms ease;
+}
+.note.is-hot {
+  background: var(--interest-soft);
+}
+.json-new {
+  border-radius: 3px;
+  animation: json-flash 1.4s ease-out both;
+}
+.json-kept {
+  border-radius: 3px;
+  animation: json-kept 1.4s ease-out both;
+}
+@keyframes json-flash {
+  0%,
+  30% {
+    background: color-mix(in srgb, var(--data-bright) 45%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+@keyframes json-kept {
+  0%,
+  30% {
+    background: var(--interest-soft);
+    box-shadow: 0 0 0 1.5px var(--interest);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 1.5px transparent;
+  }
+}
+.btn:active .sign-icon {
+  transform: rotate(-120deg);
+  transition-duration: 0.2s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-seal,
+  .roll,
+  .json-new,
+  .json-kept {
+    animation: none;
+  }
+}
+
+/* ---------- Hero: the stack it is built on ---------- */
+.hero-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.hero-stack-label {
+  font-size: 13px;
+  color: var(--fg-subtle);
+}
+.hero-stack-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hero-stack-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+  transition:
+    color 0.2s var(--ease),
+    text-decoration-color 0.2s var(--ease);
+}
+.hero-stack-link svg {
+  flex: none;
+  transition: transform 0.4s var(--ease-spring);
+}
+.hero-stack-link:hover {
+  color: var(--fg);
+  text-decoration-color: currentColor;
+}
+.hero-stack-link:hover svg {
+  transform: translateY(-1.5px) rotate(-6deg);
+}
+.hero-stack-link:focus-visible {
+  outline: 2px solid var(--interest);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-stack-link:hover svg {
+    transform: none;
+  }
+}

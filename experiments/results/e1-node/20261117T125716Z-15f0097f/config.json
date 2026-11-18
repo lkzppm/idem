@@ -1,0 +1,30 @@
+{
+  "experiment": "e1-node",
+  "title": "E1 — cost of canonicalize, name, sign and verify by payload size (Node)",
+  "description": "Wall-clock time of one call of canonicalizeArgs, makeName, signData and verifyData from @idem/core, for payloads from 1 KiB to 1 MiB. The payload is the `text` argument for canonicalizeArgs and makeName, and the result text for signData and verifyData. Each cell: untimed warm-up, then one timed call per iteration with performance.now(). The whole run is repeated and every repetition is kept.",
+  "kind": "microbench",
+  "seed": 1,
+  "ops": [
+    "canonicalizeArgs",
+    "makeName",
+    "signData",
+    "verifyData"
+  ],
+  "sizesBytes": [
+    1024,
+    4096,
+    16384,
+    65536,
+    262144,
+    1048576
+  ],
+  "iterations": [
+    5000,
+    5000,
+    4000,
+    2000,
+    1000,
+    400
+  ],
+  "warmupFraction": 0.2
+}

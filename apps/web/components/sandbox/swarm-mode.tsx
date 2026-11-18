@@ -1,0 +1,1179 @@
+"use client";
+
+import type { ForwarderEventKind } from "@idem/core";
+import type { AttackRecord, Metrics, SimMode } from "@idem/sim";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
+import { useMessages } from "@/lib/i18n/client";
+import { sandbox } from "@/lib/i18n/messages/sandbox";
+import type { SceneNode } from "@/lib/sandbox/scene";
+import {
+  DEFAULT_PARAMS,
+  type LoggedEvent,
+  type NameSnapshot,
+  paramsFromQuery,
+  paramsToQuery,
+  type SwarmParams,
+  SwarmRun,
+  sameRun,
+  type TableSnapshot,
+} from "@/lib/sandbox/swarm";
+import { PauseIcon, PlayIcon, RestartIcon } from "./icons";
+import { DataFacts, DigestCheck, NameParts, type SafetyItem, SafetyList, useContentCheck } from "./panels";
+import { StageCanvas } from "./stage-canvas";
+import {
+  Button,
+  Check,
+  Empty,
+  Field,
+  fixed,
+  fmtBytes,
+  fmtMs,
+  fmtPct,
+  Label,
+  Section,
+  Segmented,
+  Slider,
+  Stat,
+  shortName,
+} from "./ui";
+import { isTyping, Slot, useWorkspace } from "./workspace";
+
+type Strings = (typeof sandbox)["en"];
+type SwarmStrings = Strings["swarm"];
+
+interface RunView {
+  mode: SimMode;
+  metrics?: Metrics;
+  tables: Record<string, { pit: number; cs: number; fresh: number }>;
+  counts?: Record<ForwarderEventKind, number>;
+  done: boolean;
+  now: number;
+  error?: string;
+  nodes: SceneNode[];
+}
+
+const LOG_KINDS: ForwarderEventKind[] = [
+  "interest_in",
+  "cs_hit",
+  "pit_aggregate",
+  "upstream_out",
+  "data_in",
+  "verify_ok",
+  "verify_fail",
+  "cs_insert",
+  "cs_evict",
+  "pit_satisfy",
+  "pit_expire",
+  "drop",
+  "bypass",
+];
+
+function kindTone(k: ForwarderEventKind): string {
+  if (k === "cs_hit" || k === "cs_insert" || k === "data_in" || k === "pit_satisfy") return "text-data";
+  if (k === "interest_in" || k === "pit_aggregate" || k === "upstream_out") return "text-interest";
+  if (k === "verify_fail" || k === "drop") return "text-fg";
+  return "text-muted";
+}
+
+function detail(e: LoggedEvent["e"], d: SwarmStrings["log"]["detail"]): string {
+  switch (e.kind) {
+    case "cs_hit":
+      return d.age(Math.round(e.ageMs));
+    case "pit_aggregate":
+      return d.waiting(e.waiting);
+    case "pit_satisfy":
+      return d.faces(e.faces);
+    case "verify_ok":
+    case "verify_fail":
+      return `${Math.round(e.us)} µs`;
+    case "data_in":
+    case "cs_insert":
+    case "cs_evict":
+      return `${e.bytes} B`;
+    case "upstream_out":
+      return `→ ${e.nextHop}`;
+    case "drop":
+    case "bypass":
+    case "pit_expire":
+      return e.reason ?? "";
+    default:
+      return "";
+  }
+}
+
+/** Virtual milliseconds as a short time. */
+function fmtVirtual(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${fixed(ms / 1000, 2)} s`;
+}
+
+/** An attack's verdict in the visitor's language (the simulator words its own details in English). */
+function attackDetail(a: AttackRecord & { caughtAt?: string }, r: SwarmStrings["attackResult"]): string {
+  switch (a.kind) {
+    case "tamper":
+      if (a.caughtAt !== undefined) return r.tamperCaught(a.caughtAt);
+      if (!a.rejected) return r.tamperMissed;
+      return a.detail.startsWith("no Data") ? r.tamperIdle : r.tamperRejected;
+    case "forge":
+      return a.rejected ? r.forgeOk : r.forgeMissed(a.detail);
+    case "private-probe":
+      return a.rejected ? r.probeOk : r.probeLeak;
+  }
+}
+
+/**
+ * Swarm mode: a deterministic simulation in the browser (the real `@idem/core` forwarder and producer
+ * over virtual links, on a virtual clock). The same seeded workload runs once per mode, side by side
+ * on the stage; every counter comes from these runs.
+ */
+export function SwarmMode() {
+  const t = useMessages(sandbox);
+  const ts = t.swarm;
+  const ws = useWorkspace();
+  const wsRef = useRef(ws);
+  wsRef.current = ws;
+  const reduced = useReducedMotion();
+  const [params, setParams] = useState<SwarmParams>(DEFAULT_PARAMS);
+  const [loaded, setLoaded] = useState(false);
+  const [playing, setPlaying] = useState(true);
+  const [views, setViews] = useState<RunView[]>([]);
+  const [attacks, setAttacks] = useState<(AttackRecord & { caughtAt?: string })[]>([]);
+  const [logVersion, setLogVersion] = useState(0);
+  const [logSource, setLogSource] = useState<SimMode>("idem");
+  const [kindFilter, setKindFilter] = useState<Set<ForwarderEventKind>>(new Set());
+  const [nodeFilter, setNodeFilter] = useState("all");
+  const [highlight, setHighlight] = useState<string>();
+  const [focus, setFocus] = useState<{ run: SimMode; node: string }>({ run: "idem", node: "" });
+  const [table, setTable] = useState<TableSnapshot>();
+  const [named, setNamed] = useState<NameSnapshot>();
+  const [metricsRun, setMetricsRun] = useState<SimMode>("idem");
+  const [backend, setBackend] = useState<"webgpu" | "canvas2d">();
+  const runs = useRef<SwarmRun[]>([]);
+  const vt = useRef(0);
+  const speed = useRef(params.speed);
+  speed.current = params.speed;
+  const lastRun = useRef<SwarmParams | undefined>(undefined);
+  const [generation, setGeneration] = useState(0);
+  const highlightRef = useRef(highlight);
+  highlightRef.current = highlight;
+  const focusRef = useRef(focus);
+  focusRef.current = focus;
+  const attackCount = useRef(0);
+  /** The latest restart; an older one that finishes later is dropped. */
+  const startSeq = useRef(0);
+
+  // Load params from the URL once.
+  useEffect(() => {
+    setParams(paramsFromQuery(new URLSearchParams(window.location.search)));
+    setLoaded(true);
+  }, []);
+
+  // Reduced motion: never autoplay.
+  useEffect(() => {
+    if (reduced) setPlaying(false);
+  }, [reduced]);
+
+  // Mirror params into the URL (shareable).
+  useEffect(() => {
+    if (!loaded) return;
+    const id = setTimeout(() => {
+      const q = paramsToQuery(params, new URLSearchParams(window.location.search));
+      q.set("mode", "swarm");
+      const s = q.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${s ? `?${s}` : ""}`);
+    }, 200);
+    return () => clearTimeout(id);
+  }, [params, loaded]);
+
+  const modes = useMemo<SimMode[]>(
+    () => (params.localCache ? ["mcp-direct", "mcp-local-cache", "idem"] : ["mcp-direct", "idem"]),
+    [params.localCache],
+  );
+
+  // (Re)start every run when the simulation-relevant config changes.
+  const restart = useCallback(async (p: SwarmParams, m: SimMode[]) => {
+    const my = ++startSeq.current;
+    const next = m.map((mode) => new SwarmRun(mode));
+    await Promise.all(next.map((r) => r.start(p)));
+    if (my !== startSeq.current) return;
+    for (const r of next) r.scene.highlight = highlightRef.current;
+    runs.current = next;
+    vt.current = 0;
+    lastRun.current = p;
+    attackCount.current = 0;
+    setAttacks([]);
+    const idem = next.find((r) => r.mode === "idem");
+    const ids = idem?.forwarderIds() ?? [];
+    const f = focusRef.current;
+    const node = ids.includes(f.node) ? f.node : (ids[0] ?? "");
+    setFocus({ run: "idem", node });
+    if (idem) idem.scene.selected = node || undefined;
+    setGeneration((g) => g + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (lastRun.current && sameRun(lastRun.current, params) && runs.current.length === modes.length) return;
+    const id = setTimeout(() => void restart(params, modes), lastRun.current ? 250 : 0);
+    return () => clearTimeout(id);
+  }, [params, modes, loaded, restart]);
+
+  useEffect(() => {
+    for (const r of runs.current) r.scene.highlight = highlight;
+  }, [highlight]);
+
+  // Clock: virtual time advances by real time × speed, every frame, while playing.
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    let last = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(64, now - last);
+      last = now;
+      vt.current += dt * speed.current;
+      for (const r of runs.current) r.advance(vt.current);
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
+  // Counters, tables and the log: sampled at 8 Hz, never per frame.
+  useEffect(() => {
+    const sample = () => {
+      const w = wsRef.current;
+      const next = runs.current.map((r) => {
+        const tables = r.tables();
+        for (const [id, s] of Object.entries(tables)) r.scene.setState(id, s);
+        return {
+          mode: r.mode,
+          metrics: r.metrics(),
+          tables,
+          ...(r.sim && { counts: { ...r.sim.metrics.counts } }),
+          done: r.sim?.done ?? false,
+          now: r.now,
+          ...(r.error !== undefined && { error: r.error }),
+          nodes: [...r.scene.nodes.values()],
+        };
+      });
+      setViews(next);
+      const idem = runs.current.find((r) => r.mode === "idem");
+      const list = idem ? idem.attackView() : [];
+      setAttacks(list);
+      if (list.length > attackCount.current) w.reveal("safety");
+      attackCount.current = list.length;
+      const f = focusRef.current;
+      const focusRun = runs.current.find((r) => r.mode === f.run);
+      setTable(w.isOpen("tables") && focusRun && f.node ? focusRun.table(f.node) : undefined);
+      const h = highlightRef.current;
+      setNamed(w.isOpen("inspector") && idem && h ? idem.inspect(h) : undefined);
+      setLogVersion((v) => v + 1);
+    };
+    sample();
+    const id = setInterval(sample, 125);
+    return () => clearInterval(id);
+  }, []);
+
+  const set = <K extends keyof SwarmParams>(k: K, v: SwarmParams[K]) => setParams((p) => ({ ...p, [k]: v }));
+  const idemRun = () => runs.current.find((r) => r.mode === "idem");
+
+  const follow = useCallback(
+    (name: string | undefined) => {
+      setHighlight(name);
+      if (name) ws.reveal("inspector");
+    },
+    [ws],
+  );
+
+  // Keys: Space plays or pauses, R restarts, Esc clears the highlight.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e)) return;
+      if (e.key === " " && !(e.target instanceof HTMLButtonElement)) {
+        e.preventDefault();
+        setPlaying((p) => !p);
+      } else if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        void restart(params, modes);
+      } else if (e.key === "Escape") setHighlight(undefined);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [restart, params, modes]);
+
+  const onNodeClick = (pane: string, node: string) => {
+    const run = runs.current.find((r) => r.mode === pane);
+    if (!run?.sim?.forwarders.has(node)) return;
+    for (const r of runs.current) r.scene.selected = r === run ? node : undefined;
+    setFocus({ run: run.mode, node });
+    ws.reveal("tables");
+  };
+
+  const attack = (fn: () => void) => {
+    fn();
+    ws.reveal("safety");
+  };
+
+  const total = params.agents * params.callsPerAgent;
+  const allDone = views.length > 0 && views.every((v) => v.done);
+  const now = views[0]?.now ?? 0;
+
+  // Event log rows (bounded).
+  const logRun = runs.current.find((r) => r.mode === logSource) ?? runs.current[0];
+  const logNodes = useMemo(() => {
+    void logVersion;
+    return [...new Set((logRun?.events ?? []).map((l) => l.e.node))].sort();
+  }, [logRun, logVersion]);
+  const rows = useMemo(() => {
+    void logVersion;
+    const src = logRun?.events ?? [];
+    const out: LoggedEvent[] = [];
+    for (let i = src.length - 1; i >= 0 && out.length < 150; i--) {
+      const l = src[i];
+      if (!l) continue;
+      if (kindFilter.size > 0 && !kindFilter.has(l.e.kind)) continue;
+      if (nodeFilter !== "all" && l.e.node !== nodeFilter) continue;
+      out.push(l);
+    }
+    return out;
+  }, [logRun, logVersion, kindFilter, nodeFilter]);
+
+  const safety: SafetyItem[] = attacks
+    .map((a, i) => ({
+      id: `${generation}-${a.kind}-${a.t}-${i}`,
+      title: `${t.safety.kinds[a.kind]} · t = ${fmtVirtual(a.t)}`,
+      ok: a.rejected,
+      detail: attackDetail(a, ts.attackResult),
+    }))
+    .reverse();
+
+  const focusIds = runs.current.find((r) => r.mode === focus.run)?.forwarderIds() ?? [];
+
+  return (
+    <>
+      <Slot name="controls">
+        <Section title={ts.run}>
+          <div className="flex gap-2">
+            <Button variant="primary" onClick={() => setPlaying((p) => !p)} kbd="Space" className="flex-1">
+              {playing ? <PauseIcon /> : <PlayIcon />}
+              {playing ? ts.pause : ts.play}
+            </Button>
+            <Button onClick={() => void restart(params, modes)} kbd="R">
+              <RestartIcon />
+              {ts.restart}
+            </Button>
+          </div>
+          <Slider
+            label={ts.speed}
+            tip={ts.tips.speed}
+            value={Math.log10(params.speed)}
+            min={-2}
+            max={Math.log10(2)}
+            step={0.01}
+            format={() => `${fixed(params.speed, params.speed < 0.1 ? 3 : 2)}×`}
+            onChange={(v) => set("speed", Number((10 ** v).toFixed(3)))}
+          />
+          <div className="obs-field">
+            <Label htmlFor="swarm-seed" tip={ts.tips.seed}>
+              {ts.seed}
+            </Label>
+            <div className="flex gap-2">
+              <input
+                id="swarm-seed"
+                type="number"
+                value={params.seed}
+                min={0}
+                onChange={(e) => set("seed", Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                className="obs-input t-mono min-w-0 flex-1"
+              />
+              <Button
+                onClick={() => set("seed", Math.floor(Math.random() * 100_000))}
+                title={ts.shuffleTitle}
+              >
+                {ts.shuffle}
+              </Button>
+            </div>
+          </div>
+          <Check
+            label={ts.localCache}
+            tip={ts.tips.localCache}
+            checked={params.localCache}
+            onChange={(v) => set("localCache", v)}
+          />
+          <div className="flex gap-2">
+            <button type="button" disabled title={ts.replayTitle} className="obs-btn obs-btn-dashed flex-1">
+              {ts.replay}
+            </button>
+          </div>
+          {!playing && attacks.length === 0 && <p className="obs-note">{ts.resolveHint}</p>}
+        </Section>
+        <Section
+          title={ts.workload}
+          aside={
+            <button
+              type="button"
+              className="obs-link-btn"
+              onClick={() => setParams({ ...DEFAULT_PARAMS, speed: params.speed })}
+            >
+              {ts.defaults}
+            </button>
+          }
+        >
+          <Slider
+            label={ts.agents}
+            tip={ts.tips.agents}
+            value={params.agents}
+            min={1}
+            max={32}
+            onChange={(v) => set("agents", v)}
+          />
+          <Slider
+            label={ts.callsPerAgent}
+            tip={ts.tips.callsPerAgent}
+            value={params.callsPerAgent}
+            min={1}
+            max={40}
+            onChange={(v) => set("callsPerAgent", v)}
+          />
+          <Slider
+            label={ts.overlap}
+            tip={ts.tips.overlap}
+            value={params.overlap}
+            min={0}
+            max={100}
+            format={(v) => `${v}%`}
+            onChange={(v) => set("overlap", v)}
+          />
+          <Slider
+            label={ts.zipf}
+            tip={ts.tips.zipf}
+            value={params.zipf}
+            min={0}
+            max={2}
+            step={0.05}
+            format={(v) => fixed(v, 2)}
+            onChange={(v) => set("zipf", v)}
+          />
+          <Slider
+            label={ts.catalog}
+            tip={ts.tips.catalog}
+            value={params.catalog}
+            min={5}
+            max={500}
+            step={5}
+            onChange={(v) => set("catalog", v)}
+          />
+          <Slider
+            label={ts.privatePct}
+            tip={ts.tips.privatePct}
+            value={params.privatePct}
+            min={0}
+            max={50}
+            format={(v) => `${v}%`}
+            onChange={(v) => set("privatePct", v)}
+          />
+          <Slider
+            label={ts.sideEffectPct}
+            tip={ts.tips.sideEffectPct}
+            value={params.sideEffectPct}
+            min={0}
+            max={50}
+            format={(v) => `${v}%`}
+            onChange={(v) => set("sideEffectPct", v)}
+          />
+        </Section>
+        <Section title={ts.network} defaultOpen={false}>
+          <div className="obs-field">
+            <Label tip={ts.tips.topology}>{ts.topology}</Label>
+            <Segmented
+              label={ts.topology}
+              value={params.topo}
+              options={[
+                { value: "star", label: ts.star },
+                { value: "tree", label: ts.tree },
+              ]}
+              onChange={(v) => set("topo", v)}
+            />
+          </div>
+          <Slider
+            label={ts.agentLink}
+            tip={ts.tips.agentLink}
+            value={params.agentLinkMs}
+            min={1}
+            max={200}
+            format={(v) => `${v} ms`}
+            onChange={(v) => set("agentLinkMs", v)}
+          />
+          <Slider
+            label={ts.producerLink}
+            tip={ts.tips.producerLink}
+            value={params.producerLinkMs}
+            min={1}
+            max={500}
+            format={(v) => `${v} ms`}
+            onChange={(v) => set("producerLinkMs", v)}
+          />
+          <Slider
+            label={ts.loss}
+            tip={ts.tips.loss}
+            value={params.lossPct}
+            min={0}
+            max={30}
+            step={0.5}
+            format={(v) => `${v}%`}
+            onChange={(v) => set("lossPct", v)}
+          />
+          <Slider
+            label={ts.ttl}
+            tip={ts.tips.ttl}
+            value={params.ttl}
+            min={1}
+            max={600}
+            format={(v) => `${v} s`}
+            onChange={(v) => set("ttl", v)}
+          />
+          <Slider
+            label={ts.csSize}
+            tip={ts.tips.csSize}
+            value={Math.log2(params.csKiB)}
+            min={4}
+            max={16}
+            step={1}
+            format={() => fmtBytes(params.csKiB * 1024)}
+            onChange={(v) => set("csKiB", 2 ** v)}
+          />
+        </Section>
+        <Section title={ts.attacks}>
+          <div className="flex flex-col gap-2">
+            <Button wide onClick={() => attack(() => idemRun()?.sim?.attackTamper())}>
+              {ts.attack.tamper}
+            </Button>
+            <Button wide onClick={() => attack(() => void idemRun()?.sim?.attackForge(0))}>
+              {ts.attack.forge}
+            </Button>
+            <Button
+              wide
+              disabled={params.agents < 2}
+              onClick={() => attack(() => void idemRun()?.sim?.attackPrivateProbe(0, 1))}
+            >
+              {ts.attack.probe}
+            </Button>
+          </div>
+          <p className="obs-note">{playing ? t.live.attackHint : ts.resolveHint}</p>
+        </Section>
+        {backend && (
+          <p className="obs-footnote t-mono">
+            {ts.renderer(backend === "webgpu" ? "WebGPU" : "Canvas2D")} · {ts.seed.toLowerCase()}{" "}
+            {params.seed}
+          </p>
+        )}
+      </Slot>
+
+      <Slot name="stage">
+        <StageCanvas
+          panes={views.flatMap((v) => {
+            const run = runs.current.find((r) => r.mode === v.mode);
+            if (!run) return [];
+            return {
+              key: v.mode,
+              scene: run.scene,
+              now: () => run.now,
+              nodes: v.nodes,
+              title: ts.modeLabel[v.mode],
+              note: v.error ? ts.error(v.error) : ts.modeNote[v.mode],
+              agentLabels: false,
+              badges: Object.fromEntries(
+                Object.entries(v.tables)
+                  .filter(([, s]) => s.pit > 0 || s.cs > 0)
+                  .map(([id, s]) => [
+                    id,
+                    <span key={id} className="obs-badges">
+                      {s.pit > 0 && <span className="text-interest">PIT {s.pit}</span>}
+                      {s.cs > 0 && <span className="text-data">CS {s.cs}</span>}
+                    </span>,
+                  ]),
+              ),
+            };
+          })}
+          area={ws.area}
+          label={t.shell.canvas}
+          onNodeClick={onNodeClick}
+          nodeAction={(pane, n) =>
+            runs.current.find((r) => r.mode === pane)?.sim?.forwarders.has(n.id)
+              ? ts.tables.nodeTables(n.id)
+              : undefined
+          }
+          onBackend={setBackend}
+        />
+      </Slot>
+
+      <Slot name="status">
+        <button
+          type="button"
+          className="obs-round-btn"
+          aria-label={playing ? ts.pause : ts.play}
+          title={playing ? ts.pause : ts.play}
+          onClick={() => setPlaying((p) => !p)}
+        >
+          {playing ? <PauseIcon /> : <PlayIcon />}
+        </button>
+        <span className="obs-status" data-state={allDone ? "done" : playing ? "ready" : "paused"}>
+          <span className="t-mono tabular-nums text-fg">{ts.time(fmtVirtual(now))}</span>
+          <span className="text-faint">{ts.virtual}</span>
+          {allDone && <span className="text-data">· {ts.done}</span>}
+        </span>
+      </Slot>
+
+      <Slot name="hint:tables">{focus.node ? `${focus.node} · ${ts.modeLabel[focus.run]}` : ""}</Slot>
+      <Slot name="hint:log">{ts.modeLabel[logSource]}</Slot>
+      <Slot name="hint:metrics">{ts.modeLabel[metricsRun]}</Slot>
+      <Slot name="hint:inspector">{highlight ? shortName(highlight) : ""}</Slot>
+
+      <Slot name="win:log">
+        <SwarmLog
+          rows={rows}
+          modes={modes}
+          logSource={logSource}
+          setLogSource={setLogSource}
+          nodes={logNodes}
+          nodeFilter={nodeFilter}
+          setNodeFilter={setNodeFilter}
+          kindFilter={kindFilter}
+          setKindFilter={setKindFilter}
+          highlight={highlight}
+          follow={follow}
+          labels={ts}
+        />
+      </Slot>
+      <Slot name="win:tables">
+        <SwarmTables
+          snapshot={table}
+          ids={focusIds}
+          node={focus.node}
+          onNode={(node) => {
+            const run = runs.current.find((r) => r.mode === focus.run);
+            if (run) run.scene.selected = node;
+            setFocus((f) => ({ ...f, node }));
+          }}
+          follow={follow}
+          labels={ts.tables}
+        />
+      </Slot>
+      <Slot name="win:inspector">
+        {named ? (
+          <SwarmInspector snap={named} labels={ts.inspector} details={ts.log.detail} />
+        ) : (
+          <Empty>{ts.inspector.empty}</Empty>
+        )}
+      </Slot>
+      <Slot name="win:metrics">
+        <SwarmMetrics
+          views={views}
+          modes={modes}
+          run={metricsRun}
+          setRun={setMetricsRun}
+          total={total}
+          labels={ts}
+        />
+      </Slot>
+      <Slot name="win:compare">
+        <SwarmCompare views={views} total={total} labels={ts} />
+      </Slot>
+      <Slot name="win:safety">
+        <SafetyList items={safety} labels={t.safety} />
+      </Slot>
+    </>
+  );
+}
+
+function SwarmLog({
+  rows,
+  modes,
+  logSource,
+  setLogSource,
+  nodes,
+  nodeFilter,
+  setNodeFilter,
+  kindFilter,
+  setKindFilter,
+  highlight,
+  follow,
+  labels,
+}: {
+  rows: LoggedEvent[];
+  modes: SimMode[];
+  logSource: SimMode;
+  setLogSource: (m: SimMode) => void;
+  nodes: string[];
+  nodeFilter: string;
+  setNodeFilter: (n: string) => void;
+  kindFilter: Set<ForwarderEventKind>;
+  setKindFilter: (f: (s: Set<ForwarderEventKind>) => Set<ForwarderEventKind>) => void;
+  highlight: string | undefined;
+  follow: (name: string | undefined) => void;
+  labels: SwarmStrings;
+}) {
+  const l = labels.log;
+  return (
+    <div className="flex min-h-full flex-col">
+      <div className="obs-toolbar">
+        <select
+          aria-label={l.run}
+          value={logSource}
+          onChange={(e) => setLogSource(e.target.value as SimMode)}
+          className="obs-select"
+        >
+          {modes.map((m) => (
+            <option key={m} value={m}>
+              {labels.modeLabel[m]}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={l.node}
+          value={nodeFilter}
+          onChange={(e) => setNodeFilter(e.target.value)}
+          className="obs-select"
+        >
+          <option value="all">{l.allNodes}</option>
+          {nodes.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        {highlight && (
+          <button type="button" className="obs-follow" onClick={() => follow(undefined)}>
+            <span className="text-faint">{l.following}</span> {shortName(highlight)}{" "}
+            <span aria-hidden="true">×</span>
+            <span className="sr-only">{l.clear}</span>
+          </button>
+        )}
+      </div>
+      <fieldset className="obs-chips">
+        <legend className="sr-only">{l.kinds}</legend>
+        {LOG_KINDS.map((k) => {
+          const on = kindFilter.has(k);
+          return (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={on}
+              className={`obs-chip ${kindTone(k)}`}
+              onClick={() =>
+                setKindFilter((s) => {
+                  const n = new Set(s);
+                  if (n.has(k)) n.delete(k);
+                  else n.add(k);
+                  return n;
+                })
+              }
+            >
+              {k}
+            </button>
+          );
+        })}
+      </fieldset>
+      {rows.length === 0 ? (
+        <Empty>{l.empty}</Empty>
+      ) : (
+        <table className="obs-table obs-table-log">
+          <tbody>
+            {rows.map((r) => {
+              const name = "name" in r.e ? r.e.name : undefined;
+              return (
+                <tr key={r.seq} data-selected={(name && name === highlight) || undefined}>
+                  <td className="w-14 text-right text-faint tabular-nums">{Math.round(r.e.t)}</td>
+                  <td className="text-muted">{r.e.node}</td>
+                  <td className={kindTone(r.e.kind)}>{r.e.kind}</td>
+                  <td>
+                    {name ? (
+                      <button
+                        type="button"
+                        className={`obs-name-btn ${name === highlight ? "text-interest" : ""}`}
+                        title={name}
+                        onClick={() => follow(name === highlight ? undefined : name)}
+                      >
+                        {shortName(name)}
+                      </button>
+                    ) : (
+                      <span className="text-faint">—</span>
+                    )}
+                  </td>
+                  <td className="text-right text-faint">{detail(r.e, l.detail)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <p className="obs-win-foot">{l.footer(rows.length)}</p>
+    </div>
+  );
+}
+
+function SwarmTables({
+  snapshot,
+  ids,
+  node,
+  onNode,
+  follow,
+  labels,
+}: {
+  snapshot: TableSnapshot | undefined;
+  ids: string[];
+  node: string;
+  onNode: (n: string) => void;
+  follow: (name: string) => void;
+  labels: SwarmStrings["tables"];
+}) {
+  return (
+    <div className="flex flex-col">
+      {ids.length > 1 && (
+        <div className="obs-toolbar">
+          <Segmented
+            label={labels.forwarder}
+            value={node}
+            options={ids.map((id) => ({ value: id, label: <span className="t-mono">{id}</span> }))}
+            onChange={onNode}
+          />
+        </div>
+      )}
+      {!snapshot ? (
+        <Empty>{labels.clickHint}</Empty>
+      ) : (
+        <>
+          <div className="obs-block">
+            <h3 className="obs-block-title">
+              {labels.pending} <span className="t-mono text-interest">{snapshot.pit.length}</span>
+            </h3>
+            {snapshot.pit.length === 0 ? (
+              <p className="obs-empty-inline">{labels.empty}</p>
+            ) : (
+              <table className="obs-table">
+                <thead>
+                  <tr>
+                    <th>{labels.name}</th>
+                    <th>{labels.scope}</th>
+                    <th className="text-right">{labels.waiting}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.pit.map((e, i) => (
+                    <tr key={`${e.name}-${e.scope}-${i}`}>
+                      <td>
+                        <button
+                          type="button"
+                          className="obs-name-btn text-interest"
+                          onClick={() => follow(e.name)}
+                        >
+                          {shortName(e.name)}
+                        </button>
+                      </td>
+                      <td className={e.scope === "private" ? "text-interest" : "text-muted"}>{e.scope}</td>
+                      <td className="text-right tabular-nums">
+                        <span className="obs-dots" aria-hidden="true">
+                          {Array.from({ length: Math.min(12, e.waiting) }, (_, i) => (
+                            <span key={i} />
+                          ))}
+                        </span>{" "}
+                        {e.waiting}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="obs-block">
+            <h3 className="obs-block-title">
+              {labels.cache}{" "}
+              <span className="t-mono text-muted">
+                {labels.occupancy(snapshot.entries, fmtBytes(snapshot.bytes), fmtBytes(snapshot.maxBytes))}
+              </span>
+            </h3>
+            <span className="obs-bar" data-tone="data" aria-hidden="true">
+              <span
+                style={{ transform: `scaleX(${snapshot.maxBytes ? snapshot.bytes / snapshot.maxBytes : 0})` }}
+              />
+            </span>
+            {snapshot.cs.length === 0 ? (
+              <p className="obs-empty-inline">{labels.empty}</p>
+            ) : (
+              <table className="obs-table">
+                <thead>
+                  <tr>
+                    <th>{labels.name}</th>
+                    <th>{labels.fresh}</th>
+                    <th className="text-right">{labels.hits}</th>
+                    <th className="text-right">{labels.size}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.cs.map((e) => (
+                    <tr key={e.key} data-stale={e.leftMs <= 0 || undefined}>
+                      <td>
+                        <button
+                          type="button"
+                          className="obs-name-btn text-data"
+                          onClick={() => follow(e.name)}
+                        >
+                          {shortName(e.name)}
+                        </button>
+                        {e.scope === "private" && <span className="text-interest"> · private</span>}
+                      </td>
+                      <td>
+                        <span className="obs-fresh">
+                          <span className="obs-bar" data-tone="data" aria-hidden="true">
+                            <span
+                              style={{
+                                transform: `scaleX(${Math.max(0, Math.min(1, e.leftMs / e.freshnessMs))})`,
+                              }}
+                            />
+                          </span>
+                          <span className="tabular-nums">
+                            {e.leftMs > 0 ? fmtVirtual(e.leftMs) : labels.stale}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="text-right tabular-nums">{e.hits}</td>
+                      <td className="text-right text-muted tabular-nums">{fmtBytes(e.bytes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SwarmInspector({
+  snap,
+  labels,
+  details,
+}: {
+  snap: NameSnapshot;
+  labels: SwarmStrings["inspector"];
+  details: SwarmStrings["log"]["detail"];
+}) {
+  const first = snap.cached[0];
+  const data = first?.data;
+  const contentOk = useContentCheck(data);
+  const checks = snap.events.filter((l) => l.e.kind === "verify_ok" || l.e.kind === "verify_fail");
+  return (
+    <div className="obs-inspector">
+      <Field label={labels.name}>
+        <NameParts name={snap.name} labels={labels.parts} />
+      </Field>
+      <Field label={labels.cachedAt}>
+        {snap.cached.length === 0 ? (
+          <p className="text-faint">{labels.notCached}</p>
+        ) : (
+          <ul className="obs-trace">
+            {snap.cached.map((c) => (
+              <li key={`${c.node}-${c.key}`}>
+                <span className="text-fg">{c.node}</span>
+                <span className="text-faint"> · </span>
+                <span className={c.leftMs > 0 ? "text-data" : "text-faint"}>
+                  {c.leftMs > 0 ? labels.fresh(fmtVirtual(c.leftMs)) : labels.stale}
+                </span>
+                <span className="text-faint"> · </span>
+                <span className="text-muted">
+                  {labels.hits(c.hits)} · {fmtBytes(c.bytes)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Field>
+      {data && (
+        <>
+          <DataFacts data={data} producedAt={`t = ${fmtVirtual(data.meta.producedAt)}`} labels={labels} />
+          <DigestCheck label={labels.contentCheck} ok={contentOk} yes={labels.match} no={labels.mismatch} />
+          {data.meta.scope === "private" && <p className="obs-note">{labels.privateNote}</p>}
+        </>
+      )}
+      <Field label={labels.checks}>
+        {checks.length === 0 ? (
+          <p className="text-faint">{labels.noChecks}</p>
+        ) : (
+          <ul className="obs-trace">
+            {checks.map((l) => (
+              <li key={l.seq}>
+                <span className="text-fg">{l.e.node}</span>
+                <span className="text-faint"> · </span>
+                <span className={l.e.kind === "verify_ok" ? "text-data" : "text-fg"}>
+                  {l.e.kind === "verify_ok" ? "✓" : "✕"} {l.e.kind}
+                </span>
+                <span className="text-faint"> · {detail(l.e, details)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Field>
+      <Field label={labels.events}>
+        <ul className="obs-trace">
+          {snap.events.map((l) => (
+            <li key={l.seq}>
+              <span className="text-faint tabular-nums">{Math.round(l.e.t)}</span>{" "}
+              <span className="text-fg">{l.e.node}</span>{" "}
+              <span className={kindTone(l.e.kind)}>{l.e.kind}</span>{" "}
+              <span className="text-faint">{detail(l.e, details)}</span>
+            </li>
+          ))}
+        </ul>
+      </Field>
+    </div>
+  );
+}
+
+function SwarmMetrics({
+  views,
+  modes,
+  run,
+  setRun,
+  total,
+  labels,
+}: {
+  views: RunView[];
+  modes: SimMode[];
+  run: SimMode;
+  setRun: (m: SimMode) => void;
+  total: number;
+  labels: SwarmStrings;
+}) {
+  const l = labels.metrics;
+  const v = views.find((x) => x.mode === run) ?? views[views.length - 1];
+  const m = v?.metrics;
+  const idem = v?.mode === "idem" || v?.mode === "idem-noverify";
+  const counts = v?.counts;
+  const maxCount = Math.max(1, ...Object.values(counts ?? {}));
+  return (
+    <div className="flex flex-col">
+      <div className="obs-toolbar">
+        <Segmented
+          label={labels.log.run}
+          value={v?.mode ?? run}
+          options={modes.map((x) => ({ value: x, label: labels.modeLabel[x] }))}
+          onChange={setRun}
+        />
+      </div>
+      {v?.error ? (
+        <Empty>{labels.error(v.error)}</Empty>
+      ) : (
+        <div className="obs-stats">
+          <Stat
+            label={l.upstream}
+            value={m?.upstreamCalls ?? 0}
+            tone="interest"
+            bar={(m?.upstreamCalls ?? 0) / Math.max(1, total)}
+          />
+          <Stat
+            label={l.completed}
+            value={`${m?.completed ?? 0}/${total}`}
+            bar={(m?.completed ?? 0) / Math.max(1, total)}
+            hint={m?.failed ? l.failed(m.failed) : undefined}
+          />
+          <Stat label={l.hitRatio} value={idem ? fmtPct(m?.csHitRatio ?? 0) : "—"} tone="data" />
+          <Stat label={l.aggregations} value={idem ? (m?.pitAggregations ?? 0) : "—"} tone="interest" />
+          <Stat label={l.producerLink} value={fmtBytes(m?.producerLinkBytes ?? 0)} />
+          <Stat label={l.p50} value={fmtMs(m?.latencyMs.p50 ?? Number.NaN)} />
+          <Stat label={l.p95} value={fmtMs(m?.latencyMs.p95 ?? Number.NaN)} />
+          <Stat label={l.verifyFailures} value={m?.verifyFailures ?? 0} />
+          <Stat label={l.safety} value={m?.safetyViolations ?? 0} />
+          <Stat label={l.retries} value={m?.retries ?? 0} />
+          {v?.mode === "mcp-local-cache" && (
+            <Stat label={l.localHits} value={m?.localCacheHits ?? 0} tone="data" />
+          )}
+        </div>
+      )}
+      {counts && (
+        <div className="obs-block">
+          <h3 className="obs-block-title">{l.events}</h3>
+          <ul className="obs-counts">
+            {LOG_KINDS.filter((k) => (counts[k] ?? 0) > 0).map((k) => (
+              <li key={k}>
+                <span className={`t-mono ${kindTone(k)}`}>{k}</span>
+                <span className="obs-bar" aria-hidden="true">
+                  <span style={{ transform: `scaleX(${(counts[k] ?? 0) / maxCount})` }} />
+                </span>
+                <span className="t-mono tabular-nums text-muted">{counts[k]}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SwarmCompare({ views, total, labels }: { views: RunView[]; total: number; labels: SwarmStrings }) {
+  const c = labels.compare;
+  const rows: {
+    label: string;
+    get: (m: Metrics | undefined, v: RunView) => number;
+    fmt: (n: number) => string;
+    idemOnly?: boolean;
+  }[] = [
+    { label: c.upstream, get: (m) => m?.upstreamCalls ?? 0, fmt: String },
+    { label: c.completed, get: (m) => m?.completed ?? 0, fmt: (n) => `${n}/${total}` },
+    { label: c.hitRatio, get: (m) => m?.csHitRatio ?? 0, fmt: fmtPct, idemOnly: true },
+    { label: c.aggregations, get: (m) => m?.pitAggregations ?? 0, fmt: String, idemOnly: true },
+    { label: c.producerLink, get: (m) => m?.producerLinkBytes ?? 0, fmt: fmtBytes },
+    { label: c.p50, get: (m) => m?.latencyMs.p50 ?? Number.NaN, fmt: fmtMs },
+    { label: c.p95, get: (m) => m?.latencyMs.p95 ?? Number.NaN, fmt: fmtMs },
+    { label: c.verifyFailures, get: (m) => m?.verifyFailures ?? 0, fmt: String },
+  ];
+  const direct = views.find((v) => v.mode === "mcp-direct")?.metrics?.upstreamCalls ?? 0;
+  const idem = views.find((v) => v.mode === "idem")?.metrics?.upstreamCalls ?? 0;
+  return (
+    <div className="flex flex-col">
+      <table className="obs-table obs-table-compare">
+        <thead>
+          <tr>
+            <th>{c.metric}</th>
+            {views.map((v) => (
+              <th key={v.mode} className="text-right" data-run={v.mode}>
+                {labels.modeLabel[v.mode]}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const vals = views.map((v) => r.get(v.metrics, v));
+            const max = Math.max(1e-9, ...vals.filter((x) => Number.isFinite(x)));
+            return (
+              <tr key={r.label}>
+                <td className="text-muted">{r.label}</td>
+                {views.map((v, i) => {
+                  const x = vals[i] ?? 0;
+                  const na = r.idemOnly && v.mode !== "idem" && v.mode !== "idem-noverify";
+                  return (
+                    <td key={v.mode} className="text-right" data-run={v.mode}>
+                      <span className="t-mono tabular-nums">{na ? "—" : r.fmt(x)}</span>
+                      {!na && Number.isFinite(x) && (
+                        <span
+                          className="obs-bar obs-bar-cell"
+                          aria-hidden="true"
+                          data-tone={v.mode === "idem" ? "data" : undefined}
+                        >
+                          <span style={{ transform: `scaleX(${x / max})` }} />
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {direct > 0 && <p className="obs-win-foot text-fg">{c.ratio(fmtPct(idem / direct))}</p>}
+      <p className="obs-win-foot">{c.note}</p>
+    </div>
+  );
+}

@@ -1,0 +1,1236 @@
+/* The documentation pages. Imported by app/globals.css; owned by that area. */
+
+/*
+ * Layout: page tree | article | "on this page". The shell is as wide as the site header, so the
+ * tree lines up with the logo. Reading comes first: a measure of about 70 characters, generous
+ * leading, a clear heading hierarchy. The look is the project's flat cartoon style: solid ink
+ * shapes, dashed lines, no glow, no gradients, no pills; motion is a small spring.
+ */
+.docs-shell {
+  /* The sticky site header's height: 4rem of bar plus its 1px bottom border (header.tsx). */
+  --docs-top: calc(4rem + 1px);
+  --docs-plate: color-mix(in srgb, var(--fg) 5%, var(--bg));
+  --docs-plate-strong: color-mix(in srgb, var(--fg) 9%, var(--bg));
+  --docs-ink: color-mix(in srgb, var(--fg) 82%, var(--bg));
+  /* Springs as linear() curves sampled from the closed form: damping 0.7 (a 5% overshoot) for
+     edges that glide, damping 0.55 (12%) for small shapes that pop. */
+  --docs-spring: linear(
+    0,
+    0.0432,
+    0.148,
+    0.2838,
+    0.4286,
+    0.5675,
+    0.6914,
+    0.7957,
+    0.8791,
+    0.9424,
+    0.9876,
+    1.0176,
+    1.0354,
+    1.044,
+    1.046,
+    1.0435,
+    1.0384,
+    1.0321,
+    1.0254,
+    1.0191,
+    1.0135,
+    1.0089,
+    1.0051,
+    1.0023,
+    1.0004,
+    0.9991,
+    0.9983,
+    0.998,
+    1
+  );
+  --docs-pop: linear(
+    0,
+    0.0697,
+    0.2351,
+    0.4404,
+    0.6448,
+    0.8219,
+    0.9587,
+    1.0518,
+    1.1048,
+    1.1252,
+    1.1221,
+    1.1042,
+    1.0792,
+    1.0529,
+    1.0292,
+    1.0102,
+    0.9966,
+    0.9884,
+    0.9846,
+    0.9842,
+    0.986,
+    0.9889,
+    0.9923,
+    0.9954,
+    0.998,
+    1,
+    1.0012,
+    1.0018,
+    1
+  );
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+@media (min-width: 640px) {
+  .docs-shell {
+    padding: 0 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .docs-shell {
+    grid-template-columns: 13.5rem minmax(0, 1fr);
+    column-gap: 3rem;
+  }
+}
+@media (min-width: 1280px) {
+  .docs-shell {
+    grid-template-columns: 13.5rem minmax(0, 1fr) 12.5rem;
+    column-gap: 2.75rem;
+  }
+}
+
+/* ------------------------------------------------------------------ page tree */
+
+.docs-sidebar {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .docs-sidebar {
+    display: block;
+    position: sticky;
+    top: var(--docs-top);
+    align-self: start;
+    max-height: calc(100dvh - var(--docs-top));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    /* The plate of the first item reaches the logo's left edge, its text sits a little inside. */
+    margin-left: -0.75rem;
+    padding: 2.75rem 0 3rem;
+  }
+}
+
+.docs-nav-list {
+  position: relative;
+}
+.docs-nav-group + .docs-nav-group {
+  margin-top: 1.5rem;
+}
+.docs-nav-label {
+  padding: 0 0.75rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--fg-subtle);
+}
+.docs-nav a {
+  position: relative;
+  display: block;
+  padding: 0.4rem 0.75rem 0.4rem 1.6rem;
+  border-radius: 9px;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--fg-muted);
+  transition:
+    color 0.2s ease,
+    transform 0.5s var(--ease-spring);
+}
+@media (hover: hover) {
+  .docs-nav a:hover {
+    color: var(--fg);
+    transform: translateX(3px);
+  }
+}
+.docs-nav a:active {
+  transform: scale(0.98);
+  transition-duration: 0.2s, 0.1s;
+}
+.docs-nav a[aria-current="page"] {
+  color: var(--fg);
+  font-weight: 500;
+  /* Until scripts place the gliding plate, the current link carries the look itself. */
+  background: var(--docs-plate-strong);
+}
+.docs-nav a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0.7rem;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 2px;
+  background: var(--interest);
+}
+.docs-nav-list[data-glide] a[aria-current="page"] {
+  background: transparent;
+}
+.docs-nav-list[data-glide] a[aria-current="page"]::before {
+  content: none;
+}
+
+/*
+ * The gliding indicator (components/docs/use-glide.ts): placed by its top and bottom edges. The
+ * edge that leads the move uses a shorter spring than the one that follows, so the shape stretches
+ * toward where it is going and then settles. Plain transitions: an interrupted move retargets.
+ */
+.docs-glide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.docs-glide[data-ready][data-dir="down"] {
+  transition:
+    bottom 0.44s var(--docs-spring),
+    top 0.6s var(--docs-spring) 0.05s,
+    opacity 0.2s ease;
+}
+.docs-glide[data-ready][data-dir="up"] {
+  transition:
+    top 0.44s var(--docs-spring),
+    bottom 0.6s var(--docs-spring) 0.05s,
+    opacity 0.2s ease;
+}
+.docs-nav-glide {
+  border-radius: 9px;
+  background: var(--docs-plate-strong);
+}
+.docs-nav-dot {
+  position: absolute;
+  left: 0.7rem;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 2px;
+  background: var(--interest);
+  animation: docs-dot 0.62s var(--docs-pop) both;
+}
+@keyframes docs-dot {
+  from {
+    transform: scale(0.2) rotate(-45deg);
+  }
+}
+
+/* ------------------------------------------------------------------ article */
+
+.docs-main {
+  min-width: 0;
+  padding: 2rem 0 5rem;
+}
+@media (min-width: 1024px) {
+  .docs-main {
+    padding-top: 3rem;
+  }
+}
+.docs-article {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.docs-header {
+  padding-bottom: 1.75rem;
+  border-bottom: 1px dashed var(--line-strong);
+}
+.docs-kicker {
+  margin-bottom: 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--fg-subtle);
+}
+.docs-header h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.1rem, 4.6vw, 2.9rem);
+  font-weight: 600;
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+.docs-lead {
+  margin-top: 1rem;
+  font-size: 1.1875rem;
+  line-height: 1.55;
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+
+/* Where the text comes from: a spec file, a translation, a fallback. */
+.docs-note {
+  margin-top: 1.5rem;
+  padding: 0.8rem 1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+.docs-note p + p {
+  margin-top: 0.4rem;
+}
+.docs-note code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: var(--fg);
+}
+.docs-note-link {
+  font-weight: 500;
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: var(--interest);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+.docs-note-link:hover {
+  color: var(--interest);
+}
+.docs-note-warn {
+  color: var(--fg);
+}
+
+/* "On this page", folded into the article where the rail does not fit. */
+.docs-toc-inline {
+  margin-top: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+.docs-toc-inline summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1rem;
+  font-weight: 500;
+  color: var(--fg);
+  list-style: none;
+}
+.docs-toc-inline summary::-webkit-details-marker {
+  display: none;
+}
+.docs-toc-inline summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-right: 2px;
+  border-right: 1.5px solid var(--fg-muted);
+  border-bottom: 1.5px solid var(--fg-muted);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.45s var(--docs-pop);
+}
+.docs-toc-inline[open] summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+.docs-toc-inline ul {
+  padding: 0.2rem 1rem 0.8rem;
+  border-top: 1px dashed var(--line-strong);
+}
+.docs-toc-inline li a {
+  display: block;
+  padding: 0.3rem 0;
+  color: var(--fg-muted);
+}
+.docs-toc-inline li[data-level="3"] a {
+  padding-left: 1rem;
+}
+.docs-toc-inline li a:hover {
+  color: var(--fg);
+}
+@media (min-width: 1280px) {
+  .docs-toc-inline {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ prose */
+
+.docs-prose {
+  margin-top: 2rem;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--docs-ink);
+}
+.docs-prose > :first-child {
+  margin-top: 0;
+}
+.docs-prose p {
+  margin: 1.15rem 0;
+  text-wrap: pretty;
+}
+.docs-prose strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.docs-prose .md-h {
+  position: relative;
+  color: var(--fg);
+  text-wrap: balance;
+  scroll-margin-top: calc(var(--docs-top) + 1.5rem);
+}
+.docs-prose h2 {
+  margin: 3rem 0 1rem;
+  padding-top: 2.5rem;
+  border-top: 1px dashed var(--line-strong);
+  font-size: 1.625rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+.docs-prose > h2:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.docs-prose h3 {
+  margin: 2.25rem 0 0.75rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+.docs-prose h4 {
+  margin: 1.75rem 0 0.5rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.docs-prose .md-h code {
+  font-size: 0.9em;
+}
+/* The anchor of a heading: shown when the heading is hovered or the link is focused. */
+.md-anchor {
+  margin-left: 0.45em;
+  font-weight: 400;
+  color: var(--fg-subtle);
+  opacity: 0;
+  text-decoration: none;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+.md-h:hover .md-anchor,
+.md-anchor:focus-visible {
+  opacity: 1;
+}
+.md-anchor:hover {
+  color: var(--interest);
+}
+@media (hover: none) {
+  .md-anchor {
+    opacity: 0.55;
+  }
+}
+/* Arriving on an anchor: the heading, rule or reference that was asked for lights up once. */
+.docs-prose :target {
+  animation: docs-target 1.6s ease-out;
+}
+.docs-prose .md-rule:has(.md-rule-id:target) {
+  animation: docs-target 1.6s ease-out;
+}
+@keyframes docs-target {
+  0%,
+  35% {
+    background-color: var(--interest-soft);
+    box-shadow: 0 0 0 6px var(--interest-soft);
+  }
+}
+
+.docs-prose a:not([class]),
+.docs-prose a.md-url {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: var(--interest);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.docs-prose a:not([class]):hover,
+.docs-prose a.md-url:hover {
+  color: var(--interest);
+}
+.docs-prose a.md-url {
+  overflow-wrap: anywhere;
+}
+/* References the renderer finds by itself: rule ids, ADRs, sections, bibliography keys. */
+.docs-prose a.md-rule-ref,
+.docs-prose a.md-adr,
+.docs-prose a.md-sec,
+.docs-prose a.md-ref {
+  color: var(--fg);
+  text-decoration: underline dotted;
+  text-decoration-color: var(--fg-subtle);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  transition:
+    color 0.15s ease,
+    text-decoration-color 0.15s ease;
+}
+.docs-prose a.md-rule-ref,
+.docs-prose a.md-ref {
+  font-family: var(--font-mono);
+  font-size: 0.84em;
+}
+.docs-prose a.md-rule-ref:hover,
+.docs-prose a.md-adr:hover,
+.docs-prose a.md-sec:hover,
+.docs-prose a.md-ref:hover {
+  color: var(--interest);
+  text-decoration-color: var(--interest);
+}
+
+.docs-prose code {
+  font-family: var(--font-mono);
+  font-feature-settings: "zero" 1;
+}
+.docs-prose :not(pre) > code {
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+  background: var(--docs-plate-strong);
+  font-size: 0.84em;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.docs-prose .md-list {
+  margin: 1.15rem 0;
+  padding-left: 1.35rem;
+}
+.docs-prose ul.md-list {
+  list-style: square;
+}
+.docs-prose ol.md-list {
+  list-style: decimal;
+}
+.docs-prose .md-list li {
+  margin: 0.45rem 0;
+  padding-left: 0.2rem;
+}
+.docs-prose .md-list li::marker {
+  color: var(--fg-subtle);
+}
+.docs-prose ol.md-list li::marker {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+.docs-prose .md-list .md-list {
+  margin: 0.45rem 0;
+}
+/* A list the spec indents under the item before it. */
+.docs-prose .md-nested {
+  margin-left: 1.55rem;
+}
+
+.docs-prose hr {
+  margin: 2.5rem 0;
+  border: 0;
+  border-top: 1px dashed var(--line-strong);
+}
+
+/*
+ * A normative rule ([P-x.y]): a plate with a solid ink bar and the rule's id as a solid tag that
+ * links to itself. The bar tells the requirement level: solid for MUST, dashed for SHOULD,
+ * dotted for MAY.
+ */
+.docs-prose .md-rule {
+  list-style: none;
+  margin: 0.8rem 0;
+  padding: 0.85rem 1.1rem 0.9rem 1.15rem;
+  border-left: 3px solid var(--fg);
+  border-radius: 0 12px 12px 0;
+  background: var(--docs-plate);
+  scroll-margin-top: calc(var(--docs-top) + 1.5rem);
+}
+.docs-prose li.md-rule {
+  margin-left: -1.35rem;
+}
+.docs-prose .md-rule[data-level="should"] {
+  border-left-style: dashed;
+}
+.docs-prose .md-rule[data-level="may"] {
+  border-left-style: dotted;
+}
+.docs-prose a.md-rule-id {
+  display: inline-block;
+  margin-right: 0.6rem;
+  padding: 0.1rem 0.42rem;
+  border-radius: 5px;
+  background: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--bg);
+  text-decoration: none;
+  vertical-align: 0.1em;
+  scroll-margin-top: calc(var(--docs-top) + 2.5rem);
+  transition: transform 0.45s var(--ease-spring);
+}
+.docs-prose a.md-rule-id:hover {
+  transform: scale(1.08);
+}
+.docs-prose p > a.md-rule-id:not(:first-child),
+.docs-prose li:not(.md-rule) > a.md-rule-id {
+  margin: 0 0.15rem;
+}
+/* MUST, SHOULD, MAY: the requirement keywords of RFC 2119. */
+.docs-prose .md-kw {
+  font-size: 0.9em;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+}
+/* A bibliography entry's key. */
+.docs-prose .md-ref-key {
+  display: inline-block;
+  margin-right: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--fg);
+  scroll-margin-top: calc(var(--docs-top) + 1.5rem);
+}
+
+/* Callouts (`> [!NOTE]`) and quotes: a dashed plate with a small ink glyph. */
+.docs-prose .md-callout {
+  position: relative;
+  margin: 1.6rem 0;
+  padding: 0.9rem 1.1rem 0.9rem 3rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  font-size: 0.98rem;
+  line-height: 1.65;
+}
+.docs-prose .md-callout::before {
+  content: "i";
+  position: absolute;
+  left: 1rem;
+  top: 1.02rem;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 6px;
+  background: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--bg);
+}
+.docs-prose .md-callout[data-kind="warning"],
+.docs-prose .md-callout[data-kind="important"] {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--fg) 40%, transparent);
+}
+.docs-prose .md-callout[data-kind="warning"]::before,
+.docs-prose .md-callout[data-kind="important"]::before {
+  content: "!";
+}
+.docs-prose .md-callout[data-kind="quote"] {
+  padding-left: 1.1rem;
+  border-style: none none none solid;
+  border-left: 3px solid var(--fg);
+  border-radius: 0 12px 12px 0;
+  background: var(--docs-plate);
+  font-size: 1.15rem;
+  line-height: 1.5;
+  color: var(--fg);
+}
+.docs-prose .md-callout[data-kind="quote"]::before {
+  content: none;
+}
+.docs-prose .md-callout > :first-child {
+  margin-top: 0;
+}
+.docs-prose .md-callout > :last-child {
+  margin-bottom: 0;
+}
+.docs-prose .md-callout-title {
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+.docs-prose .md-callout p {
+  margin: 0.5rem 0;
+}
+
+/* Tables scroll sideways inside their frame instead of widening the page. */
+.docs-prose .md-table {
+  margin: 1.6rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+}
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  text-align: left;
+}
+.docs-prose th {
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--docs-plate);
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.docs-prose td {
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.docs-prose tr:last-child td {
+  border-bottom: 0;
+}
+.docs-prose td:first-child {
+  color: var(--fg);
+}
+.docs-prose td:first-child > code:only-child {
+  white-space: nowrap;
+}
+
+/* Code blocks (components/docs/code-block.tsx). */
+.md-code {
+  position: relative;
+  margin: 1.6rem 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--bg-elev);
+}
+.md-code pre {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  border-radius: inherit;
+  font-family: var(--font-mono);
+  font-feature-settings: "zero" 1;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--fg);
+  tab-size: 2;
+}
+.md-code[data-lang] pre {
+  padding-top: 2.1rem;
+}
+.md-code-lang {
+  position: absolute;
+  top: 0.6rem;
+  left: 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--fg-subtle);
+  pointer-events: none;
+}
+.md-copy {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  color: var(--fg-muted);
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    transform 0.5s var(--ease-spring);
+}
+.md-code:hover .md-copy,
+.md-copy:focus-visible,
+.md-copy[data-copied] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .md-copy {
+    opacity: 1;
+  }
+}
+.md-copy:hover {
+  color: var(--fg);
+  transform: scale(1.08);
+}
+.md-copy:active {
+  transform: scale(0.92);
+  transition-duration: 0.15s, 0.15s, 0.1s;
+}
+.md-copy svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+.md-copy-idle {
+  transform-origin: 8px 8px;
+  transition:
+    opacity 0.15s ease,
+    transform 0.3s var(--ease);
+}
+.md-copy-done {
+  stroke-width: 1.8;
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  transition: stroke-dashoffset 0.01s linear;
+}
+.md-copy[data-copied] {
+  color: var(--fg);
+  animation: docs-pop 0.5s var(--docs-pop);
+}
+.md-copy[data-copied] .md-copy-idle {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.md-copy[data-copied] .md-copy-done {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 0.28s var(--ease) 0.08s;
+}
+@keyframes docs-pop {
+  from {
+    transform: scale(0.8);
+  }
+}
+/* Code stays in ink: no hues, so blue and yellow keep meaning Interest and Data. */
+.tok-c {
+  color: var(--fg-subtle);
+  font-style: italic;
+}
+.tok-s,
+.tok-n {
+  color: var(--fg-muted);
+}
+.tok-k {
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ figures */
+
+.docs-figure {
+  margin: 2rem 0;
+}
+.docs-figure-scroll {
+  overflow-x: auto;
+  padding: 1.25rem 0.6rem 1.1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+}
+.docs-figure figcaption {
+  margin-top: 0.7rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+.docs-figure-defs {
+  position: absolute;
+}
+.docs-figure-defs circle {
+  fill: var(--fg-subtle);
+}
+.dfig {
+  display: block;
+  width: 100%;
+  min-width: 35rem;
+  height: auto;
+  overflow: visible;
+}
+.dfig text {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  fill: var(--fg-muted);
+}
+.dfig .mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-feature-settings: "zero" 1;
+}
+.dfig .strong {
+  font-weight: 600;
+}
+.dfig .t-fg {
+  fill: var(--fg);
+}
+.dfig .t-faint {
+  fill: var(--fg-subtle);
+}
+.dfig .t-i {
+  fill: var(--interest);
+}
+.dfig .t-d {
+  fill: var(--data);
+}
+.dfig .on-ink {
+  fill: var(--bg);
+  font-weight: 500;
+}
+/* Solid shapes, cut out of the page by an outline in the page's own color. */
+.dfig .ink {
+  fill: var(--fg);
+}
+.dfig .ink-i {
+  fill: var(--interest);
+}
+.dfig .ink-d {
+  fill: var(--data-bright);
+}
+.dfig .cut {
+  stroke: var(--bg);
+  stroke-width: 3.5;
+  paint-order: stroke;
+  stroke-linejoin: round;
+}
+.dfig .line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--fg) 34%, transparent);
+  stroke-width: 1.4;
+}
+.dfig .line-fg {
+  stroke: color-mix(in srgb, var(--fg) 62%, transparent);
+}
+.dfig .line-i {
+  stroke: var(--interest);
+}
+.dfig .line-d {
+  stroke: var(--data);
+}
+.dfig .dash {
+  stroke-dasharray: 4 5;
+}
+.dfig .dot {
+  stroke-dasharray: 1 6;
+  stroke-linecap: round;
+}
+.dfig .plate {
+  fill: var(--docs-plate);
+}
+.dfig .card {
+  fill: var(--bg);
+  stroke: color-mix(in srgb, var(--fg) 26%, transparent);
+  stroke-width: 1.2;
+}
+.dfig .halftone {
+  fill: url("#docs-halftone");
+}
+
+/* ------------------------------------------------------------------ previous / next */
+
+.docs-pager {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px dashed var(--line-strong);
+}
+.docs-pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  transition:
+    border-color 0.2s ease,
+    transform 0.5s var(--ease-spring);
+}
+.docs-pager-link[data-dir="next"] {
+  align-items: flex-end;
+  text-align: right;
+}
+.docs-pager-dir {
+  font-size: 0.8125rem;
+  color: var(--fg-subtle);
+}
+.docs-pager-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--fg);
+}
+.docs-pager-title svg {
+  flex: none;
+  fill: none;
+  stroke: var(--interest);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.5s var(--ease-spring);
+}
+@media (hover: hover) {
+  .docs-pager-link:hover {
+    border-color: color-mix(in srgb, var(--fg) 45%, transparent);
+    transform: scale(1.025);
+  }
+  .docs-pager-link[data-dir="next"]:hover svg {
+    transform: translateX(4px);
+  }
+  .docs-pager-link[data-dir="previous"]:hover svg {
+    transform: translateX(-4px);
+  }
+}
+.docs-pager-link:active {
+  transform: scale(0.97);
+  transition-duration: 0.2s, 0.1s;
+}
+
+/* ------------------------------------------------------------------ on this page */
+
+.docs-toc-rail {
+  display: none;
+}
+@media (min-width: 1280px) {
+  .docs-toc-rail {
+    display: block;
+    position: sticky;
+    top: var(--docs-top);
+    align-self: start;
+    padding: 3.4rem 0 2rem;
+  }
+}
+.docs-toc {
+  max-height: calc(100dvh - var(--docs-top) - 5.4rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.docs-toc-title {
+  margin-bottom: 0.7rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+.docs-toc-list {
+  position: relative;
+  /* The rail: a dashed line the marker rides on. */
+  border-left: 1px dashed var(--line-strong);
+}
+.docs-toc a {
+  display: block;
+  padding: 0.3rem 0 0.3rem 0.95rem;
+  color: var(--fg-subtle);
+  transition:
+    color 0.2s ease,
+    transform 0.5s var(--ease-spring);
+}
+.docs-toc a[data-level="3"] {
+  padding-left: 1.8rem;
+}
+.docs-toc a:hover,
+.docs-toc a[data-active] {
+  color: var(--fg);
+}
+@media (hover: hover) {
+  .docs-toc a:hover {
+    transform: translateX(2px);
+  }
+}
+.docs-toc-glide {
+  left: -2px;
+  right: auto;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--data);
+}
+
+/* ------------------------------------------------------------------ small screens: bar and drawer */
+
+.docs-bar {
+  position: sticky;
+  top: var(--docs-top);
+  z-index: 30;
+  margin: 0 -1rem;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+@media (min-width: 640px) {
+  .docs-bar {
+    margin: 0 -1.5rem;
+    padding: 0.55rem 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .docs-bar {
+    display: none;
+  }
+}
+.docs-bar-button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  height: 2.6rem;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  text-align: left;
+  transition: transform 0.5s var(--ease-spring);
+}
+.docs-bar-button:active {
+  transform: scale(0.98);
+  transition-duration: 0.1s;
+}
+.docs-bar-icon,
+.docs-drawer-close svg {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.docs-bar-group {
+  color: var(--fg-subtle);
+}
+.docs-bar-group::after {
+  content: "/";
+  margin-left: 0.6rem;
+  color: var(--line-strong);
+}
+.docs-bar-title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  color: var(--fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docs-drawer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  overflow: hidden;
+  transition:
+    display 0.3s allow-discrete,
+    overlay 0.3s allow-discrete;
+}
+.docs-drawer::backdrop {
+  background: var(--veil);
+  opacity: 0;
+  transition:
+    opacity 0.25s ease,
+    display 0.3s allow-discrete,
+    overlay 0.3s allow-discrete;
+}
+.docs-drawer[open]::backdrop {
+  opacity: 1;
+}
+/* The panel is wider than it looks, to the left: the spring's overshoot never opens a gap. */
+.docs-drawer-panel {
+  position: absolute;
+  inset: 0 auto 0 -3rem;
+  width: min(22rem, calc(86vw + 3rem));
+  padding: 1rem 1rem 2rem 4rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--line-strong);
+  background: var(--bg);
+  transform: translateX(-100%);
+  transition: transform 0.3s var(--ease);
+}
+.docs-drawer[open] .docs-drawer-panel {
+  transform: none;
+  transition: transform 0.56s var(--docs-spring);
+}
+@starting-style {
+  .docs-drawer[open] .docs-drawer-panel {
+    transform: translateX(-100%);
+  }
+  .docs-drawer[open]::backdrop {
+    opacity: 0;
+  }
+}
+.docs-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding-left: 0.75rem;
+  font-weight: 600;
+}
+.docs-drawer-close {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--fg-muted);
+  transition: transform 0.5s var(--ease-spring);
+}
+.docs-drawer-close:active {
+  transform: scale(0.92);
+  transition-duration: 0.1s;
+}
+.docs-drawer .docs-nav a {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+/* The page behind a modal drawer does not scroll. */
+html:has(.docs-drawer[open]) {
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .docs-glide[data-ready][data-dir] {
+    transition: opacity 0.2s ease;
+  }
+  .docs-nav-dot,
+  .md-copy[data-copied],
+  .docs-prose :target,
+  .docs-prose .md-rule:has(.md-rule-id:target) {
+    animation: none;
+  }
+  .docs-nav a,
+  .docs-toc a,
+  .docs-pager-link,
+  .docs-pager-title svg,
+  .md-copy,
+  .docs-prose a.md-rule-id,
+  .docs-bar-button,
+  .docs-drawer-close {
+    transition-property: color, border-color, opacity;
+    transform: none !important;
+  }
+  .docs-toc-inline summary::after {
+    transition: none;
+  }
+  .docs-drawer-panel,
+  .docs-drawer[open] .docs-drawer-panel {
+    transition: none;
+  }
+}
