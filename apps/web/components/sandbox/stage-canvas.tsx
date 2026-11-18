@@ -18,7 +18,7 @@ import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import { useResolvedTheme } from "@/lib/hooks/use-theme";
 import { useMessages } from "@/lib/i18n/client";
 import { sandbox } from "@/lib/i18n/messages/sandbox";
-import { InstanceList, ShapeRenderer } from "@/lib/render/shapes";
+import { InstanceList, type Layer, ShapeRenderer } from "@/lib/render/shapes";
 import { type Rect, splitPanes } from "@/lib/sandbox/layout";
 import { type SpringAxis, springSettled, stepSpring } from "@/lib/sandbox/motion";
 import {
@@ -165,7 +165,11 @@ export function StageCanvas({
 
   // Targets: the free area split into one pane per run.
   const targets = splitPanes(area, panes.length);
-  const targetsKey = targets.map((r) => `${r.x | 0},${r.y | 0},${r.w | 0},${r.h | 0}`).join(";");
+  // The pane keys too: no pane and one pane split the area the same way, and a pane that appears
+  // later still needs its frame.
+  const targetsKey = `${panes.map((p) => p.key).join(",")}|${targets
+    .map((r) => `${r.x | 0},${r.y | 0},${r.w | 0},${r.h | 0}`)
+    .join(";")}`;
   useLayoutEffect(() => {
     void targetsKey;
     const seen = new Set<string>();
@@ -275,7 +279,7 @@ export function StageCanvas({
 
   useEffect(() => {
     if (!ready || !active) return;
-    const list = new InstanceList();
+    const lists: InstanceList[] = [];
     const pal = PALETTES[theme];
     let raf = 0;
     let last = performance.now();
@@ -301,20 +305,26 @@ export function StageCanvas({
       }
       const r = renderer.current;
       if (r) {
-        list.clear();
         const ps = panesRef.current;
         const agents = ps.reduce((n, p) => n + p.nodes.filter((x) => x.kind === "agent").length, 0);
         const opts = { reduced, dense: r.backend === "canvas2d" && agents > 24 };
+        // One layer per pane, clipped to it when there are several (the editor's camera can carry a
+        // pane's network past its edge).
+        while (lists.length < Math.max(1, ps.length)) lists.push(new InstanceList());
+        const layers: Layer[] = [];
         let prev: Rect | undefined;
-        for (const p of ps) {
+        ps.forEach((p, i) => {
           const f = frames.current.get(p.key);
-          if (!f) continue;
+          const l = lists[i] as InstanceList;
+          l.clear();
+          if (!f) return;
           const fr = frameOf(f);
-          if (prev) separator(list, fr, fr.x > prev.x + 1, pal.fg);
-          p.scene.build(list, fr, pal, p.now(), real, opts);
+          if (prev) separator(l, fr, fr.x > prev.x + 1, pal.fg);
+          p.scene.build(l, fr, pal, p.now(), real, opts);
+          layers.push(ps.length > 1 ? { list: l, clip: fr } : { list: l });
           prev = fr;
-        }
-        r.draw(list, 0);
+        });
+        r.drawLayers(layers, 0);
       }
       raf = requestAnimationFrame(tick);
     };
@@ -390,8 +400,8 @@ export function StageCanvas({
     const p = panesRef.current[0];
     const fr = targets[0];
     if (p && fr && fr.w > 2) p.scene.fit(fr);
-    // Fit on request, and once the first pane has a size.
-  }, [fitKey, (targets[0]?.w ?? 0) > 2]);
+    // Fit on request, once the first pane has a size, and when the panes split or join.
+  }, [fitKey, (targets[0]?.w ?? 0) > 2, panes.length]);
 
   // The editor's selection, shown by every pane's scene.
   useEffect(() => {

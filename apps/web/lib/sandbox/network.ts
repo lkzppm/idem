@@ -260,11 +260,35 @@ export function linkBetween(net: Network, a: string, b: string): NetLink | undef
  * its right, forwarders below, stepping down past nodes already there.
  */
 export function placeNear(net: Network, near: NetNode, kind: NetNodeKind): [number, number] {
-  const dx = kind === "agent" ? -170 : kind === "producer" ? 220 : near.kind === "agent" ? 170 : 0;
-  const dy = kind === "forwarder" && near.kind !== "agent" ? 150 : 0;
+  // A sibling (agent next to an agent, producer next to a producer) goes in the same column.
+  const sibling = kind === near.kind && kind !== "forwarder";
+  const dx = sibling
+    ? 0
+    : kind === "agent"
+      ? -170
+      : kind === "producer"
+        ? 220
+        : near.kind === "agent"
+          ? 170
+          : 0;
+  const dy = sibling ? 44 : kind === "forwarder" && near.kind !== "agent" ? 150 : 0;
   let [x, y] = [near.x + dx, near.y + dy];
   for (let i = 0; i < 40 && net.nodes.some((n) => Math.hypot(n.x - x, n.y - y) < 36); i++) y += 44;
   return [x, y];
+}
+
+/**
+ * What a new node of `kind` added next to `near` links to: `near` itself when they may be linked,
+ * otherwise (an agent next to an agent, a producer next to a producer) the forwarder `near` hangs
+ * from, so the new node is its sibling. `undefined` when there is none.
+ */
+export function attachTo(net: Network, near: NetNode, kind: NetNodeKind): string | undefined {
+  const pair = [near.kind, kind].sort().join("-");
+  if (pair !== "agent-agent" && pair !== "agent-producer" && pair !== "producer-producer") return near.id;
+  const fwd = net.links
+    .map((l) => (l.a === near.id ? l.b : l.b === near.id ? l.a : undefined))
+    .find((id) => net.nodes.some((n) => n.id === id && n.kind === "forwarder"));
+  return fwd;
 }
 
 // ---------------------------------------------------------------- reading

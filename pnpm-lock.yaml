@@ -50,7 +50,13 @@ importers:
       '@idem/sim':
         specifier: workspace:*
         version: link:../../packages/sim
+      '@ndn/fw':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
       '@ndn/packet':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      '@ndn/tlv':
         specifier: 0.0.20260427
         version: 0.0.20260427
       geist:

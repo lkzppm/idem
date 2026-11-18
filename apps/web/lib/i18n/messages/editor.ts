@@ -44,6 +44,10 @@ export const editor = defineMessages(
       close: "Close",
       current: "open now",
       locked: "fixed network",
+      startTitle: "What do you want to run?",
+      resume: "Continue where you left off",
+      resumeBlurb: (from: string, nodes: number) =>
+        `Your network from ${from}, ${nodes} ${nodes === 1 ? "node" : "nodes"}, as you left it.`,
     },
     run: {
       title: "Run",
@@ -51,7 +55,7 @@ export const editor = defineMessages(
       engineIdem: "IDEM",
       engineIdemHint: "simulated, seeded",
       engineNdn: "NDN",
-      engineNdnHint: "routers in WebAssembly",
+      engineNdnHint: "real routers",
       compare: "Compare",
       compareModes: {
         "mcp-direct": "MCP direct",
@@ -176,6 +180,22 @@ export const editor = defineMessages(
       limits:
         "NDN routers forward and cache, but do not check signatures (agents do) and never see private or side-effect calls: those go straight to the producer.",
       note: "YaNFD in WebAssembly",
+      restart: "Run again",
+      logEmpty: "No call has finished yet.",
+      notOnNdn: "not on NDN",
+      stats: {
+        answered: "Calls answered",
+        verified: "both signatures verified",
+        csHits: "Content Store hits",
+        aggregated: "Aggregated in a PIT",
+        upstream: "Interests to producers",
+        upstreamHint: "manifests and tool lists included",
+        bypass: "Kept off NDN",
+        failed: "Failed",
+        latency: "Mean latency",
+        noCompare:
+          "The NDN engine runs one network in real time; switch to IDEM to compare protocols side by side.",
+      },
     },
   },
   {
@@ -218,6 +238,10 @@ export const editor = defineMessages(
       close: "Fechar",
       current: "aberto agora",
       locked: "rede fixa",
+      startTitle: "O que você quer rodar?",
+      resume: "Continuar de onde parou",
+      resumeBlurb: (from: string, nodes: number) =>
+        `Sua rede a partir de ${from}, ${nodes} ${nodes === 1 ? "nó" : "nós"}, como você deixou.`,
     },
     run: {
       title: "Execução",
@@ -225,7 +249,7 @@ export const editor = defineMessages(
       engineIdem: "IDEM",
       engineIdemHint: "simulado, com semente",
       engineNdn: "NDN",
-      engineNdnHint: "roteadores em WebAssembly",
+      engineNdnHint: "roteadores reais",
       compare: "Comparar",
       compareModes: {
         "mcp-direct": "MCP direto",
@@ -352,6 +376,22 @@ export const editor = defineMessages(
       limits:
         "Os roteadores NDN encaminham e guardam em cache, mas não verificam assinaturas (os agentes verificam) e nunca veem chamadas privadas ou com efeito colateral: essas vão direto ao produtor.",
       note: "YaNFD em WebAssembly",
+      restart: "Rodar de novo",
+      logEmpty: "Nenhuma chamada terminou ainda.",
+      notOnNdn: "fora do NDN",
+      stats: {
+        answered: "Chamadas respondidas",
+        verified: "as duas assinaturas verificadas",
+        csHits: "Acertos no Content Store",
+        aggregated: "Agregadas numa PIT",
+        upstream: "Interests aos produtores",
+        upstreamHint: "manifestos e listas de ferramentas incluídos",
+        bypass: "Mantidas fora do NDN",
+        failed: "Falharam",
+        latency: "Latência média",
+        noCompare:
+          "O motor NDN roda uma rede em tempo real; mude para IDEM para comparar protocolos lado a lado.",
+      },
     },
   },
 );

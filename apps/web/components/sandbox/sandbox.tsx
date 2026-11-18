@@ -14,13 +14,14 @@ import {
 } from "react";
 import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import { useMessages } from "@/lib/i18n/client";
+import { editor as editorMessages } from "@/lib/i18n/messages/editor";
 import { sandbox } from "@/lib/i18n/messages/sandbox";
+import { type ExampleId, example } from "@/lib/sandbox/examples";
 import {
   clampRect,
   defaultRect,
   freeRect,
   type Rect,
-  type SandboxMode,
   SIDEBAR_DEFAULT,
   SIDEBAR_MAX,
   SIDEBAR_MIN,
@@ -30,10 +31,12 @@ import {
   type WindowId,
 } from "@/lib/sandbox/layout";
 import { clamp } from "@/lib/sandbox/motion";
+import { ExamplePicker, StartScreen } from "./editor/picker";
+import { useNetwork } from "./editor/use-network";
+import { EditorMode } from "./editor-mode";
 import { HelpIcon, LayoutIcon, WindowIcon } from "./icons";
 import { LiveMode } from "./live-mode";
-import { SwarmMode } from "./swarm-mode";
-import { InfoTip, Section, Segmented } from "./ui";
+import { InfoTip, Section } from "./ui";
 import { useDragToStage } from "./window/drag-to-stage";
 import { FloatingWindow } from "./window/floating-window";
 import { useLayout } from "./window/use-layout";
@@ -72,16 +75,22 @@ const ENTER_DELAY: Record<WindowId, number> = {
  * controls, the network canvas filling the stage, and floating windows over it for the protocol's
  * state (event log, PIT and CS tables, packet inspector, metrics, comparison, safety verdicts).
  *
- * The shell owns the layout (sidebar width, which windows are open, where they are) and offers slots;
- * the mode that runs (live or swarm) portals its controls, canvas and window contents into them, so
- * switching modes swaps contents without rebuilding the workspace. On a phone the stage sits on top
- * and the sidebar and windows become the tabs of a sheet.
+ * What runs is a network from the editor (ADR-028): an example or a blank canvas the visitor edits,
+ * or the Live example over real HTTP. The shell owns the layout (sidebar width, which windows are
+ * open, where they are), the network and its history, and offers slots; the editor or Live mode
+ * portals its controls, canvas and window contents into them. On a phone the stage sits on top and
+ * the sidebar and windows become the tabs of a sheet.
  */
 export function Sandbox() {
   const t = useMessages(sandbox);
   const s = t.shell;
-  const [mode, setModeState] = useState<SandboxMode>("live");
+  const te = useMessages(editorMessages);
+  const nw = useNetwork();
+  const mode = nw.showing.kind === "live" ? "live" : "net";
+  const choosing = nw.showing.kind === "none";
   const L = useLayout(mode);
+  const [picking, setPicking] = useState(false);
+  const [toast, setToast] = useState<string>();
   const phone = usePhone();
   const reduced = useReducedMotion();
   const root = useRef<HTMLDivElement>(null);
@@ -94,17 +103,26 @@ export function Sandbox() {
   const [booted, setBooted] = useState(false);
   const toggles = useRef(new Map<WindowId, HTMLButtonElement>());
 
-  // Mode from the URL once (`?mode=swarm`), then mirrored back.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("mode") === "swarm") setModeState("swarm");
-  }, []);
-  const setMode = (m: SandboxMode) => {
-    setModeState(m);
-    const q = new URLSearchParams(window.location.search);
-    if (m === "swarm") q.set("mode", "swarm");
-    else q.delete("mode");
-    const qs = q.toString();
-    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    if (!toast) return;
+    const id = setTimeout(() => setToast(undefined), 2200);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  const share = async () => {
+    const url = nw.shareUrl();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setToast(te.copied);
+    } catch {
+      window.history.replaceState(null, "", url);
+      setToast(te.copyFailed);
+    }
+  };
+  const pick = (id: ExampleId) => {
+    setPicking(false);
+    if (id !== "live" || nw.showing.kind !== "live") nw.load(id);
   };
 
   // The header's real height (the workspace fills the rest of the viewport).
@@ -252,52 +270,105 @@ export function Sandbox() {
     ),
   });
 
-  const modeSwitch = (
-    <Segmented
-      label={s.modeLabel}
-      size="md"
-      value={mode}
-      onChange={setMode}
-      options={[
-        {
-          value: "live",
-          label: (
-            <span className="obs-mode">
-              {s.live}
-              <span className="obs-mode-hint">{s.liveHint}</span>
-            </span>
-          ),
-        },
-        {
-          value: "swarm",
-          label: (
-            <span className="obs-mode">
-              {s.swarm}
-              <span className="obs-mode-hint">{s.swarmHint}</span>
-            </span>
-          ),
-        },
-      ]}
-    />
-  );
+  const showing = nw.showing;
+  const from = showing.kind === "live" ? "live" : showing.kind === "net" ? showing.net.from : "";
+  const fromName = (te.example as Record<string, { name: string }>)[from]?.name ?? from;
+  const edited =
+    showing.kind === "net" &&
+    (from === "blank"
+      ? showing.net.nodes.length > 0
+      : JSON.stringify(showing.net) !== JSON.stringify(example(from as ExampleId)));
 
-  // The current mode's description, in an info bubble beside the switch.
+  // The network's head: which example it came from (opens the picker), undo, redo, share.
   const modeHead = (
-    <div className="obs-mode-head">
-      <div className="min-w-0 flex-1">{modeSwitch}</div>
-      <InfoTip label={s.modeAbout(mode === "live" ? s.live : s.swarm)}>
-        {mode === "live" ? (
-          t.live.intro
-        ) : (
-          <>
-            {t.swarm.intro}{" "}
-            <Link href="/benchmarks" className="obs-link">
-              /benchmarks
-            </Link>
-            .
-          </>
-        )}
-      </InfoTip>
+    <div className="obs-net-head">
+      <button
+        type="button"
+        className="obs-net-pick"
+        title={te.examplesTitle}
+        aria-haspopup="dialog"
+        onClick={() => setPicking(true)}
+      >
+        <span className="obs-net-label">{te.network}</span>
+        <span className="obs-net-name">
+          {fromName}
+          {edited && <span className="obs-net-edited"> · {te.edited}</span>}
+        </span>
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className="obs-net-chev">
+          <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      </button>
+      {showing.kind === "live" && (
+        <InfoTip label={s.modeAbout(fromName)}>
+          {t.live.intro}{" "}
+          <Link href="/benchmarks" className="obs-link">
+            /benchmarks
+          </Link>
+          .
+        </InfoTip>
+      )}
+      <div className="obs-net-actions">
+        <button
+          type="button"
+          className="obs-icon-btn"
+          aria-label={te.undo}
+          title={`${te.undo} (⌘Z)`}
+          disabled={!nw.canUndo}
+          onClick={nw.undo}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              d="M6 4L3 7l3 3M3.5 7H10a3 3 0 010 6H8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="obs-icon-btn"
+          aria-label={te.redo}
+          title={`${te.redo} (⇧⌘Z)`}
+          disabled={!nw.canRedo}
+          onClick={nw.redo}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              d="M10 4l3 3-3 3M12.5 7H6a3 3 0 000 6h2"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="obs-icon-btn obs-share"
+          title={te.shareTitle}
+          onClick={() => void share()}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.6 2.6 0 013.7 3.7L10.7 8.2M9 11.5l-1.2 1.2a2.6 2.6 0 01-3.7-3.7L5.3 7.8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span>{te.share}</span>
+        </button>
+      </div>
+      {toast && (
+        <span className="obs-toast" role="status">
+          {toast}
+        </span>
+      )}
     </div>
   );
 
@@ -354,10 +425,12 @@ export function Sandbox() {
         ref={root}
         className="obs"
         data-phone={phone || undefined}
+        data-choosing={choosing || undefined}
         style={{ "--obs-sidebar": `${L.layout.sidebar}px` } as CSSProperties}
       >
+        {choosing && nw.loaded && <StartScreen saved={nw.saved} onPick={pick} onResume={nw.resume} />}
         {!phone && (
-          <aside className="obs-sidebar" aria-label={s.controls}>
+          <aside className="obs-sidebar" aria-label={s.controls} inert={choosing}>
             <div className="obs-sidebar-head">{modeHead}</div>
             <div className="obs-sidebar-scroll">
               <div ref={slotRef("controls")} className="obs-controls" />
@@ -369,7 +442,7 @@ export function Sandbox() {
           <SidebarGrip label={s.resizeSidebar} width={L.layout.sidebar} root={root} onCommit={L.setSidebar} />
         )}
 
-        <div ref={stageEl} className="obs-stage">
+        <div ref={stageEl} className="obs-stage" inert={choosing}>
           <div ref={slotRef("stage")} className="obs-stage-layer" />
           <div ref={slotRef("status")} className="obs-hud obs-hud-top" />
           <Legend labels={s.legend} />
@@ -379,7 +452,7 @@ export function Sandbox() {
                 <div className="obs-popover" role="dialog" aria-label={s.help}>
                   <p className="obs-popover-title">{s.help}</p>
                   <ul className="obs-keys">
-                    {s.keys.map(([k, does]) => (
+                    {[...s.keys, ...(mode === "net" ? te.keys : [])].map(([k, does]) => (
                       <li key={k}>
                         <kbd className="obs-kbd">{k}</kbd>
                         <span>{does}</span>
@@ -430,7 +503,7 @@ export function Sandbox() {
         </div>
 
         {phone && (
-          <div className="obs-dock">
+          <div className="obs-dock" inert={choosing}>
             <div className="obs-dock-head">{modeHead}</div>
             <nav className="obs-dock-tabs" aria-label={s.sections}>
               {(["controls", ...WINDOW_IDS] as const).map((id) => (
@@ -456,7 +529,9 @@ export function Sandbox() {
         )}
       </div>
       {drag.ghost}
-      {mode === "live" ? <LiveMode key="live" /> : <SwarmMode key="swarm" />}
+      {nw.showing.kind === "live" && <LiveMode key="live" />}
+      {nw.showing.kind === "net" && <EditorMode key="net" nw={nw} net={nw.showing.net} />}
+      <ExamplePicker open={picking} current={from} onPick={pick} onClose={() => setPicking(false)} />
     </WorkspaceProvider>
   );
 }

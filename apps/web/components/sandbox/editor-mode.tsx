@@ -5,22 +5,42 @@ import type { AttackRecord, Metrics, SimMode } from "@idem/sim";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import { useMessages } from "@/lib/i18n/client";
+import { editor } from "@/lib/i18n/messages/editor";
 import { sandbox } from "@/lib/i18n/messages/sandbox";
-import type { SceneNode } from "@/lib/sandbox/scene";
+import { splitPanes } from "@/lib/sandbox/layout";
 import {
-  DEFAULT_PARAMS,
+  addLink,
+  addNode,
+  attachTo,
+  autoToolsAll,
+  type Issue,
+  issues,
+  linkBetween,
+  linkProblem,
+  moveNode,
+  type NetNodeKind,
+  type Network,
+  placeNear,
+  producerNodes,
+  removeLink,
+  removeNode,
+} from "@/lib/sandbox/network";
+import {
+  type CompareMode,
   type LoggedEvent,
   type NameSnapshot,
-  paramsFromQuery,
-  paramsToQuery,
-  type SwarmParams,
-  SwarmRun,
-  sameRun,
+  NetworkRun,
+  runSignature,
   type TableSnapshot,
-} from "@/lib/sandbox/swarm";
+  totalCalls,
+} from "@/lib/sandbox/run";
+import type { Camera, SceneNode } from "@/lib/sandbox/scene";
+import { Properties } from "./editor/properties";
+import type { NetworkState } from "./editor/use-network";
 import { PauseIcon, PlayIcon, RestartIcon } from "./icons";
+import { NdnEngine } from "./ndn-engine";
 import { DataFacts, DigestCheck, NameParts, type SafetyItem, SafetyList, useContentCheck } from "./panels";
-import { StageCanvas } from "./stage-canvas";
+import { type EditorSelection, StageCanvas, type StageEditor, type StageEditorHandle } from "./stage-canvas";
 import {
   Button,
   Check,
@@ -37,10 +57,12 @@ import {
   Stat,
   shortName,
 } from "./ui";
+import { useDragToStage } from "./window/drag-to-stage";
 import { isTyping, Slot, useWorkspace } from "./workspace";
 
 type Strings = (typeof sandbox)["en"];
 type SwarmStrings = Strings["swarm"];
+type EditorStrings = (typeof editor)["en"];
 
 interface RunView {
   mode: SimMode;
@@ -121,20 +143,38 @@ function attackDetail(a: AttackRecord & { caughtAt?: string }, r: SwarmStrings["
   }
 }
 
+/** The protocols in the order their panes appear. */
+const COMPARE_ORDER: CompareMode[] = ["mcp-direct", "mcp-local-cache", "idem"];
+
+/** An issue in the visitor's language. */
+function issueText(i: Issue, t: EditorStrings["issues"], name: (id: string) => string): string {
+  switch (i.kind) {
+    case "no-agents":
+    case "no-producers":
+      return t[i.kind];
+    case "agent-no-tools":
+      return t[i.kind](i.node);
+    case "tool-unreachable":
+    case "tool-not-served":
+      return t[i.kind](i.node, name(i.producer), i.tool);
+  }
+}
+
 /**
- * Swarm mode: a deterministic simulation in the browser (the real `@idem/core` forwarder and producer
- * over virtual links, on a virtual clock). The same seeded workload runs once per mode, side by side
- * on the stage; every counter comes from these runs.
+ * The network editor (ADR-028): the visitor's network on the stage, editable, and run by the
+ * simulator (the real `@idem/core` forwarders and producers over virtual links, on a seeded virtual
+ * clock) once per compared protocol, side by side. Moving a node never restarts a run; any other
+ * change restarts it (debounced). With the NDN engine, the forwarders are real NDN routers instead
+ * (`ndn-engine.tsx`).
  */
-export function SwarmMode() {
+export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
   const t = useMessages(sandbox);
   const ts = t.swarm;
+  const te = useMessages(editor);
   const ws = useWorkspace();
   const wsRef = useRef(ws);
   wsRef.current = ws;
   const reduced = useReducedMotion();
-  const [params, setParams] = useState<SwarmParams>(DEFAULT_PARAMS);
-  const [loaded, setLoaded] = useState(false);
   const [playing, setPlaying] = useState(true);
   const [views, setViews] = useState<RunView[]>([]);
   const [attacks, setAttacks] = useState<(AttackRecord & { caughtAt?: string })[]>([]);
@@ -148,75 +188,96 @@ export function SwarmMode() {
   const [named, setNamed] = useState<NameSnapshot>();
   const [metricsRun, setMetricsRun] = useState<SimMode>("idem");
   const [backend, setBackend] = useState<"webgpu" | "canvas2d">();
-  const runs = useRef<SwarmRun[]>([]);
+  const [sel, setSel] = useState<EditorSelection>();
+  const [target, setTarget] = useState<string>("");
+  const camera = useRef<Camera>({ x: 0, y: 0, zoom: 1 }).current;
+  const handle = useRef<StageEditorHandle | null>(null);
+  const runs = useRef<NetworkRun[]>([]);
   const vt = useRef(0);
-  const speed = useRef(params.speed);
-  speed.current = params.speed;
-  const lastRun = useRef<SwarmParams | undefined>(undefined);
+  const netRef = useRef(net);
+  netRef.current = net;
+  const speed = useRef(net.run.speed);
+  speed.current = net.run.speed;
   const [generation, setGeneration] = useState(0);
   const highlightRef = useRef(highlight);
   highlightRef.current = highlight;
   const focusRef = useRef(focus);
   focusRef.current = focus;
+  const selRef = useRef(sel);
+  selRef.current = sel;
   const attackCount = useRef(0);
   /** The latest restart; an older one that finishes later is dropped. */
   const startSeq = useRef(0);
+  const lastLoads = useRef(-1);
 
-  // Load params from the URL once.
-  useEffect(() => {
-    setParams(paramsFromQuery(new URLSearchParams(window.location.search)));
-    setLoaded(true);
-  }, []);
+  const problems = useMemo(() => issues(net), [net]);
+  const ndn = net.run.engine === "ndn";
+  const runnable = problems.length === 0 && !ndn;
+  const sig = useMemo(() => runSignature(net), [net]);
+  const producers = producerNodes(net);
+  const nameOf = (id: string) => producers.find((p) => p.id === id)?.config.name ?? id;
 
   // Reduced motion: never autoplay.
   useEffect(() => {
     if (reduced) setPlaying(false);
   }, [reduced]);
 
-  // Mirror params into the URL (shareable).
-  useEffect(() => {
-    if (!loaded) return;
-    const id = setTimeout(() => {
-      const q = paramsToQuery(params, new URLSearchParams(window.location.search));
-      q.set("mode", "swarm");
-      const s = q.toString();
-      window.history.replaceState(null, "", `${window.location.pathname}${s ? `?${s}` : ""}`);
-    }, 200);
-    return () => clearTimeout(id);
-  }, [params, loaded]);
-
-  const modes = useMemo<SimMode[]>(
-    () => (params.localCache ? ["mcp-direct", "mcp-local-cache", "idem"] : ["mcp-direct", "idem"]),
-    [params.localCache],
-  );
-
-  // (Re)start every run when the simulation-relevant config changes.
-  const restart = useCallback(async (p: SwarmParams, m: SimMode[]) => {
-    const my = ++startSeq.current;
-    const next = m.map((mode) => new SwarmRun(mode));
-    await Promise.all(next.map((r) => r.start(p)));
-    if (my !== startSeq.current) return;
-    for (const r of next) r.scene.highlight = highlightRef.current;
-    runs.current = next;
-    vt.current = 0;
-    lastRun.current = p;
-    attackCount.current = 0;
-    setAttacks([]);
-    const idem = next.find((r) => r.mode === "idem");
-    const ids = idem?.forwarderIds() ?? [];
-    const f = focusRef.current;
-    const node = ids.includes(f.node) ? f.node : (ids[0] ?? "");
-    setFocus({ run: "idem", node });
-    if (idem) idem.scene.selected = node || undefined;
-    setGeneration((g) => g + 1);
+  const fit = useCallback(() => {
+    const first = runs.current[0];
+    const fr = splitPanes(wsRef.current.area, runs.current.length || 1)[0];
+    if (first && fr && fr.w > 2) first.scene.fit(fr);
   }, []);
 
+  // (Re)start every run when what the network does changes. A newly loaded network pops in and is
+  // fitted; an edit restarts in place.
+  const restart = useCallback(
+    async (n: Network, entrance: boolean) => {
+      const my = ++startSeq.current;
+      const ok = issues(n).length === 0 && n.run.engine === "idem";
+      const modes: SimMode[] = ok ? COMPARE_ORDER.filter((m) => n.run.compare.includes(m)) : ["idem"];
+      const next = modes.map((mode) => new NetworkRun(mode));
+      await Promise.all(next.map((r) => r.start(n, camera, ok, entrance ? performance.now() : 0)));
+      if (my !== startSeq.current) return;
+      for (const r of next) r.scene.highlight = highlightRef.current;
+      runs.current = next;
+      vt.current = 0;
+      attackCount.current = 0;
+      setAttacks([]);
+      if (entrance) fit();
+      const idem = next.find((r) => r.mode === "idem");
+      const ids = idem?.forwarderIds() ?? [];
+      const f = focusRef.current;
+      const node = ids.includes(f.node) ? f.node : (ids[0] ?? "");
+      setFocus({ run: "idem", node });
+      setLogSource((s) => (modes.includes(s) ? s : "idem"));
+      setMetricsRun((s) => (modes.includes(s) ? s : "idem"));
+      setGeneration((g) => g + 1);
+    },
+    [camera, fit],
+  );
+
   useEffect(() => {
-    if (!loaded) return;
-    if (lastRun.current && sameRun(lastRun.current, params) && runs.current.length === modes.length) return;
-    const id = setTimeout(() => void restart(params, modes), lastRun.current ? 250 : 0);
+    void sig;
+    const load = lastLoads.current !== nw.loads;
+    lastLoads.current = nw.loads;
+    if (load) setSel(undefined);
+    const id = setTimeout(() => void restart(netRef.current, load), load ? 0 : 250);
     return () => clearTimeout(id);
-  }, [params, modes, loaded, restart]);
+  }, [sig, nw.loads, restart]);
+
+  // Positions (a drag, an undo of one) move the drawn nodes without restarting anything.
+  useEffect(() => {
+    for (const r of runs.current) for (const n of net.nodes) r.scene.move(n.id, n.x, n.y);
+  }, [net.nodes]);
+
+  // A selection whose node or link is gone is dropped; the attack target follows the producers.
+  useEffect(() => {
+    const s = selRef.current;
+    if (s?.kind === "node" && !net.nodes.some((n) => n.id === s.id)) setSel(undefined);
+    if (s?.kind === "link" && !net.links.some((l) => l.id === s.id)) setSel(undefined);
+    const names = producerNodes(net).map((p) => p.config.name);
+    setTarget((cur) => (names.includes(cur) ? cur : (names[0] ?? "")));
+  }, [net]);
 
   useEffect(() => {
     for (const r of runs.current) r.scene.highlight = highlight;
@@ -274,7 +335,12 @@ export function SwarmMode() {
     return () => clearInterval(id);
   }, []);
 
-  const set = <K extends keyof SwarmParams>(k: K, v: SwarmParams[K]) => setParams((p) => ({ ...p, [k]: v }));
+  const edit = useCallback(
+    (next: Network, coalesce?: string) => nw.edit(next, coalesce ? { coalesce } : undefined),
+    [nw],
+  );
+  const setRun = (patch: Partial<Network["run"]>, key: string) =>
+    edit({ ...netRef.current, run: { ...netRef.current.run, ...patch } }, `run.${key}`);
   const idemRun = () => runs.current.find((r) => r.mode === "idem");
 
   const follow = useCallback(
@@ -285,28 +351,111 @@ export function SwarmMode() {
     [ws],
   );
 
-  // Keys: Space plays or pauses, R restarts, Esc clears the highlight.
+  // ---------------------------------------------------------------- editing
+
+  const connect = useCallback(
+    (a: string, b: string) => {
+      const [linked, id] = addLink(netRef.current, a, b);
+      if (id) edit(autoToolsAll(linked));
+    },
+    [edit],
+  );
+
+  const removeSelected = useCallback(() => {
+    const s = selRef.current;
+    if (!s) return;
+    edit(s.kind === "node" ? removeNode(netRef.current, s.id) : removeLink(netRef.current, s.id));
+    setSel(undefined);
+  }, [edit]);
+
+  /** Add a node: at a world point (a drop), or next to the selected node and linked to it. */
+  const add = useCallback(
+    (kind: NetNodeKind, at?: [number, number]) => {
+      let n = netRef.current;
+      const s = selRef.current;
+      const near = !at && s?.kind === "node" ? n.nodes.find((x) => x.id === s.id) : undefined;
+      const jitter = () => (Math.random() - 0.5) * 60;
+      const [x, y] = at ?? (near ? placeNear(n, near, kind) : [camera.x + jitter(), camera.y + jitter()]);
+      let id: string;
+      [n, id] = addNode(n, kind, Math.round(x), Math.round(y));
+      const to = near ? attachTo(n, near, kind) : undefined;
+      if (to && !linkProblem(n, to, id)) [n] = addLink(n, to, id);
+      edit(autoToolsAll(n));
+      setSel({ kind: "node", id });
+    },
+    [camera, edit],
+  );
+
+  const editorProps: StageEditor = {
+    camera,
+    fitKey: nw.loads,
+    selected: sel,
+    onSelect: setSel,
+    onMove: (id, x, y, done) => {
+      if (done) edit(moveNode(netRef.current, id, x, y), `move.${id}`);
+    },
+    canLink: (a, b) => !linkProblem(netRef.current, a, b),
+    onLink: connect,
+    linkId: (a, b) => linkBetween(netRef.current, a, b)?.id,
+    handle,
+    labels: te.canvas,
+  };
+
+  // Keys: Space plays or pauses, R restarts, Esc clears, Delete removes, arrows move, ⌘Z undoes, F fits.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e)) return;
+      if (e.defaultPrevented) return;
+      const el = e.target as HTMLElement | null;
+      const field = !!el && (el.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName));
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "z" || e.key === "Z" || e.key === "y")) {
+        if (field && el?.tagName !== "INPUT") return;
+        if (
+          field &&
+          (el as HTMLInputElement).type !== "range" &&
+          (el as HTMLInputElement).type !== "checkbox"
+        )
+          return;
+        e.preventDefault();
+        if (e.key === "y" || e.shiftKey) nw.redo();
+        else nw.undo();
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e) || field) return;
+      const s = selRef.current;
       if (e.key === " " && !(e.target instanceof HTMLButtonElement)) {
         e.preventDefault();
         setPlaying((p) => !p);
       } else if (e.key === "r" || e.key === "R") {
         e.preventDefault();
-        void restart(params, modes);
-      } else if (e.key === "Escape") setHighlight(undefined);
+        void restart(netRef.current, false);
+      } else if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        fit();
+      } else if (e.key === "Escape") {
+        setHighlight(undefined);
+        setSel(undefined);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && s) {
+        e.preventDefault();
+        removeSelected();
+      } else if (s?.kind === "node" && e.key.startsWith("Arrow") && !el?.closest(".obs-node-keys")) {
+        const n = netRef.current.nodes.find((x) => x.id === s.id);
+        if (!n) return;
+        const d = e.shiftKey ? 40 : 10;
+        const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
+        const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
+        e.preventDefault();
+        edit(moveNode(netRef.current, n.id, n.x + dx, n.y + dy), `move.${n.id}`);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [restart, params, modes]);
+  }, [restart, fit, removeSelected, edit, nw]);
 
   const onNodeClick = (pane: string, node: string) => {
+    setSel({ kind: "node", id: node });
     const run = runs.current.find((r) => r.mode === pane);
     if (!run?.sim?.forwarders.has(node)) return;
-    for (const r of runs.current) r.scene.selected = r === run ? node : undefined;
     setFocus({ run: run.mode, node });
-    ws.reveal("tables");
   };
 
   const attack = (fn: () => void) => {
@@ -314,9 +463,29 @@ export function SwarmMode() {
     ws.reveal("safety");
   };
 
-  const total = params.agents * params.callsPerAgent;
+  // The Add palette: drag a chip onto the stage, or click it.
+  const stageEl = useRef<HTMLElement | null>(null);
+  stageEl.current = ws.slots.stage ?? null;
+  const drag = useDragToStage<NetNodeKind>({
+    stage: stageEl,
+    chip: true,
+    sizeOf: () => ({ w: 120, h: 38 }),
+    onDrop: (kind, _r, at) => {
+      const w = handle.current?.worldAt(at.x, at.y);
+      if (w) add(kind, w);
+    },
+    render: (kind) => (
+      <>
+        <NodeGlyph kind={kind} />
+        <span className="obs-drag-name">{te.add[kind]}</span>
+      </>
+    ),
+  });
+
+  const total = totalCalls(net);
   const allDone = views.length > 0 && views.every((v) => v.done);
   const now = views[0]?.now ?? 0;
+  const modes = views.map((v) => v.mode);
 
   // Event log rows (bounded).
   const logRun = runs.current.find((r) => r.mode === logSource) ?? runs.current[0];
@@ -348,313 +517,302 @@ export function SwarmMode() {
     .reverse();
 
   const focusIds = runs.current.find((r) => r.mode === focus.run)?.forwarderIds() ?? [];
+  const agentCount = net.nodes.filter((n) => n.kind === "agent").length;
 
   return (
     <>
+      {drag.ghost}
       <Slot name="controls">
-        <Section title={ts.run}>
-          <div className="flex gap-2">
-            <Button variant="primary" onClick={() => setPlaying((p) => !p)} kbd="Space" className="flex-1">
-              {playing ? <PauseIcon /> : <PlayIcon />}
-              {playing ? ts.pause : ts.play}
-            </Button>
-            <Button onClick={() => void restart(params, modes)} kbd="R">
-              <RestartIcon />
-              {ts.restart}
-            </Button>
-          </div>
-          <Slider
-            label={ts.speed}
-            tip={ts.tips.speed}
-            value={Math.log10(params.speed)}
-            min={-2}
-            max={Math.log10(2)}
-            step={0.01}
-            format={() => `${fixed(params.speed, params.speed < 0.1 ? 3 : 2)}×`}
-            onChange={(v) => set("speed", Number((10 ** v).toFixed(3)))}
-          />
-          <div className="obs-field">
-            <Label htmlFor="swarm-seed" tip={ts.tips.seed}>
-              {ts.seed}
-            </Label>
-            <div className="flex gap-2">
-              <input
-                id="swarm-seed"
-                type="number"
-                value={params.seed}
-                min={0}
-                onChange={(e) => set("seed", Math.max(0, Math.round(Number(e.target.value) || 0)))}
-                className="obs-input t-mono min-w-0 flex-1"
-              />
-              <Button
-                onClick={() => set("seed", Math.floor(Math.random() * 100_000))}
-                title={ts.shuffleTitle}
-              >
-                {ts.shuffle}
-              </Button>
+        <Section title={te.run.title}>
+          {problems.length > 0 && (
+            <div className="obs-issues-box" role="status">
+              <p className="obs-issues-title">{te.run.cannotRun}</p>
+              <ul className="obs-issues">
+                {problems.slice(0, 5).map((i) => (
+                  <li key={JSON.stringify(i)}>{issueText(i, te.issues, nameOf)}</li>
+                ))}
+              </ul>
             </div>
-          </div>
-          <Check
-            label={ts.localCache}
-            tip={ts.tips.localCache}
-            checked={params.localCache}
-            onChange={(v) => set("localCache", v)}
-          />
-          <div className="flex gap-2">
-            <button type="button" disabled title={ts.replayTitle} className="obs-btn obs-btn-dashed flex-1">
-              {ts.replay}
-            </button>
-          </div>
-          {!playing && attacks.length === 0 && <p className="obs-note">{ts.resolveHint}</p>}
-        </Section>
-        <Section
-          title={ts.workload}
-          aside={
-            <button
-              type="button"
-              className="obs-link-btn"
-              onClick={() => setParams({ ...DEFAULT_PARAMS, speed: params.speed })}
-            >
-              {ts.defaults}
-            </button>
-          }
-        >
-          <Slider
-            label={ts.agents}
-            tip={ts.tips.agents}
-            value={params.agents}
-            min={1}
-            max={32}
-            onChange={(v) => set("agents", v)}
-          />
-          <Slider
-            label={ts.callsPerAgent}
-            tip={ts.tips.callsPerAgent}
-            value={params.callsPerAgent}
-            min={1}
-            max={40}
-            onChange={(v) => set("callsPerAgent", v)}
-          />
-          <Slider
-            label={ts.overlap}
-            tip={ts.tips.overlap}
-            value={params.overlap}
-            min={0}
-            max={100}
-            format={(v) => `${v}%`}
-            onChange={(v) => set("overlap", v)}
-          />
-          <Slider
-            label={ts.zipf}
-            tip={ts.tips.zipf}
-            value={params.zipf}
-            min={0}
-            max={2}
-            step={0.05}
-            format={(v) => fixed(v, 2)}
-            onChange={(v) => set("zipf", v)}
-          />
-          <Slider
-            label={ts.catalog}
-            tip={ts.tips.catalog}
-            value={params.catalog}
-            min={5}
-            max={500}
-            step={5}
-            onChange={(v) => set("catalog", v)}
-          />
-          <Slider
-            label={ts.privatePct}
-            tip={ts.tips.privatePct}
-            value={params.privatePct}
-            min={0}
-            max={50}
-            format={(v) => `${v}%`}
-            onChange={(v) => set("privatePct", v)}
-          />
-          <Slider
-            label={ts.sideEffectPct}
-            tip={ts.tips.sideEffectPct}
-            value={params.sideEffectPct}
-            min={0}
-            max={50}
-            format={(v) => `${v}%`}
-            onChange={(v) => set("sideEffectPct", v)}
-          />
-        </Section>
-        <Section title={ts.network} defaultOpen={false}>
+          )}
           <div className="obs-field">
-            <Label tip={ts.tips.topology}>{ts.topology}</Label>
+            <Label tip={te.run.tips.engine}>{te.run.engine}</Label>
             <Segmented
-              label={ts.topology}
-              value={params.topo}
+              label={te.run.engine}
+              value={net.run.engine}
+              onChange={(v) => setRun({ engine: v }, "engine")}
               options={[
-                { value: "star", label: ts.star },
-                { value: "tree", label: ts.tree },
+                {
+                  value: "idem",
+                  label: (
+                    <span className="obs-mode">
+                      {te.run.engineIdem}
+                      <span className="obs-mode-hint">{te.run.engineIdemHint}</span>
+                    </span>
+                  ),
+                },
+                {
+                  value: "ndn",
+                  label: (
+                    <span className="obs-mode">
+                      {te.run.engineNdn}
+                      <span className="obs-mode-hint">{te.run.engineNdnHint}</span>
+                    </span>
+                  ),
+                },
               ]}
-              onChange={(v) => set("topo", v)}
             />
           </div>
-          <Slider
-            label={ts.agentLink}
-            tip={ts.tips.agentLink}
-            value={params.agentLinkMs}
-            min={1}
-            max={200}
-            format={(v) => `${v} ms`}
-            onChange={(v) => set("agentLinkMs", v)}
-          />
-          <Slider
-            label={ts.producerLink}
-            tip={ts.tips.producerLink}
-            value={params.producerLinkMs}
-            min={1}
-            max={500}
-            format={(v) => `${v} ms`}
-            onChange={(v) => set("producerLinkMs", v)}
-          />
-          <Slider
-            label={ts.loss}
-            tip={ts.tips.loss}
-            value={params.lossPct}
-            min={0}
-            max={30}
-            step={0.5}
-            format={(v) => `${v}%`}
-            onChange={(v) => set("lossPct", v)}
-          />
-          <Slider
-            label={ts.ttl}
-            tip={ts.tips.ttl}
-            value={params.ttl}
-            min={1}
-            max={600}
-            format={(v) => `${v} s`}
-            onChange={(v) => set("ttl", v)}
-          />
-          <Slider
-            label={ts.csSize}
-            tip={ts.tips.csSize}
-            value={Math.log2(params.csKiB)}
-            min={4}
-            max={16}
-            step={1}
-            format={() => fmtBytes(params.csKiB * 1024)}
-            onChange={(v) => set("csKiB", 2 ** v)}
-          />
+          {!ndn && (
+            <>
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  onClick={() => setPlaying((p) => !p)}
+                  kbd="Space"
+                  className="flex-1"
+                  disabled={!runnable}
+                >
+                  {playing ? <PauseIcon /> : <PlayIcon />}
+                  {playing ? ts.pause : ts.play}
+                </Button>
+                <Button onClick={() => void restart(net, false)} kbd="R" disabled={!runnable}>
+                  <RestartIcon />
+                  {ts.restart}
+                </Button>
+              </div>
+              <fieldset className="obs-field">
+                <legend className="sr-only">{te.run.compare}</legend>
+                <Label tip={te.run.tips.compare}>{te.run.compare}</Label>
+                {COMPARE_ORDER.map((m) => (
+                  <Check
+                    key={m}
+                    label={te.run.compareModes[m]}
+                    checked={net.run.compare.includes(m)}
+                    onChange={(v) => {
+                      const next = v
+                        ? COMPARE_ORDER.filter((x) => x === m || net.run.compare.includes(x))
+                        : net.run.compare.filter((x) => x !== m);
+                      if (next.length > 0) setRun({ compare: next }, "compare");
+                    }}
+                  />
+                ))}
+              </fieldset>
+              <Slider
+                label={ts.speed}
+                tip={ts.tips.speed}
+                value={Math.log10(net.run.speed)}
+                min={-2}
+                max={Math.log10(2)}
+                step={0.01}
+                format={() => `${fixed(net.run.speed, net.run.speed < 0.1 ? 3 : 2)}×`}
+                onChange={(v) => setRun({ speed: Number((10 ** v).toFixed(3)) }, "speed")}
+              />
+              <div className="obs-field">
+                <Label htmlFor="net-seed" tip={ts.tips.seed}>
+                  {ts.seed}
+                </Label>
+                <div className="flex gap-2">
+                  <input
+                    id="net-seed"
+                    type="number"
+                    value={net.run.seed}
+                    min={0}
+                    onChange={(e) =>
+                      setRun({ seed: Math.max(0, Math.round(Number(e.target.value) || 0)) }, "seed")
+                    }
+                    className="obs-input t-mono min-w-0 flex-1"
+                  />
+                  <Button
+                    onClick={() => setRun({ seed: Math.floor(Math.random() * 100_000) }, "seed-shuffle")}
+                    title={ts.shuffleTitle}
+                  >
+                    {ts.shuffle}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </Section>
-        <Section title={ts.attacks}>
-          <div className="flex flex-col gap-2">
-            <Button wide onClick={() => attack(() => idemRun()?.sim?.attackTamper())}>
-              {ts.attack.tamper}
-            </Button>
-            <Button wide onClick={() => attack(() => void idemRun()?.sim?.attackForge(0))}>
-              {ts.attack.forge}
-            </Button>
-            <Button
-              wide
-              disabled={params.agents < 2}
-              onClick={() => attack(() => void idemRun()?.sim?.attackPrivateProbe(0, 1))}
-            >
-              {ts.attack.probe}
-            </Button>
+        <Section title={te.add.title}>
+          <div className="obs-palette">
+            {(["agent", "forwarder", "producer"] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className="obs-chip-node"
+                title={`${te.add.tips[kind]}`}
+                {...drag.bind(kind)}
+                onClick={() => {
+                  if (!drag.clickWasDrag()) add(kind);
+                }}
+              >
+                <NodeGlyph kind={kind} />
+                {te.add[kind]}
+              </button>
+            ))}
           </div>
-          <p className="obs-note">{playing ? t.live.attackHint : ts.resolveHint}</p>
+          <p className="obs-note">{te.add.hint}</p>
         </Section>
+        <Section title={te.props.title}>
+          <Properties
+            net={net}
+            sel={sel}
+            edit={edit}
+            onSelect={setSel}
+            onDelete={removeSelected}
+            onConnect={connect}
+          />
+        </Section>
+        {!ndn && (
+          <Section title={ts.attacks} defaultOpen={false}>
+            {producers.length > 1 && (
+              <div className="obs-field">
+                <Label htmlFor="net-target">{te.attacks.target}</Label>
+                <select
+                  id="net-target"
+                  className="obs-select"
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                >
+                  {producers.map((p) => (
+                    <option key={p.id} value={p.config.name}>
+                      {p.config.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <Button
+                wide
+                disabled={!runnable}
+                onClick={() => attack(() => idemRun()?.sim?.attackTamper(target))}
+              >
+                {ts.attack.tamper}
+              </Button>
+              <Button
+                wide
+                disabled={!runnable}
+                onClick={() => attack(() => void idemRun()?.sim?.attackForge(0, target))}
+              >
+                {ts.attack.forge}
+              </Button>
+              <Button
+                wide
+                disabled={!runnable || agentCount < 2}
+                onClick={() => attack(() => void idemRun()?.sim?.attackPrivateProbe(0, 1, target))}
+              >
+                {ts.attack.probe}
+              </Button>
+            </div>
+            <p className="obs-note">{playing ? t.live.attackHint : ts.resolveHint}</p>
+          </Section>
+        )}
         {backend && (
           <p className="obs-footnote t-mono">
             {ts.renderer(backend === "webgpu" ? "WebGPU" : "Canvas2D")} · {ts.seed.toLowerCase()}{" "}
-            {params.seed}
+            {net.run.seed}
           </p>
         )}
       </Slot>
 
-      <Slot name="stage">
-        <StageCanvas
-          panes={views.flatMap((v) => {
-            const run = runs.current.find((r) => r.mode === v.mode);
-            if (!run) return [];
-            return {
-              key: v.mode,
-              scene: run.scene,
-              now: () => run.now,
-              nodes: v.nodes,
-              title: ts.modeLabel[v.mode],
-              note: v.error ? ts.error(v.error) : ts.modeNote[v.mode],
-              agentLabels: false,
-              badges: Object.fromEntries(
-                Object.entries(v.tables)
-                  .filter(([, s]) => s.pit > 0 || s.cs > 0)
-                  .map(([id, s]) => [
-                    id,
-                    <span key={id} className="obs-badges">
-                      {s.pit > 0 && <span className="text-interest">PIT {s.pit}</span>}
-                      {s.cs > 0 && <span className="text-data">CS {s.cs}</span>}
-                    </span>,
-                  ]),
-              ),
-            };
-          })}
-          area={ws.area}
-          label={t.shell.canvas}
-          onNodeClick={onNodeClick}
-          nodeAction={(pane, n) =>
-            runs.current.find((r) => r.mode === pane)?.sim?.forwarders.has(n.id)
-              ? ts.tables.nodeTables(n.id)
-              : undefined
-          }
-          onBackend={setBackend}
-        />
-      </Slot>
+      {ndn ? (
+        <NdnEngine net={net} editor={editorProps} onBackend={setBackend} />
+      ) : (
+        <>
+          <Slot name="stage">
+            <StageCanvas
+              panes={views.flatMap((v) => {
+                const run = runs.current.find((r) => r.mode === v.mode);
+                if (!run) return [];
+                return {
+                  key: v.mode,
+                  scene: run.scene,
+                  now: () => run.now,
+                  nodes: v.nodes,
+                  title: views.length > 1 || runnable ? ts.modeLabel[v.mode] : undefined,
+                  note: v.error ? ts.error(v.error) : runnable ? ts.modeNote[v.mode] : undefined,
+                  agentLabels: true,
+                  badges: Object.fromEntries(
+                    Object.entries(v.tables)
+                      .filter(([, s]) => s.pit > 0 || s.cs > 0)
+                      .map(([id, s]) => [
+                        id,
+                        <span key={id} className="obs-badges">
+                          {s.pit > 0 && <span className="text-interest">PIT {s.pit}</span>}
+                          {s.cs > 0 && <span className="text-data">CS {s.cs}</span>}
+                        </span>,
+                      ]),
+                  ),
+                };
+              })}
+              area={ws.area}
+              label={te.canvas.label}
+              onNodeClick={onNodeClick}
+              nodeAction={(_pane, n) => te.canvas.select(n.id)}
+              onBackend={setBackend}
+              editor={editorProps}
+            />
+          </Slot>
 
-      <Slot name="status">
-        <button
-          type="button"
-          className="obs-round-btn"
-          aria-label={playing ? ts.pause : ts.play}
-          title={playing ? ts.pause : ts.play}
-          onClick={() => setPlaying((p) => !p)}
-        >
-          {playing ? <PauseIcon /> : <PlayIcon />}
-        </button>
-        <span className="obs-status" data-state={allDone ? "done" : playing ? "ready" : "paused"}>
-          <span className="t-mono tabular-nums text-fg">{ts.time(fmtVirtual(now))}</span>
-          <span className="text-faint">{ts.virtual}</span>
-          {allDone && <span className="text-data">· {ts.done}</span>}
-        </span>
-      </Slot>
+          <Slot name="status">
+            <button
+              type="button"
+              className="obs-round-btn"
+              aria-label={playing ? ts.pause : ts.play}
+              title={playing ? ts.pause : ts.play}
+              disabled={!runnable}
+              onClick={() => setPlaying((p) => !p)}
+            >
+              {playing ? <PauseIcon /> : <PlayIcon />}
+            </button>
+            <span
+              className="obs-status"
+              data-state={!runnable ? "paused" : allDone ? "done" : playing ? "ready" : "paused"}
+            >
+              {runnable ? (
+                <>
+                  <span className="t-mono tabular-nums text-fg">{ts.time(fmtVirtual(now))}</span>
+                  <span className="text-faint">{ts.virtual}</span>
+                  {allDone && <span className="text-data">· {ts.done}</span>}
+                </>
+              ) : (
+                <span className="text-faint">{te.run.cannotRun}</span>
+              )}
+            </span>
+          </Slot>
+        </>
+      )}
 
       <Slot name="hint:tables">{focus.node ? `${focus.node} · ${ts.modeLabel[focus.run]}` : ""}</Slot>
       <Slot name="hint:log">{ts.modeLabel[logSource]}</Slot>
       <Slot name="hint:metrics">{ts.modeLabel[metricsRun]}</Slot>
       <Slot name="hint:inspector">{highlight ? shortName(highlight) : ""}</Slot>
 
-      <Slot name="win:log">
-        <SwarmLog
-          rows={rows}
-          modes={modes}
-          logSource={logSource}
-          setLogSource={setLogSource}
-          nodes={logNodes}
-          nodeFilter={nodeFilter}
-          setNodeFilter={setNodeFilter}
-          kindFilter={kindFilter}
-          setKindFilter={setKindFilter}
-          highlight={highlight}
-          follow={follow}
-          labels={ts}
-        />
-      </Slot>
+      {!ndn && (
+        <Slot name="win:log">
+          <SwarmLog
+            rows={rows}
+            modes={modes}
+            logSource={logSource}
+            setLogSource={setLogSource}
+            nodes={logNodes}
+            nodeFilter={nodeFilter}
+            setNodeFilter={setNodeFilter}
+            kindFilter={kindFilter}
+            setKindFilter={setKindFilter}
+            highlight={highlight}
+            follow={follow}
+            labels={ts}
+          />
+        </Slot>
+      )}
       <Slot name="win:tables">
         <SwarmTables
           snapshot={table}
           ids={focusIds}
           node={focus.node}
-          onNode={(node) => {
-            const run = runs.current.find((r) => r.mode === focus.run);
-            if (run) run.scene.selected = node;
-            setFocus((f) => ({ ...f, node }));
-          }}
+          onNode={(node) => setFocus((f) => ({ ...f, node }))}
           follow={follow}
           labels={ts.tables}
         />
@@ -666,23 +824,45 @@ export function SwarmMode() {
           <Empty>{ts.inspector.empty}</Empty>
         )}
       </Slot>
-      <Slot name="win:metrics">
-        <SwarmMetrics
-          views={views}
-          modes={modes}
-          run={metricsRun}
-          setRun={setMetricsRun}
-          total={total}
-          labels={ts}
-        />
-      </Slot>
-      <Slot name="win:compare">
-        <SwarmCompare views={views} total={total} labels={ts} />
-      </Slot>
+      {!ndn && (
+        <>
+          <Slot name="win:metrics">
+            <SwarmMetrics
+              views={views}
+              modes={modes}
+              run={metricsRun}
+              setRun={setMetricsRun}
+              total={total}
+              labels={ts}
+            />
+          </Slot>
+          <Slot name="win:compare">
+            <SwarmCompare views={views} total={total} labels={ts} />
+          </Slot>
+        </>
+      )}
       <Slot name="win:safety">
         <SafetyList items={safety} labels={t.safety} />
       </Slot>
     </>
+  );
+}
+
+/** The stage's shape for a node kind, small, for the palette. */
+export function NodeGlyph({ kind }: { kind: NetNodeKind }) {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="obs-glyph">
+      {kind === "agent" && <circle cx="8" cy="8" r="4.2" className="obs-glyph-agent" />}
+      {kind === "forwarder" && (
+        <rect x="2.5" y="2.5" width="11" height="11" rx="3" className="obs-glyph-fwd" />
+      )}
+      {kind === "producer" && (
+        <>
+          <rect x="1.5" y="1.5" width="13" height="13" rx="3.4" className="obs-glyph-prod" />
+          <rect x="5.5" y="5.5" width="5" height="5" rx="1.3" className="obs-glyph-core" />
+        </>
+      )}
+    </svg>
   );
 }
 

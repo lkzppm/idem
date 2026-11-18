@@ -8,8 +8,11 @@
  */
 import { clamp } from "./motion";
 
-/** The sandbox's two modes (ADR-016). */
-export type SandboxMode = "live" | "swarm";
+/**
+ * What the stage runs (ADR-028): the Live example over real HTTP, or a network from the editor. Each
+ * keeps its own set of open windows.
+ */
+export type SandboxMode = "live" | "net";
 
 /** Every window, in sidebar order (also the order of the 1–6 shortcuts). */
 export const WINDOW_IDS = ["log", "tables", "inspector", "metrics", "compare", "safety"] as const;
@@ -60,7 +63,7 @@ const STORAGE_KEY = "idem.sandbox.layout.v1";
 
 const DEFAULT_OPEN: Record<SandboxMode, Partial<Record<WindowId, boolean>>> = {
   live: { log: true, tables: true, inspector: true, metrics: true },
-  swarm: { log: true, tables: true, inspector: true, compare: true },
+  net: { log: true, tables: true, compare: true },
 };
 
 /** A fresh layout: nothing moved, each mode's default windows open. */
@@ -68,7 +71,7 @@ export function defaultLayout(): Layout {
   return {
     v: 1,
     rects: {},
-    open: { live: { ...DEFAULT_OPEN.live }, swarm: { ...DEFAULT_OPEN.swarm } },
+    open: { live: { ...DEFAULT_OPEN.live }, net: { ...DEFAULT_OPEN.net } },
     collapsed: {},
     order: [...WINDOW_IDS],
     sidebar: SIDEBAR_DEFAULT,
@@ -143,8 +146,10 @@ export function loadLayout(): Layout {
       if (ok(id) && r && [r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n))) rects[id] = r;
     }
     const open = { ...base.open };
-    for (const m of ["live", "swarm"] as const) {
-      const o = p.open?.[m];
+    for (const m of ["live", "net"] as const) {
+      // Layouts saved before the editor called the simulated set "swarm".
+      const saved = p.open as Record<string, unknown> | undefined;
+      const o = saved?.[m] ?? (m === "net" ? saved?.swarm : undefined);
       if (o && typeof o === "object") {
         open[m] = Object.fromEntries(Object.entries(o).filter(([id, v]) => ok(id) && typeof v === "boolean"));
       }

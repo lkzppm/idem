@@ -3,12 +3,15 @@ import { EXAMPLE_IDS, example } from "./examples";
 import {
   addLink,
   addNode,
+  attachTo,
   decodeNetwork,
   encodeNetwork,
   issues,
   linkProblem,
   moveNode,
+  type NetNode,
   type Network,
+  placeNear,
   reachableProducers,
   removeNode,
   sanitizeNetwork,
@@ -60,6 +63,22 @@ describe("editing", () => {
     const moved = moveNode(net, "edge", 5, 6);
     expect(moved.nodes.find((n) => n.id === "edge")).toMatchObject({ x: 5, y: 6 });
     expect(moved.links).toEqual(net.links);
+  });
+});
+
+describe("adding next to the selection", () => {
+  it("links a new node to the selected one, or to its forwarder when they cannot be linked", () => {
+    const net = example("swarm") as Network;
+    const agent = net.nodes.find((n) => n.id === "agent-0") as NetNode;
+    const edge = net.nodes.find((n) => n.id === "edge") as NetNode;
+    const producer = net.nodes.find((n) => n.id === "producer") as NetNode;
+    expect(attachTo(net, edge, "agent")).toBe("edge");
+    expect(attachTo(net, agent, "agent")).toBe("edge");
+    expect(attachTo(net, producer, "producer")).toBe("edge");
+    expect(attachTo(net, agent, "forwarder")).toBe("agent-0");
+    const [x, y] = placeNear(net, agent, "agent");
+    expect(x).toBe(agent.x);
+    expect(y).toBeGreaterThan(agent.y);
   });
 });
 
@@ -190,5 +209,42 @@ describe("scene camera", () => {
     const net = removeNode(example("swarm") as Network, "agent-0");
     scene.setTopology(net, performance.now(), true);
     expect(scene.packets.map((p) => p.from)).toEqual(["edge"]);
+  });
+});
+
+describe("running an editor network in the simulator", () => {
+  it("every example runs to the end, in every compared mode", async () => {
+    const { runSimulation } = await import("@idem/sim");
+    const { networkToSim, totalCalls } = await import("./run");
+    for (const id of EXAMPLE_IDS) {
+      const net = example(id);
+      if (!net || id === "blank") continue;
+      for (const mode of ["mcp-direct", "mcp-local-cache", "idem"] as const) {
+        const r = await runSimulation(networkToSim(net, mode), { seed: 7 });
+        expect(r.metrics.completed, `${id}/${mode}`).toBe(totalCalls(net));
+      }
+    }
+  }, 60_000);
+
+  it("IDEM sends fewer calls to the producers than MCP direct on the swarm", async () => {
+    const { runSimulation } = await import("@idem/sim");
+    const { networkToSim } = await import("./run");
+    const net = example("swarm") as Network;
+    const direct = await runSimulation(networkToSim(net, "mcp-direct"), { seed: 7 });
+    const idem = await runSimulation(networkToSim(net, "idem"), { seed: 7 });
+    expect(idem.metrics.upstreamCalls).toBeLessThan(direct.metrics.upstreamCalls);
+  }, 60_000);
+
+  it("gives each forwarder its own Content Store size and each producer its own tools", async () => {
+    const { networkToSim } = await import("./run");
+    const net = example("two-producers") as Network;
+    const cfg = networkToSim(net, "idem");
+    expect(cfg.topology.nodes.find((n) => n.id === "edge")).toMatchObject({ csMaxBytes: 8192 * 1024 });
+    expect(cfg.producers?.map((p) => [p.name, p.tools.map((t) => t.tool)])).toEqual([
+      ["docs.idem.dev", ["fetch_page", "search_corpus"]],
+      ["weather.idem.dev", ["weather"]],
+    ]);
+    const a2 = cfg.workload.kind === "per-agent" ? cfg.workload.agents[2] : undefined;
+    expect(a2?.mix.map((m) => m.producer)).toEqual(["docs.idem.dev", "weather.idem.dev"]);
   });
 });
