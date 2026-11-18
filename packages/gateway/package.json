@@ -1,0 +1,29 @@
+{
+  "name": "@idem/gateway",
+  "version": "0.0.0",
+  "description": "IDEM over HTTP: producer endpoint, edge/regional forwarder gateway and a verifying consumer client. Web-standard Request/Response handlers (Next.js, Hono, Bun, Node).",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@idem/core": "workspace:*"
+  }
+}
