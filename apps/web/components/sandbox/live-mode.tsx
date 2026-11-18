@@ -267,7 +267,8 @@ export function LiveMode() {
     const ids = agentKey ? agentKey.split(",").map((n) => `agent-${n}`) : [];
     scene.setTopology({
       nodes: [
-        { id: VISITORS, kind: "agent" as const },
+        // Above the edge, apart from this page's agents: everyone else reaches the same edge.
+        { id: VISITORS, kind: "agent" as const, at: { x: 0.5, y: 0.1 } },
         ...ids.map((id) => ({ id, kind: "agent" as const })),
         { id: "edge", kind: "forwarder" },
         { id: "producer", kind: "producer" },
