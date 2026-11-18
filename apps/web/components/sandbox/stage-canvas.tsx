@@ -46,6 +46,8 @@ export interface StagePane {
   badges?: Record<string, ReactNode>;
   /** Show agent ids under agents (when they fit). */
   agentLabels?: boolean;
+  /** A boxed caption in place of a node's label (always shown), e.g. the other visitors in Live. */
+  boxes?: Record<string, ReactNode>;
 }
 
 /** What the network editor has selected on the stage. */
@@ -205,7 +207,12 @@ export function StageCanvas({
         const s = p.scene.screen(fr, n.id);
         if (!s) continue;
         const el = labels.current.get(`${p.key}:${n.id}`);
-        if (el) {
+        if (el?.dataset.box) {
+          // A boxed node: the box sits on the node (its links leave from it), kept inside the pane.
+          const half = el.offsetWidth / 2;
+          const x = Math.min(Math.max(s[0], fr.x + 10 + half), fr.x + fr.w - 10 - half);
+          el.style.transform = `translate3d(${x}px, ${s[1]}px, 0) translate(-50%, -50%)`;
+        } else if (el) {
           const dy = (n.kind === "agent" ? 9 : n.kind === "forwarder" ? 15 : 17) * k;
           el.style.transform = `translate3d(${s[0]}px, ${s[1] + dy}px, 0) translateX(-50%)`;
         }
@@ -730,9 +737,11 @@ export function StageCanvas({
                 </div>
               )}
               {p.nodes.map((n) => {
-                const show = n.kind !== "agent" || ((p.agentLabels ?? true) && agentsFit);
+                const box = p.boxes?.[n.id];
+                const show =
+                  box === undefined && (n.kind !== "agent" || ((p.agentLabels ?? true) && agentsFit));
                 const badge = p.badges?.[n.id];
-                if (!show && !badge) return null;
+                if (!show && !badge && box === undefined) return null;
                 return (
                   <div
                     key={n.id}
@@ -743,7 +752,9 @@ export function StageCanvas({
                     }}
                     className="obs-node-label"
                     data-kind={n.kind}
+                    data-box={box !== undefined || undefined}
                   >
+                    {box !== undefined && <span className="obs-node-box">{box}</span>}
                     {show && <span>{n.kind === "agent" ? n.id.replace("agent-", "a") : n.id}</span>}
                     {badge}
                   </div>

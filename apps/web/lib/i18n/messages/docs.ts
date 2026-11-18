@@ -10,7 +10,7 @@ export const docs = defineMessages(
     meta: {
       title: "Docs",
       /** The browser tab of a docs page: `%s` is the page's title. */
-      titleTemplate: "%s · IDEM Docs",
+      titleTemplate: "IDEM • %s",
       description:
         "IDEM documentation: concepts, the normative v1 protocol, architecture, the API of the @idem packages, the sandbox guide and the evaluation method.",
     },
@@ -210,7 +210,7 @@ export const docs = defineMessages(
   {
     meta: {
       title: "Docs",
-      titleTemplate: "%s · Documentação IDEM",
+      titleTemplate: "IDEM • %s",
       description:
         "Documentação do IDEM: conceitos, o protocolo v1 normativo, arquitetura, a API dos pacotes @idem, o guia do sandbox e o método de avaliação.",
     },
