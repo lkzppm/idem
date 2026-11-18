@@ -267,42 +267,92 @@ export type SimMode = "mcp-direct" | "mcp-local-cache" | "idem" | "idem-noverify
 export interface SimConfig {
   topology: { nodes: SimNode[]; links: SimLinkConfig[] };
   mode: SimMode;
-  workload: SyntheticWorkload | TraceWorkload;
-  producer: {
-    serviceTimeMs: { dist: "lognormal"; mu: number; sigma: number };
-    ttlMs: number;
+  workload: SyntheticWorkload | TraceWorkload | PerAgentWorkload;
+  // Absent: one producer named SIM_PRODUCER on the first producer-kind node, serving fetch_page,
+  // my_notes and send_email with producer.ttlMs (every configuration written before ADR-027).
+  producers?: SimProducerConfig[];
+  producer: {                       // defaults shared by every producer
+    serviceTimeMs: Dist;
+    ttlMs: number;                  // only when `producers` is absent
     pageBytesMedian?: number;       // default 6 KiB
     signPlainCalls?: boolean;       // baselines only: attach _meta["dev.idem/data"] to plain results; default true
   };
-  cs: { maxBytes: number; policy: "lru" | "lfu" | "fifo" };
+  cs: { maxBytes: number; policy: "lru" | "lfu" | "fifo" };   // maxBytes: default of every forwarder
   interestLifetimeMs?: number;      // default 10 s
   processing?: ProcessingCosts;     // CPU cost charged as virtual delay in the IDEM modes; absent: none
 }
-export interface SimNode { id: string; kind: "agent" | "forwarder" | "producer"; }
+export interface SimNode { id: string; kind: "agent" | "forwarder" | "producer"; csMaxBytes?: number; }   // csMaxBytes: forwarders only; default cs.maxBytes
 export interface SimLinkConfig { a: string; b: string; latencyMs: number; lossPct: number; bandwidthMbps?: number; }
+export interface Dist { dist: "lognormal"; mu: number; sigma: number; }
 export interface SyntheticWorkload {
   kind: "synthetic"; agents: number; callsPerAgent: number; zipfAlpha: number; overlap: number; catalogSize: number;
   thinkTimeMs?: number; surfaceVariation?: number; privateFraction?: number; sideEffectFraction?: number;
 }
 // The records themselves, not a path: the simulator runs in the browser and never reads files.
 export interface TraceWorkload { kind: "trace"; records: TraceRecord[]; }
-export interface TraceRecord { t: number; agent: number; tool: string; args: unknown; }
+export interface TraceRecord { t: number; agent: number; tool: string; args: unknown; producer?: string; }   // producer name; default the first
+
+// Graphs, several producers, per-agent workloads (ADR-027)
+export type ToolId = "fetch_page" | "search_corpus" | "weather" | "my_notes" | "send_email";
+export interface SimToolConfig { tool: ToolId; ttlMs?: number; }          // default TTL from TOOL_CATALOG
+export interface SimProducerConfig {
+  node: string;                     // a producer-kind node
+  name: string;                     // producer component of the names (lowercase host[:port]), unique
+  tools: SimToolConfig[];
+  serviceTimeMs?: Dist;             // default producer.serviceTimeMs
+  maxResultBytes?: number;          // default 64 KiB
+}
+export interface ToolMixEntry { producer: string; tool: ToolId; weight: number; }   // producer *name*
+export interface AgentPlan {
+  node: string; calls: number; mix: ToolMixEntry[];
+  thinkTimeMs?: number;             // default 300
+  overlap?: number;                 // fetch_page: share drawn from the shared catalog; default 0.6
+  zipfAlpha?: number;               // over pages, queries and cities; default 0.9
+  catalogSize?: number;             // pages; default 40
+  surfaceVariation?: number;        // equivalent argument spellings (normalizers decide the names); default 0.3
+}
+export interface PerAgentWorkload { kind: "per-agent"; agents: AgentPlan[]; }
+export interface ToolCatalogEntry { tool: ToolId; description: string; readOnly: boolean; cacheable: boolean; scope: Scope; ttlMs: number; normalizers: Record<string, Normalizer[]>; }
+export const TOOL_CATALOG: readonly ToolCatalogEntry[];   // mirrors apps/web/lib/server/demo-producer.ts
+export const TOOL_IDS: readonly ToolId[]; export function isToolId(x: unknown): x is ToolId; export function toolInfo(t: ToolId): ToolCatalogEntry;
+export const SEARCH_QUERIES: readonly string[]; export const CITIES: readonly string[]; export const CORPUS_ORIGIN: string;
+
+// Routing: Dijkstra on link latency, one tree per producer node, ties by next-hop id then link index.
+// Only forwarders relay (never agents, never another producer).
+export interface RouteHop { link: number; next: string; latencyMs: number; }
+export interface RoutePath { nodes: string[]; links: number[]; latencyMs: number; }
+export function routesTo(topology: SimConfig["topology"], producerNode: string): Map<string, RouteHop>;
+export function pathToProducer(topology: SimConfig["topology"], from: string, producerNode: string): RoutePath | undefined;
+export function reachableProducers(topology: SimConfig["topology"], agentId: string): string[];   // producer node ids, nearest first
+
+// Checks: Simulation.create rejects with SimConfigError (code "BAD_CONFIG", path to the field).
+export class SimConfigError extends Error { readonly code: "BAD_CONFIG"; readonly path: string; }
+export interface ResolvedProducer { node: string; name: string; tools: { tool: ToolId; ttlMs: number }[]; serviceTimeMs: Dist; maxResultBytes: number; implicit: boolean; }
+export function validateConfig(cfg: SimConfig): ResolvedProducer[];
+
 export interface SimResult { metrics: Metrics; events?: ForwarderEvent[]; config: SimConfig; seed: number; gitSha?: string; }
 
 export interface TopologyPreset { kind: "star" | "tree"; agents: number; agentLinkMs: number; coreLinkMs?: number; producerLinkMs: number; lossPct?: number; bandwidthMbps?: number; edges?: number; }
 export function buildTopology(p: TopologyPreset): SimConfig["topology"];     // star: agents → edge → producer; tree: agents → edges → regional → producer
 export function defaultConfig(overrides?: Partial<SimConfig>): SimConfig;
-export function planWorkload(cfg: SimConfig, rng: Rng): { tool: string; args: JsonValue; at?: number }[][];   // one plan per agent
+export interface PlannedCall { producer?: string; tool: string; args: JsonValue; at?: number; }
+export function planWorkload(cfg: SimConfig, rng: Rng): PlannedCall[][];   // one plan per agent index, or per entry of a per-agent workload
 export const SIM_PRODUCER = "demo.idem.dev";
 
-// A run that can be stepped and attacked (the sandbox's swarm mode)
+// A run that can be stepped and attacked (the sandbox's swarm mode and the network editor)
 export interface SimHooks { onEvent?: (e: ForwarderEvent) => void; onTransmit?: (tx: Transmission) => void; onCall?: (r: CallRecord) => void; onAttack?: (a: AttackRecord) => void; }
+// CallRecord carries `producer` (name) and, for a call to an unreachable producer, `error: "NO_ROUTE"`
+// (ok: false, attempts: 0, nothing sent). Metrics.noRoute counts those calls.
 export class Simulation {
   static create(cfg: SimConfig, opts?: { seed: number; keepEvents?: boolean } & SimHooks): Promise<Simulation>;
   readonly config: SimConfig; readonly seed: number; readonly mode: SimMode;
   readonly clock: VirtualClock; readonly forwarders: Map<string, Forwarder>; readonly metrics: MetricsCollector;
+  readonly producers: readonly ResolvedProducer[]; readonly defaultProducer: string; readonly manifests: Manifest[];
+  cacheable(tool: string, producer?: string): { policy: ToolPolicy; identity: ToolIdentity } | undefined;
   runUntil(t: number): Promise<void>; run(): Promise<SimResult>; result(): SimResult;
-  attackTamper(): void; attackForge(agentIndex?: number): Promise<void>; attackPrivateProbe(a?: number, b?: number): Promise<void>;
+  // `producer` is a producer name, default the first. An attack that cannot be staged returns without a record.
+  attackTamper(producer?: string): void; attackForge(agentIndex?: number, producer?: string): Promise<void>;
+  attackPrivateProbe(a?: number, b?: number, producer?: string): Promise<void>;
 }
 
 // Processing-cost model: the virtual clock does not see CPU time, so E1's measurements are charged as delay
@@ -311,13 +361,13 @@ export type ProcessingOp = "canonicalizeUs" | "nameUs" | "signUs" | "verifyUs";
 export function costUs(costs: ProcessingCosts, op: ProcessingOp, bytes: number): number;   // linear interpolation
 export function assertProcessingCosts(c: ProcessingCosts): void;
 
-export class MetricsCollector { constructor(opts: { producerLinks: Set<string>; edges: Set<string> }); snapshot(now: number): Metrics; }   // fed by the run; `Metrics` holds the quantities of spec 05 §3
+export class MetricsCollector { constructor(opts: { producerLinks: Set<string>; edges: Set<string>; producers?: Set<string> }); snapshot(now: number): Metrics; }   // fed by the run; `Metrics` holds the quantities of spec 05 §3
 export class Rng { constructor(seed: number); next(): number; int(n: number): number; chance(p: number): boolean; exp(mean: number): number; normal(): number; lognormal(mu: number, sigma: number): number; bytes(n: number): Uint8Array; fork(label: string): Rng; }
 export class Zipf { constructor(n: number, alpha: number); sample(rng: Rng): number; }
 export function percentile(values: readonly number[], p: number): number;
 ```
 
-Types only, for the `/results` page: `ResultsData`, `SweepData`, `MicrobenchData`, `MicrobenchCell`,
+Types only, for the `/benchmarks` page: `ResultsData`, `SweepData`, `MicrobenchData`, `MicrobenchCell`,
 `MissOverhead`, `SafetyData`, `RunRef`, `Stat` (the export of committed runs), `AttackClass`,
 `Expectation` (E5), `EvalModeId`, `SweepBase` (experiment specs), and the records `CallRecord`,
 `Transmission`, `AttackRecord`, `Metrics`. The experiment pipeline itself (`packages/sim/src/experiments`,

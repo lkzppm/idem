@@ -19,3 +19,4 @@ seed and the source revision recorded (spec 05).
 - [x] (already updated by the spec reconciliation, ADR-024 round) `spec/03-api.md` still shows the old `SimConfig` (no `idem-noverify`, `processing` or `signPlainCalls`); that file belongs to another area
 - [ ] Rerun E1 on a quiet machine: half of the kept runs carry a load average far above the core count, which widens the reported spread (the medians barely move the E2 results: a miss costs 272 µs against a 90 ms round trip)
 - [ ] Fix for Q7 (the engine should derive `authContext` itself and ignore one that arrives), then rerun E5: `safety.test.ts` fails on purpose when the finding is fixed
+- [x] Tab and route renamed: "Results" → "Benchmarks", `/results` → `/benchmarks` (permanent redirect in `next.config.mts`), en + pt labels, links in the landing, sandbox, footer, docs and spec (2026-11-18)

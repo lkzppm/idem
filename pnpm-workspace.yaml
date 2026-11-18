@@ -2,5 +2,7 @@ packages:
   - packages/*
   - apps/*
   - experiments/ndn/bench
+allowBuilds:
+  bufferutil: false
 fetchTimeout: 300000
 networkConcurrency: 8

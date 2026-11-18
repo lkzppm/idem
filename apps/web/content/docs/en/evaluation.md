@@ -1,4 +1,4 @@
-This page is the method: what is compared, on which workloads, with which metrics, in which experiments. It states **no results**. Numbers are published only on the [results](/results) page, and only once a committed run produced them.
+This page is the method: what is compared, on which workloads, with which metrics, in which experiments. It states **no results**. Numbers are published only on the [benchmarks](/benchmarks) page, and only once a committed run produced them.
 
 ## The rule about numbers {#rule}
 

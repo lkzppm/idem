@@ -81,8 +81,10 @@ function textOf(pkt: NdnData): string {
  *
  * Only cacheable, `public` tools travel natively: there is no plain-call path on NDN, and `private`
  * results must never enter NFD's PIT or CS [P-8.3]. Such calls return `NOT_CACHEABLE` and belong to
- * the overlay. A Data that fails verification fails the call closed with `BAD_SIGNATURE` (the
- * plain-call retry of [P-5.5] needs the overlay, ADR-026).
+ * the overlay. A Data that fails verification fails the call closed [P-9.3]: `UNTRUSTED_KEY` when a
+ * signing key is not the producer's trusted key, `BAD_SIGNATURE` otherwise, and `NOT_CACHEABLE` for
+ * a validly signed `private` Data [P-9.4] (the plain-call retry of [P-5.5] needs the overlay,
+ * ADR-026).
  */
 export class NdnConsumer {
   readonly trust: TrustStore;
@@ -228,17 +230,22 @@ export class NdnConsumer {
     const verify = await verifyNdnData(answer, this.trust);
     const verifyMs = performance.now() - t0;
     if (!verify.ok || verify.data?.name !== interest.name) {
+      // [P-9.3]: a key the trust store does not hold is UNTRUSTED_KEY, any other failure
+      // BAD_SIGNATURE; a valid but `private` Data is NOT_CACHEABLE [P-9.4].
+      const code: IdemWireErrorCode = verify.ok ? "BAD_SIGNATURE" : (verify.code ?? "BAD_SIGNATURE");
       const reason = !verify.outer.ok
         ? verify.outer.reason
         : !verify.inner.ok
           ? verify.inner.reason
-          : "refused";
+          : verify.ok
+            ? "Data name differs from the Interest name"
+            : "private Data never travels on the native binding [P-9.4]";
       return {
         ...base,
         verify,
         verifyMs,
-        result: errorResult("BAD_SIGNATURE", reason),
-        error: { code: "BAD_SIGNATURE", message: reason },
+        result: errorResult(code, reason),
+        error: { code, message: reason },
       };
     }
     return { ...base, verify, verifyMs, data: verify.data, result: verify.data.content };

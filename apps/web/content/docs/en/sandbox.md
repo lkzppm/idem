@@ -12,7 +12,7 @@ One rule makes it trustworthy: the sandbox runs the **same** `Forwarder` class a
 | Time | real: a freshness period has to actually pass | virtual: the run jumps from event to event, at the speed you choose |
 | Good for | seeing that the protocol works over a real network, and verifying signatures yourself | seeing aggregation and caching at scale, and comparing modes on the same workload |
 
-Neither mode produces a result of the project. The counters describe the run in front of you. Measured numbers, with their seeds and configurations, are on the [results](/results) page.
+Neither mode produces a result of the project. The counters describe the run in front of you. Measured numbers, with their seeds and configurations, are on the [benchmarks](/benchmarks) page.
 
 ### Live {#live}
 

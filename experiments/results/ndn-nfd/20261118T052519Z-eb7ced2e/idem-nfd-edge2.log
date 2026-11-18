@@ -1,0 +1,95 @@
+NFD version 24.07+git.23c53535 starting
+Built with GNU C++ version 13.3.0, with GNU libstdc++ version 20240904, with Boost version 1.83.0, with libpcap version 1.10.4 (with TPACKET_V3), with WebSocket++ version 0.8.1, with ndn-cxx version 0.9.0+git.1d07fe6a
+1794979503.380052  INFO: [nfd.FaceTable] Added face id=255 remote=null:// local=null://
+1794979503.380069  INFO: [nfd.FaceTable] Added face id=254 remote=contentstore:// local=contentstore://
+1794979503.380086  INFO: [nfd.CsPolicy] setLimit 10
+1794979503.380114  INFO: [nfd.StrategyChoice] setDefaultStrategy /localhost/nfd/strategy/best-route/v=5
+1794979503.380145  INFO: [nfd.FaceTable] Added face id=1 remote=internal:// local=internal://
+1794979503.380503  WARN: [nfd.CommandAuthenticator] 'certfile any' is intended for demo purposes only and SHOULD NOT be used in production environments
+1794979503.380895  INFO: [nfd.StrategyChoice] changeStrategy(/localhost) /localhost/nfd/strategy/best-route/v=5 -> /localhost/nfd/strategy/multicast/v=5
+1794979503.380912  INFO: [nfd.StrategyChoice] changeStrategy(/localhost/nfd) /localhost/nfd/strategy/multicast/v=5 -> /localhost/nfd/strategy/best-route/v=5
+1794979503.380915  INFO: [nfd.CsPolicy] setLimit 1024
+1794979503.380917  INFO: [nfd.CsPolicy] setLimit 1024
+1794979503.380937  INFO: [nfd.TcpChannel] [tcp4://0.0.0.0:6363] Creating channel
+1794979503.381030  INFO: [nfd.UdpChannel] [udp4://0.0.0.0:6363] Creating channel
+1794979503.381082  INFO: [nfd.UnixStreamChannel] [unix:///run/nfd/nfd.sock] Creating channel
+1794979503.381116  INFO: [nfd.WebSocketChannel] [ws://0.0.0.0:9696] Creating channel
+1794979503.381198  WARN: [nfd.CommandAuthenticator] 'certfile any' is intended for demo purposes only and SHOULD NOT be used in production environments
+1794979503.381206  INFO: [nfd.CommandAuthenticator] authorize module=faces signer=any
+1794979503.381207  INFO: [nfd.CommandAuthenticator] authorize module=fib signer=any
+1794979503.381208  INFO: [nfd.CommandAuthenticator] authorize module=cs signer=any
+1794979503.381209  INFO: [nfd.CommandAuthenticator] authorize module=strategy-choice signer=any
+1794979503.383699  INFO: [nfd.RibManager] Start monitoring face create/destroy events
+1794979503.383807  INFO: [nfd.FaceTable] Added face id=256 remote=fd://19 local=unix:///run/nfd/nfd.sock
+1794979503.842613  INFO: [nfd.FaceTable] Added face id=257 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979503.843057  INFO: [nfd.Transport] [id=257,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979503.843071  INFO: [nfd.Transport] [id=257,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979503.843114  INFO: [nfd.FaceTable] Removed face id=257 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979503.944906  INFO: [nfd.FaceTable] Added face id=258 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979503.945700  INFO: [nfd.Transport] [id=258,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979503.945712  INFO: [nfd.Transport] [id=258,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979503.945898  INFO: [nfd.FaceTable] Removed face id=258 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979505.213477  INFO: [nfd.FaceTable] Added face id=259 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979505.213882  INFO: [nfd.Transport] [id=259,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979505.213925  INFO: [nfd.Transport] [id=259,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979505.214097  INFO: [nfd.FaceTable] Removed face id=259 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979508.656877  INFO: [nfd.FaceTable] Added face id=260 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979508.657371  INFO: [nfd.Transport] [id=260,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979508.657395  INFO: [nfd.Transport] [id=260,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979508.657524  INFO: [nfd.FaceTable] Removed face id=260 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979545.477499  INFO: [nfd.FaceTable] Added face id=261 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979545.478435  INFO: [nfd.Transport] [id=261,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979545.478458  INFO: [nfd.Transport] [id=261,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979545.478654  INFO: [nfd.FaceTable] Removed face id=261 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979548.889183  INFO: [nfd.FaceTable] Added face id=262 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979548.890074  INFO: [nfd.Transport] [id=262,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979548.890159  INFO: [nfd.Transport] [id=262,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979548.890272  INFO: [nfd.FaceTable] Removed face id=262 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979744.814240  INFO: [nfd.FaceTable] Added face id=263 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979744.815869  INFO: [nfd.Transport] [id=263,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979744.815905  INFO: [nfd.Transport] [id=263,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979744.816041  INFO: [nfd.FaceTable] Removed face id=263 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979744.871882  INFO: [nfd.FaceTable] Added face id=264 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979744.872634  INFO: [nfd.Transport] [id=264,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979744.872678  INFO: [nfd.Transport] [id=264,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979744.872809  INFO: [nfd.FaceTable] Removed face id=264 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979747.095642  INFO: [nfd.FaceTable] Added face id=265 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979747.096275  INFO: [nfd.Transport] [id=265,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979747.096302  INFO: [nfd.Transport] [id=265,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979747.096414  INFO: [nfd.FaceTable] Removed face id=265 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979747.463110  INFO: [nfd.FaceTable] Added face id=266 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979747.464223  INFO: [nfd.Transport] [id=266,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979747.464255  INFO: [nfd.Transport] [id=266,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979747.464389  INFO: [nfd.FaceTable] Removed face id=266 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979749.445432  INFO: [nfd.FaceTable] Added face id=267 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979749.446326  INFO: [nfd.Transport] [id=267,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979749.446373  INFO: [nfd.Transport] [id=267,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979749.446507  INFO: [nfd.FaceTable] Removed face id=267 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979749.826917  INFO: [nfd.FaceTable] Added face id=268 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979749.828132  INFO: [nfd.Transport] [id=268,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979749.828174  INFO: [nfd.Transport] [id=268,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979749.828318  INFO: [nfd.FaceTable] Removed face id=268 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979751.936421  INFO: [nfd.FaceTable] Added face id=269 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979751.936874  INFO: [nfd.Transport] [id=269,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979751.936889  INFO: [nfd.Transport] [id=269,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979751.936960  INFO: [nfd.FaceTable] Removed face id=269 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.284240  INFO: [nfd.FaceTable] Added face id=270 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.285169  INFO: [nfd.Transport] [id=270,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979752.285199  INFO: [nfd.Transport] [id=270,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979752.285344  INFO: [nfd.FaceTable] Removed face id=270 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.336192  INFO: [nfd.FaceTable] Added face id=271 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.336708  INFO: [nfd.Transport] [id=271,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979752.336723  INFO: [nfd.Transport] [id=271,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979752.336778  INFO: [nfd.FaceTable] Removed face id=271 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.374056  INFO: [nfd.FaceTable] Added face id=272 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.374662  INFO: [nfd.Transport] [id=272,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979752.374680  INFO: [nfd.Transport] [id=272,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979752.374817  INFO: [nfd.FaceTable] Removed face id=272 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.415622  INFO: [nfd.FaceTable] Added face id=273 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.416158  INFO: [nfd.Transport] [id=273,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979752.416182  INFO: [nfd.Transport] [id=273,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979752.416222  INFO: [nfd.FaceTable] Removed face id=273 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.520878  INFO: [nfd.FaceTable] Added face id=274 remote=fd://20 local=unix:///run/nfd/nfd.sock
+1794979752.521566  INFO: [nfd.Transport] [id=274,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState UP -> CLOSING
+1794979752.521632  INFO: [nfd.Transport] [id=274,local=unix:///run/nfd/nfd.sock,remote=fd://20] setState CLOSING -> CLOSED
+1794979752.521746  INFO: [nfd.FaceTable] Removed face id=274 remote=fd://20 local=unix:///run/nfd/nfd.sock

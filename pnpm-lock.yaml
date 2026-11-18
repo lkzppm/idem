@@ -165,6 +165,19 @@ importers:
       '@ndn/tlv':
         specifier: 0.0.20260427
         version: 0.0.20260427
+    devDependencies:
+      '@ndn/l3face':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      '@ndn/nfdmgmt':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      '@ndn/node-transport':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
+      '@ndn/ws-transport':
+        specifier: 0.0.20260427
+        version: 0.0.20260427
 
   packages/sim:
     dependencies:
@@ -573,6 +586,9 @@ packages:
   '@ndn/util@0.0.20260427':
     resolution: {integrity: sha512-CBeQ5+PjkRi1yh7pPQ2mRfvakIPBO1+zsQOO5jpWuZrdYq7VCq5fufSYyi7UsR57fsXkhPDyUNGQTLx3m/FmmQ==}
     engines: {node: ^24.12.0 || ^25.8.0}
+
+  '@ndn/ws-transport@0.0.20260427':
+    resolution: {integrity: sha512-GYXbRA2Y1N5Q3Iek3sALlfVFaCzNuU1MeQ5v9rUn8nDpgBeyIO/IAlyWuoZcy5DkDhuaAdicvck0Zeeg4JWd8w==}
 
   '@next/env@16.4.6':
     resolution: {integrity: sha512-SunBjJ6t+oBtecS3dTjdVuMhUogP5wD/vrGL5EVuQYM1iS4O5ilL51HkiJ3sPjMzRHiCChvr4dbaSJbR7F3lxA==}
@@ -1015,6 +1031,9 @@ packages:
   '@types/root__asn1@1.0.5':
     resolution: {integrity: sha512-halz3HrALf1N4pUJrtQrH6mdWPczXwshoWjuxmx49riKMJv2MZGKXnauk0RjlnRzM0rlwiAJRlMT9FtSjnF2kw==}
 
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
+
   '@typescript/typescript-aix-ppc64@7.0.2':
     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
     engines: {node: '>=16.20.0'}
@@ -1243,6 +1262,10 @@ packages:
 
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
+
+  bufferutil@4.2.0:
+    resolution: {integrity: sha512-gyy58jET9kst2IGyBKb96a4Y2bPGTHXGyCd0/1eqIV3hr1Sz3VxtA8n7bXh8fLIuE2K6Z0Upax5a5Msx+HU1IQ==}
+    engines: {node: '>=6.14.2'}
 
   cac@7.1.0:
     resolution: {integrity: sha512-LMDU/U2yA4IPIY8KT0NsNPWEYZvAMkbgyspxJ6btJaYV+WMDOHAZCmB0lsTObiHaRS1V/ztKAl7+TSkTqXyeoA==}
@@ -1525,6 +1548,10 @@ packages:
         optional: true
       sass:
         optional: true
+
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
+    hasBin: true
 
   obliterator@2.0.5:
     resolution: {integrity: sha512-42CPE9AhahZRsMNslczq0ctAEtqk8Eka26QofnqC346BZdHDySk3LWka23LI7ULIw11NmltpiLagIq8gBozxTw==}
@@ -1924,6 +1951,18 @@ packages:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
     hasBin: true
+
+  ws@8.23.0:
+    resolution: {integrity: sha512-wCkmX8QMOrKjgO8HW2WyDbTSGeqkocxgDzS9iR79rEAexty6/2qzilx3Ag8Tqf9ykop3irLKle0MtVn5qjVnoQ==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
 
   yaml@2.9.1:
     resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
@@ -2418,6 +2457,20 @@ snapshots:
       type-fest: 5.10.0
       wait-your-turn: 1.0.1
 
+  '@ndn/ws-transport@0.0.20260427':
+    dependencies:
+      '@ndn/l3face': 0.0.20260427
+      '@ndn/util': 0.0.20260427
+      '@types/ws': 8.18.2
+      event-iterator: 2.0.0
+      p-event: 7.1.1
+      tslib: 2.9.1
+      ws: 8.23.0(bufferutil@4.2.0)
+    optionalDependencies:
+      bufferutil: 4.2.0
+    transitivePeerDependencies:
+      - utf-8-validate
+
   '@next/env@16.4.6': {}
 
   '@next/swc-darwin-arm64@16.4.6':
@@ -2693,6 +2746,10 @@ snapshots:
 
   '@types/root__asn1@1.0.5': {}
 
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 26.6.6
+
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true
 
@@ -2866,6 +2923,11 @@ snapshots:
     dependencies:
       base64-js: 1.5.1
       ieee754: 1.2.1
+
+  bufferutil@4.2.0:
+    dependencies:
+      node-gyp-build: 4.8.4
+    optional: true
 
   cac@7.1.0: {}
 
@@ -3080,6 +3142,9 @@ snapshots:
       - '@babel/core'
       - '@types/node'
       - babel-plugin-macros
+
+  node-gyp-build@4.8.4:
+    optional: true
 
   obliterator@2.0.5: {}
 
@@ -3432,6 +3497,10 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  ws@8.23.0(bufferutil@4.2.0):
+    optionalDependencies:
+      bufferutil: 4.2.0
 
   yaml@2.9.1: {}
 

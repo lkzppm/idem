@@ -1,12 +1,13 @@
 // End to end over a real in-process NDN forwarder (@ndn/fw): Interest → Data and back.
 // @ndn/fw has no Interest aggregation and no Content Store; those are NFD's in Mini-NDN (spec 05 E4).
-import { jcs, keyPairFromSeed, Producer, TrustStore, utf8 } from "@idem/core";
-import { consume } from "@ndn/endpoint";
+import { jcs, keyPairFromSeed, Producer, signData, TrustStore, utf8 } from "@idem/core";
+import { consume, produce } from "@ndn/endpoint";
 import { Forwarder } from "@ndn/fw";
-import { Interest as NdnInterest } from "@ndn/packet";
+import { Data as NdnData, Interest as NdnInterest } from "@ndn/packet";
 import { afterEach, describe, expect, it } from "vitest";
-import { decodeData, encodeInterest } from "./codec";
+import { decodeData, encodeData, encodeInterest } from "./codec";
 import { NdnConsumer } from "./consumer";
+import { producerSigner } from "./keys";
 import { ndnUri, toNdnName } from "./name";
 import { serveNdn } from "./producer";
 import { calls, idemInterest, PRODUCER, setupNetwork, setupProducer } from "./testkit.test-helpers";
@@ -82,6 +83,66 @@ describe("native round trip", () => {
     await trust.pin(PRODUCER, (await keyPairFromSeed(new Uint8Array(32).fill(9))).publicKeyJwk);
     const consumer = new NdnConsumer({ producer: PRODUCER, fw, trust });
     await expect(consumer.init()).rejects.toThrow(/manifest rejected/);
+  });
+});
+
+describe("consumer verdicts on forged native Data [P-9.3]", () => {
+  // A rogue producer on a longer prefix answers first (longest-prefix match), as on NFD.
+  async function forge(scope: "public" | "private", keyByte: number) {
+    const { producer, fw, consumer, key } = await net();
+    await consumer.init();
+    const I = await idemInterest(producer, "fetch_page", { url: URL3 });
+    const signer = keyByte === 7 ? key : await keyPairFromSeed(new Uint8Array(32).fill(keyByte));
+    const forged = await signData(
+      {
+        name: I.name,
+        content: { content: [{ type: "text", text: "forged" }] },
+        producedAt: 0,
+        freshnessMs: 60_000,
+        scope,
+        policyVersion: 1,
+      },
+      signer,
+    );
+    const sign = producerSigner(PRODUCER, signer);
+    const rogue = produce(
+      toNdnName(I.name),
+      async (i) => {
+        if (scope === "public") return encodeData(forged, i.name, sign);
+        // encodeData refuses private Data [P-9.4]: build the packet by hand, as a rogue would.
+        const pkt = new NdnData(
+          i.name,
+          NdnData.FreshnessPeriod(60_000),
+          utf8(jcs({ content: forged.content, meta: forged.meta, signature: forged.signature })),
+        );
+        await sign.sign(pkt);
+        return pkt;
+      },
+      { fw },
+    );
+    const closeNet = close;
+    close = () => {
+      rogue.close();
+      closeNet?.();
+    };
+    return consumer.call("fetch_page", { url: URL3 });
+  }
+
+  it("MUST fail closed with UNTRUSTED_KEY when a key is not the producer's trusted key [P-9.3]", async () => {
+    const out = await forge("public", 9);
+    expect(out.error?.code).toBe("UNTRUSTED_KEY");
+    expect(out.verify?.code).toBe("UNTRUSTED_KEY");
+    expect(out.data).toBeUndefined();
+    expect(out.result.isError).toBe(true);
+    expect(calls.fetch_page).toBeUndefined();
+  });
+
+  it("MUST reject validly signed private Data with NOT_CACHEABLE [P-9.4]", async () => {
+    const out = await forge("private", 7);
+    expect(out.verify?.outer.ok).toBe(true);
+    expect(out.verify?.inner.ok).toBe(true);
+    expect(out.error?.code).toBe("NOT_CACHEABLE");
+    expect(out.data).toBeUndefined();
   });
 });
 

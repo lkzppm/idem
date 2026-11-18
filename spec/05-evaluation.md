@@ -15,11 +15,15 @@ One CLI writes that layout (ADR-023): `pnpm sim -- --config experiments/configs/
   `packages/*/src/**` without tests, sorted by path, so a run names its code even without git.
 - `env.json` also records the load average at the start and end of the run (other work shares the
   machine) and the command line.
+- A virtual-clock run (E2) is bit-reproducible for a seed on the same platform, not across
+  platforms: `Math.log` differs in its last bits between macOS and Linux, and a Data's byte count
+  follows the digits of its `producedAt` (ADR-027). Reproduce a committed sweep on the platform in
+  its `env.json`; on another one expect close, not identical, numbers.
 - A sweep adds `summary.csv` (mean, sd, 95% CI half-width, min, max per mode, value and metric) and
   `latency_cdf.csv` (percentiles 0..100 of every call, pooled over seeds); E5 adds `trials.csv` (one
   line per trial).
 - `pnpm sim -- export-web` turns the run folders into `apps/web/lib/results/data.json`, the only
-  source of the `/results` page; a test fails if that file drifts from the folders.
+  source of the `/benchmarks` page; a test fails if that file drifts from the folders.
 
 ## 1. Modes compared
 
@@ -111,6 +115,18 @@ the run folder. Output: W-trace files for E2 and E4. This experiment is the only
   consumers; compare with the overlay.
 Plots: producer-link bytes and completion time vs loss; per-hop hit distribution. Supports H4.
 
+Before E4, a functional check of the native binding against a real NFD (not a measurement):
+`pnpm exp:ndn` starts three NFD forwarders in Docker (`experiments/ndn/nfd/`, edge1 and edge2 →
+regional, image `ghcr.io/named-data/nfd:20261105` pinned by digest), runs nine scenarios over NDNts
+TCP, UDP and WebSocket faces (round trip, PIT aggregation, CS and freshness, equivalent spellings,
+`private`, tampering, the size limit, the chain, the WebSocket face) and writes
+`experiments/results/ndn-nfd/<run-id>/` with the usual files plus `summary.json` (every check with its
+expected and actual value), `metrics.csv` (one row per check) and the NFD logs; `env.json` adds the
+NFD version, image digest and NDNts versions. Its config is `experiments/ndn/nfd/config.json`
+(`kind: "nfd-check"`, which `export-web` ignores). It is wall-clock and reports PASS/FAIL, not
+numbers for the report. The same scenarios run as `packages/ndn/src/nfd.test.ts` with
+`IDEM_NFD=1` against running forwarders; without it they are skipped.
+
 As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/configs/e4.json`):
 - **Topology.** Docker on one host instead of Mini-NDN (it needs a Linux host with Open vSwitch;
   the author's machine is macOS). Each node is one network namespace holding an NFD 24.07 container
@@ -169,7 +185,7 @@ by a consumer that puts the victim's `authContext` in its own Interest (ADR-023,
 ## 5. Reporting rules
 
 - Every figure is produced by `experiments/plots/*.py` from committed results; the script name and run
-  ids go in the figure caption. The `/results` page draws its own charts from the same run folders
+  ids go in the figure caption. The `/benchmarks` page draws its own charts from the same run folders
   (through `data.json`) and names the runs under each figure.
 - A refuted hypothesis is reported as refuted, with the data.
 - Simulation results are labeled "simulation"; emulation results "emulation". They are not mixed in one
