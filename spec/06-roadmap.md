@@ -44,6 +44,7 @@ Each milestone ends with its acceptance criteria met and the checklist ticked.
 
 ## M4 — Simulator + experiments E1, E2, E5
 - [x] `@idem/sim`: event queue, links (delay/loss/bandwidth), workloads W-syn and W-trace, modes B0–B2 + B4 (B3 via `buildTopology({kind:"tree"})`)
+- [x] `@idem/sim` on arbitrary graphs (ADR-027): several producers with their own tools and keys, latency-shortest routes per producer, multi-homed agents, per-agent tool mixes (`search_corpus`, `weather` added), per-forwarder CS size; every committed config runs unchanged (fingerprint test)
 - [x] `pnpm sim` CLI writing the results layout from `05-evaluation.md` (ADR-023; also `calibrate`, `export-web`, `digest`)
 - [ ] E1 microbenchmarks (Node + Playwright browser). Node half done (`e1-node`, 10 runs kept); the browser half has not run
 - [x] E2 sweeps with ≥ 10 seeds (six sweeps, 30 seeds per point, W-syn and W-mixed; W-trace waits for E3); E5 safety suite (27 variants × 250 trials: 23 of 24 claims hold, one open finding, Q7; stale replay measured as the documented limit of ADR-025)
