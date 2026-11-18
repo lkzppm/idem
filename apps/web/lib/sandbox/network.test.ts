@@ -154,7 +154,7 @@ describe("saving and sharing", () => {
     expect(p?.kind === "producer" && p.config.tools[0]?.ttl).toBe(0);
     expect(net.links.map((l) => l.id)).toEqual(["l2"]);
     expect(net.links[0]?.latencyMs).toBe(2000);
-    expect(net.run.engine).toBe("idem");
+    expect(net.run.engine).toBe("ndn");
     expect(net.run.compare).toEqual(["idem"]);
   });
 

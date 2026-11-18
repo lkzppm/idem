@@ -268,6 +268,8 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
     void sig;
     const load = lastLoads.current !== nw.loads;
     if (load) setSel(undefined);
+    // A network just loaded on the routers starts paused: the visitor presses play.
+    if (load && netRef.current.run.engine === "ndn") setPlaying(false);
     const loads = nw.loads;
     // The load is marked as seen when its restart fires, so a cancelled timer (StrictMode) keeps it.
     const id = setTimeout(
@@ -540,29 +542,21 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
     <>
       {drag.ghost}
       <Slot name="controls">
-        <Section title={te.run.engine} aside={<InfoTip label={te.run.engine}>{te.run.tips.engine}</InfoTip>}>
+        <Section title={te.run.engine}>
           <Segmented
             label={te.run.engine}
             value={net.run.engine}
             onChange={(v) => setRun({ engine: v }, "engine")}
             options={[
               {
-                value: "idem",
-                label: (
-                  <span className="obs-mode">
-                    {te.run.engineIdem}
-                    <span className="obs-mode-hint">{te.run.engineIdemHint}</span>
-                  </span>
-                ),
+                value: "ndn",
+                label: te.run.engineNdn,
+                tip: { label: te.run.aboutEngine(te.run.engineNdn), body: te.run.tips.engineNdn },
               },
               {
-                value: "ndn",
-                label: (
-                  <span className="obs-mode">
-                    {te.run.engineNdn}
-                    <span className="obs-mode-hint">{te.run.engineNdnHint}</span>
-                  </span>
-                ),
+                value: "idem",
+                label: te.run.engineIdem,
+                tip: { label: te.run.aboutEngine(te.run.engineIdem), body: te.run.tips.engineIdem },
               },
             ]}
           />
@@ -692,7 +686,7 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
       </Slot>
 
       {ndn ? (
-        <NdnEngine net={net} loads={nw.loads} editor={editorProps} />
+        <NdnEngine net={net} loads={nw.loads} editor={editorProps} playing={playing} onPlaying={setPlaying} />
       ) : (
         <>
           <Slot name="stage">
@@ -731,6 +725,7 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
 
           <Slot name="player">
             <PlayerButton
+              spin
               label={ts.restart}
               kbd="R"
               disabled={!runnable}

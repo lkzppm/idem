@@ -9,11 +9,15 @@ import { WarnIcon } from "./icons";
  * stage; each mode fills it with these pieces.
  */
 
-/** A transport button. The primary one (play or pause) is the larger, filled one. */
+/**
+ * A transport button. The primary one (play or pause) is the larger, filled one; `spin` turns its
+ * icon once on each press (restart).
+ */
 export function PlayerButton({
   label,
   kbd,
   primary,
+  spin,
   disabled,
   onClick,
   children,
@@ -21,10 +25,12 @@ export function PlayerButton({
   label: string;
   kbd?: string;
   primary?: boolean;
+  spin?: boolean;
   disabled?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
+  const [turns, setTurns] = useState(0);
   return (
     <button
       type="button"
@@ -33,9 +39,18 @@ export function PlayerButton({
       aria-label={label}
       title={kbd ? `${label} (${kbd})` : label}
       disabled={disabled}
-      onClick={onClick}
+      onClick={() => {
+        if (spin) setTurns((n) => n + 1);
+        onClick();
+      }}
     >
-      {children}
+      {spin ? (
+        <span key={turns} className="obs-pbtn-icon" data-spin={turns > 0 || undefined}>
+          {children}
+        </span>
+      ) : (
+        children
+      )}
     </button>
   );
 }
@@ -73,11 +88,27 @@ export function PlayerSep() {
   return <span className="obs-psep" aria-hidden="true" />;
 }
 
-/** How far the run is: a bar and its count. */
+/** How long a reset (the bar draining back to the start) takes (ms). */
+const RESET_MS = 520;
+
+/**
+ * How far the run is: a bar and its count. When the value drops (a restart), the bar drains back
+ * on an ease instead of jumping. The count keeps a fixed width, so the centred bar never shifts.
+ */
 export function PlayerProgress({ value, label, title }: { value: number; label: string; title: string }) {
   const v = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+  const prev = useRef(v);
+  const [resetting, setResetting] = useState(false);
+  useEffect(() => {
+    const dropped = v < prev.current - 0.001;
+    prev.current = v;
+    if (!dropped) return;
+    setResetting(true);
+    const id = setTimeout(() => setResetting(false), RESET_MS);
+    return () => clearTimeout(id);
+  }, [v]);
   return (
-    <span className="obs-pprog-wrap" title={title}>
+    <span className="obs-pprog-wrap" title={title} data-resetting={resetting || undefined}>
       <span
         className="obs-pprog"
         role="progressbar"

@@ -116,6 +116,14 @@
     transform: translateX(14px) scale(0.97);
   }
 }
+@keyframes obs-spin-back {
+  from {
+    rotate: 0deg;
+  }
+  to {
+    rotate: -360deg;
+  }
+}
 @keyframes obs-blink {
   50% {
     opacity: 0.25;
@@ -402,26 +410,33 @@
   .obs-seg-btn[aria-pressed="true"] {
     color: var(--bg);
   }
+  .obs-seg-cell {
+    position: relative;
+    display: grid;
+    min-width: 0;
+  }
+  .obs-seg-cell[data-tip] .obs-seg-btn {
+    padding-right: 26px;
+  }
+  .obs-seg-tip {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    z-index: 2;
+    display: grid;
+    translate: 0 -50%;
+  }
+  .obs-seg-cell:has(> [aria-pressed="true"]) .obs-info {
+    color: color-mix(in srgb, var(--bg) 75%, transparent);
+  }
+  .obs-seg-cell:has(> [aria-pressed="true"]) .obs-info:hover {
+    color: var(--bg);
+  }
   .obs-seg[data-size="md"] .obs-seg-btn {
     padding: 7px 10px;
     font-size: 14px;
     font-weight: 500;
   }
-  /* The mode's name with its hint on a line of its own under it. */
-  .obs-mode {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    line-height: 1.2;
-  }
-  .obs-mode-hint {
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    font-weight: 400;
-    opacity: 0.7;
-  }
-
   .obs-btn {
     display: inline-flex;
     align-items: center;
@@ -647,11 +662,6 @@
   .obs-legend-row {
     display: flex;
   }
-  .obs-mode-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
   .obs-info {
     flex: none;
     display: inline-grid;
@@ -679,24 +689,6 @@
     outline-offset: 1px;
   }
   /* Beside the mode switch it is a square button like the others in the chrome. */
-  .obs-mode-head .obs-info {
-    align-self: stretch;
-    width: 34px;
-    height: auto;
-    margin: 0;
-    border-radius: 9px;
-    border: 1.5px solid var(--obs-edge);
-    color: var(--fg-muted);
-  }
-  .obs-mode-head .obs-info svg {
-    width: 16px;
-    height: 16px;
-  }
-  .obs-mode-head .obs-info:hover,
-  .obs-mode-head .obs-info[data-on] {
-    border-color: var(--obs-edge-strong);
-    color: var(--fg);
-  }
   .obs-tip {
     position: fixed;
     z-index: 1000;
@@ -1029,10 +1021,29 @@
     transform-origin: 0 50%;
     transition: transform 0.25s linear;
   }
+  /* Fixed widths for the texts that change while a run plays or restarts: the bar is centred, so a
+     text that grows or shrinks would shift everything in it. */
   .obs-pprog-label {
+    min-width: 7ch;
     font-size: 11.5px;
+    text-align: right;
     color: var(--fg-muted);
   }
+  .obs-ptime > .t-mono {
+    display: inline-block;
+    min-width: 8ch;
+  }
+  /* A restart: the icon turns once, the bar drains back on an ease, the count comes in again. */
+  .obs-pbtn-icon {
+    display: grid;
+  }
+  .obs-pbtn-icon[data-spin] {
+    animation: obs-spin-back 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .obs-pprog-wrap[data-resetting] .obs-pprog-fill {
+    transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   .obs-pmenu-wrap {
     position: relative;
     display: inline-flex;
@@ -1992,6 +2003,10 @@
   .obs-panel {
     animation: obs-fade 0.15s ease both;
   }
+  .obs-pbtn-icon[data-spin] {
+    animation: none;
+  }
+
   .obs-drawer {
     animation: obs-fade 0.15s ease both;
   }
@@ -2768,6 +2783,62 @@
     padding: 12px 14px 14px;
     animation: obs-fade 0.22s var(--ease) both;
   }
+  /* The deployed edge's calls from every visitor (ADR-030). */
+  .obs-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .obs-feed-list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+  }
+  .obs-feed-list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--obs-dash);
+    animation: obs-fade 0.3s var(--ease) both;
+  }
+  .obs-feed-who {
+    min-width: 7ch;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .obs-feed-list li[data-mine] .obs-feed-who {
+    color: var(--fg-subtle);
+    font-weight: 400;
+  }
+  .obs-feed-ago {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--fg-subtle);
+  }
+  .obs-pothers {
+    height: 30px;
+    padding: 0 9px;
+    font-size: 12.5px;
+    color: var(--fg);
+    border: 1.5px dashed var(--obs-edge-strong);
+    border-radius: 9px;
+    white-space: nowrap;
+    transition: transform 0.45s var(--ease-spring);
+  }
+  .obs-pothers:active {
+    transform: scale(0.94);
+    transition-duration: 0.1s;
+  }
+  .obs-chip-node:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
   @container stage (max-width: 1140px) {
     .obs-aside {
       top: 70px;

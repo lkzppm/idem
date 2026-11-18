@@ -94,8 +94,10 @@ export interface RunSettings {
   /** Protocols compared side by side (IDEM engine). */
   compare: ("mcp-direct" | "mcp-local-cache" | "idem")[];
   /**
-   * `idem`: the IDEM forwarders on the simulator's seeded virtual clock. `ndn`: real NDN routers
-   * (YaNFD compiled to WebAssembly) in this browser, in real time.
+   * `ndn` (shown as "IDEM", the default): real NDN routers (YaNFD compiled to WebAssembly) in this
+   * browser, in real time. `idem` (shown as "Simulation"): the IDEM forwarders on the simulator's
+   * seeded virtual clock, protocols compared side by side. The values predate the labels and stay,
+   * so shared links keep working.
    */
   engine: "idem" | "ndn";
 }
@@ -113,7 +115,7 @@ export const DEFAULT_RUN: RunSettings = {
   seed: 42,
   speed: 0.1,
   compare: ["mcp-direct", "idem"],
-  engine: "idem",
+  engine: "ndn",
 };
 
 export const DEFAULT_AGENT: AgentConfig = { tools: [], calls: 10, thinkMs: 300, overlap: 0.6, zipf: 0.9 };
@@ -471,7 +473,7 @@ export function sanitizeNetwork(raw: unknown): Network | undefined {
       seed: Math.round(clampNum(run.seed, 0, 1e9, DEFAULT_RUN.seed)),
       speed: clampNum(run.speed, 0.01, 2, DEFAULT_RUN.speed),
       compare: compare.length > 0 ? compare : ["idem"],
-      engine: run.engine === "ndn" ? "ndn" : "idem",
+      engine: run.engine === "idem" ? "idem" : "ndn",
     },
   };
 }

@@ -232,7 +232,8 @@ export function Segmented<T extends string>({
 }: {
   label: string;
   value: T;
-  options: { value: T; label: ReactNode; title?: string }[];
+  /** `tip`: an info bubble beside the option's name (a sibling of its button, never inside it). */
+  options: { value: T; label: ReactNode; title?: string; tip?: { label: string; body: ReactNode } }[];
   onChange: (v: T) => void;
   size?: "sm" | "md";
 }) {
@@ -253,16 +254,22 @@ export function Segmented<T extends string>({
         style={{ width: `calc((100% - 4px) / ${options.length})`, transform: `translateX(${index * 100}%)` }}
       />
       {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={o.value === value}
-          title={o.title}
-          onClick={() => onChange(o.value)}
-          className="obs-seg-btn"
-        >
-          {o.label}
-        </button>
+        <span key={o.value} className="obs-seg-cell" data-tip={o.tip ? "" : undefined}>
+          <button
+            type="button"
+            aria-pressed={o.value === value}
+            title={o.title}
+            onClick={() => onChange(o.value)}
+            className="obs-seg-btn"
+          >
+            {o.label}
+          </button>
+          {o.tip && (
+            <span className="obs-seg-tip">
+              <InfoTip label={o.tip.label}>{o.tip.body}</InfoTip>
+            </span>
+          )}
+        </span>
       ))}
     </fieldset>
   );
