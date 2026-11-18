@@ -452,6 +452,49 @@ plain-call retry of [P-5.5] and fails closed instead. A native forwarder that is
 v1) would have to apply [P-7.1]; NFD does not verify Data signatures, so on the native binding
 cache poisoning is stopped at the consumer [P-9.3], not at the forwarder.
 
+## ADR-027 — Sim: arbitrary graphs, multiple producers, per-agent workloads
+**Context.** The sandbox is becoming a network editor: any graph of agents, forwarders and
+producers, several producers each with its own tools, a tool list per agent. `@idem/sim` assumed one
+producer (`SIM_PRODUCER`, routes by hop-count BFS toward the first producer node only, other producer
+nodes silently dropping packets), agents on their first link only, three fixed tools, plans matched to
+agents by index, and upstream calls counted only toward a node literally called `producer`.
+**Decision.** (1) *Producers are configuration.* `SimConfig.producers?: SimProducerConfig[]` puts
+one `Producer` on each listed producer-kind node, with its own name, tools and key (derived from the
+run seed and the node id, so reordering the list changes no key); every manifest goes into the shared
+`TrustStore`. Absent, the configuration means what it always meant: one producer named
+`SIM_PRODUCER` on the first producer-kind node, serving `fetch_page`, `my_notes`, `send_email` with
+`producer.ttlMs`, keyed and timed from the same random streams as before. (2) *Routing is shortest
+latency, per producer.* Dijkstra on link latency, one tree per producer node, ties broken by next-hop
+id then link index (deterministic, loop-free). Only forwarders relay: never an agent, never another
+producer. Each forwarder gets `fib.addProducer(name, face)` for every producer it reaches; an agent
+with several links sends each call on the link of its shortest path to that call's producer. A call
+to a producer the agent cannot reach fails at once, recorded with `error: "NO_ROUTE"` and counted in
+`Metrics.noRoute`, instead of vanishing on a link. (3) *Tools live in `tools.ts`* with a
+`TOOL_CATALOG` that mirrors the live demo producer: `search_corpus` (normalizers `trim`,
+`lowercase`) and `weather` (`trim`, `lowercase`, `nfc`; 15 s TTL, 15 s buckets) are added, their
+results generated from the seed and the canonical arguments (no corpus, no network). Explicit
+producers take each tool's TTL from the config or the catalog, not from `producer.ttlMs`. (4) *A
+per-agent workload* (`kind: "per-agent"`) gives each agent node a call count, think time and a
+weighted mix of `{producer, tool}`; `fetch_page` keeps overlap, Zipf and catalog per agent;
+`search_corpus` and `weather` draw from small fixed catalogs with surface variation, so the
+normalizers decide which calls share a name. (5) `Metrics.upstreamCalls` counts calls reaching any
+producer-kind node; attacks take an optional target producer (default: the first). (6) A forwarder
+node may set `csMaxBytes` to size its own Content Store (default `cs.maxBytes`). (7) A configuration
+error is a `SimConfigError` (`code: "BAD_CONFIG"`, with the path of the field). There is no
+live-mutation API: the editor restarts a run on every edit.
+**Consequences.** Every configuration without `producers` runs exactly as before: a fingerprint of
+every run (metrics, call records, transmissions, forwarder events) of every E2 sweep in
+`experiments/configs/` was recorded on the old code and matches for all 4620 runs (30 seeds), and a
+one-seed subset plus the default, tree-with-loss, attack and trace runs is a test
+(`legacy.test.ts`); `pnpm --filter @idem/sim run fingerprint` reprints the full set. The only
+behaviour differences are on graphs no committed config uses: a cyclic topology without `producers`
+now routes by latency rather than hop count, an agent whose producer is unreachable fails its calls
+with `NO_ROUTE` instead of retrying against a Nack, and a producer node not named `producer` is now
+counted as upstream (a fix). The source digest of `packages/*/src` changes, so by ADR-023 a run made
+after this change carries a new run id; the committed E1, E2 and E5 results are not relabeled. Their
+numbers would come out identical (the fingerprints show it for E2; E1 and E5 do not run the
+`Simulation`), so no rerun is required for correctness, only to name the current code.
+
 ## Open questions
 
 - **Q2 — Encrypted `private` content.** Name-based access control would allow shared caching of
