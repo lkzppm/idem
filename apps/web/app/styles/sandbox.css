@@ -48,7 +48,8 @@
 
   .obs,
   .obs-tip,
-  .obs-drag-ghost {
+  .obs-drag-ghost,
+  .obs-modal-scrim {
     /* Local tokens (also on the bubbles and the drag ghost, which are portalled to the body). */
     --obs-top: 65px;
     --obs-edge: color-mix(in srgb, var(--fg) 20%, transparent);
@@ -1798,5 +1799,601 @@
   .obs-info,
   .obs-winlist-icon {
     transform: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------- the network editor (ADR-028) */
+
+@layer components {
+  /* The sidebar head: the network's example (opens the picker), undo, redo, share. */
+  .obs-net-head {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .obs-net-pick {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    column-gap: 6px;
+    padding: 6px 10px;
+    text-align: left;
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 10px;
+    transition:
+      border-color 0.2s var(--ease),
+      transform 0.45s var(--ease-spring);
+  }
+  @media (hover: hover) {
+    .obs-net-pick:hover {
+      border-color: var(--obs-edge-strong);
+    }
+  }
+  .obs-net-pick:active {
+    transform: scale(0.98);
+    transition-duration: 0.2s, 0.1s;
+  }
+  .obs-net-label {
+    grid-column: 1;
+    font-size: 11px;
+    color: var(--fg-subtle);
+  }
+  .obs-net-name {
+    grid-column: 1;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .obs-net-edited {
+    font-weight: 400;
+    color: var(--fg-subtle);
+  }
+  .obs-net-chev {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    color: var(--fg-muted);
+  }
+  .obs-net-head > .obs-info {
+    align-self: stretch;
+    width: 30px;
+    height: auto;
+    margin: 0;
+    border-radius: 9px;
+    border: 1.5px solid var(--obs-edge);
+  }
+  .obs-net-actions {
+    display: flex;
+    gap: 4px;
+  }
+  .obs-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 30px;
+    padding: 0 7px;
+    font-size: 12px;
+    color: var(--fg-muted);
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 9px;
+    transition:
+      color 0.2s var(--ease),
+      border-color 0.2s var(--ease),
+      transform 0.45s var(--ease-spring);
+  }
+  @media (hover: hover) {
+    .obs-icon-btn:hover:not(:disabled) {
+      color: var(--fg);
+      border-color: var(--obs-edge-strong);
+    }
+  }
+  .obs-icon-btn:active:not(:disabled) {
+    transform: scale(0.92);
+    transition-duration: 0.2s, 0.2s, 0.1s;
+  }
+  .obs-icon-btn:disabled {
+    opacity: 0.35;
+  }
+  .obs-sidebar-head,
+  .obs-dock-head {
+    container-type: inline-size;
+  }
+  /* Share: icon only in a narrow sidebar. */
+  .obs-share span {
+    display: none;
+  }
+  @container (min-width: 330px) {
+    .obs-share span {
+      display: inline;
+    }
+  }
+  .obs-toast {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 30;
+    padding: 4px 9px;
+    font-size: 12px;
+    color: var(--bg);
+    background: var(--fg);
+    border-radius: 7px;
+    animation: obs-tip-in 0.25s var(--obs-pop-ease) both;
+  }
+
+  /* The issues that stop a network from running. */
+  .obs-issues-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    border: 1.5px dashed var(--obs-edge-strong);
+    border-radius: 10px;
+  }
+  .obs-issues-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .obs-issues {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--fg-muted);
+  }
+  .obs-issues li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 8px;
+  }
+  .obs-note-warn {
+    color: var(--fg);
+  }
+
+  /* The Add palette. */
+  .obs-palette {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .obs-chip-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 9px 4px 7px;
+    font-size: 12px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 10px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition:
+      border-color 0.2s var(--ease),
+      transform 0.45s var(--ease-spring);
+  }
+  @media (hover: hover) {
+    .obs-chip-node:hover {
+      border-color: var(--obs-edge-strong);
+      transform: translateY(-1px);
+    }
+  }
+  .obs-chip-node:active {
+    transform: scale(0.95);
+    transition-duration: 0.2s, 0.1s;
+  }
+  .obs-glyph {
+    flex: none;
+  }
+  .obs-glyph-agent {
+    fill: var(--fg);
+  }
+  .obs-glyph-fwd {
+    fill: var(--bg-subtle);
+    stroke: var(--fg);
+    stroke-width: 1.6;
+  }
+  .obs-glyph-prod {
+    fill: var(--fg);
+  }
+  .obs-glyph-core {
+    fill: var(--data-fill);
+  }
+  .obs-drag-ghost[data-chip] {
+    flex-direction: row;
+    border-radius: 10px;
+  }
+  .obs-drag-ghost[data-chip] .obs-drag-bar {
+    height: 32px;
+    border-bottom: 0;
+    background: transparent;
+  }
+  .obs-drag-ghost[data-chip][data-over] {
+    border-style: dashed;
+    background: color-mix(in srgb, var(--bg-elev) 80%, transparent);
+  }
+
+  /* Properties of the selected node or link. */
+  .obs-props {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .obs-props-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+  .obs-props-kind {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .obs-props-id {
+    font-size: 12px;
+    color: var(--fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .obs-props-delete {
+    align-self: flex-start;
+  }
+  .obs-toollist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .obs-toolgroup {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .obs-toolgroup + .obs-toolgroup {
+    padding-top: 6px;
+    border-top: 1.5px dashed var(--obs-dash);
+  }
+  .obs-toolgroup-name {
+    font-size: 11px;
+    color: var(--fg-subtle);
+  }
+  .obs-toolrow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 6px;
+    min-height: 26px;
+  }
+  .obs-toolrow-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--fg-muted);
+    cursor: pointer;
+  }
+  .obs-toolrow[data-on] .obs-toolrow-check {
+    color: var(--fg);
+  }
+  .obs-toolrow-check input {
+    accent-color: var(--interest);
+  }
+  .obs-toolrow-weight {
+    width: 72px;
+  }
+  .obs-toolrow-w {
+    width: 2ch;
+    font-size: 11.5px;
+    text-align: right;
+    color: var(--fg);
+  }
+  .obs-toolrow-ttl {
+    grid-column: 2 / span 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+  }
+  .obs-input-sm {
+    width: 64px;
+    height: 26px;
+    padding: 0 6px;
+  }
+  .obs-tag {
+    padding: 0 5px;
+    font-size: 10.5px;
+    color: var(--fg-muted);
+    border: 1px dashed var(--obs-edge-strong);
+    border-radius: 5px;
+  }
+
+  /* The stage as an editor. */
+  .obs-canvas[data-editor] {
+    touch-action: none;
+  }
+  .obs-link-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 4;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    color: var(--bg);
+    background: var(--interest);
+    border-radius: 7px;
+    cursor: crosshair;
+    touch-action: none;
+    will-change: transform;
+    animation: obs-tip-in 0.25s var(--obs-pop-ease) both;
+  }
+  .obs-zoom {
+    position: absolute;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    translate: -100% 0;
+    background: var(--obs-panel);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 10px;
+    overflow: hidden;
+    transition:
+      left 0.3s var(--ease),
+      top 0.3s var(--ease);
+  }
+  .obs-zoom-btn {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 28px;
+    font-size: 15px;
+    line-height: 1;
+    color: var(--fg-muted);
+    transition:
+      color 0.2s var(--ease),
+      background-color 0.2s var(--ease);
+  }
+  .obs-zoom-btn + .obs-zoom-btn {
+    border-top: 1.5px dashed var(--obs-dash);
+  }
+  .obs-zoom-btn:hover {
+    color: var(--fg);
+    background: var(--bg-subtle);
+  }
+  .obs-empty-stage {
+    position: absolute;
+    z-index: 3;
+    translate: -50% -50%;
+    width: min(320px, 70%);
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--fg-muted);
+    border: 1.5px dashed var(--obs-edge-strong);
+    border-radius: 14px;
+    pointer-events: none;
+  }
+
+  /* The start screen: over the (empty, inert) workspace until the visitor picks what to load. */
+  .obs-start {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    overflow-y: auto;
+    background: var(--bg);
+    animation: obs-fade 0.25s var(--ease) both;
+  }
+  .obs-start-inner {
+    width: min(980px, 100%);
+    margin: 0 auto;
+    padding: clamp(24px, 6vh, 64px) 16px 48px;
+  }
+  .obs-start-title {
+    font-size: clamp(22px, 3vw, 30px);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--fg);
+  }
+  .obs-start .obs-modal-intro {
+    margin: 6px 0 22px;
+  }
+  .obs[data-choosing] .obs-sidebar,
+  .obs[data-choosing] .obs-stage,
+  .obs[data-choosing] .obs-dock {
+    visibility: hidden;
+  }
+  .obs-pick[data-resume] {
+    border-style: dashed;
+    border-color: var(--obs-edge-strong);
+  }
+
+  /* The example picker. */
+  .obs-modal-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: color-mix(in srgb, var(--bg) 62%, transparent);
+    animation: obs-fade 0.2s var(--ease) both;
+  }
+  .obs-modal {
+    width: min(780px, 100%);
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    padding: 18px;
+    background: var(--obs-panel);
+    border: 1.5px solid var(--obs-edge-strong);
+    border-radius: 16px;
+    box-shadow: 0 8px 0 0 var(--obs-shadow);
+    animation: obs-pop 0.32s var(--obs-pop-ease) both;
+  }
+  .obs-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .obs-modal-title {
+    font-size: 18px;
+    font-weight: 650;
+    color: var(--fg);
+  }
+  .obs-modal-intro {
+    margin-top: 3px;
+    max-width: 56ch;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg-muted);
+  }
+  .obs-picks {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 10px;
+  }
+  .obs-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+    padding: 10px;
+    text-align: left;
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 12px;
+    transition:
+      border-color 0.2s var(--ease),
+      transform 0.45s var(--ease-spring);
+  }
+  @media (hover: hover) {
+    .obs-pick:hover {
+      border-color: var(--obs-edge-strong);
+      transform: translateY(-2px);
+    }
+  }
+  .obs-pick:active {
+    transform: scale(0.98);
+    transition-duration: 0.2s, 0.1s;
+  }
+  .obs-pick[data-current] {
+    border-color: var(--interest);
+  }
+  .obs-pick-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .obs-pick-tag {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--fg-subtle);
+  }
+  .obs-pick-blurb {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--fg-muted);
+  }
+  .obs-thumb {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 200 / 110;
+    margin-bottom: 4px;
+    border-radius: 8px;
+    background: var(--bg-subtle);
+  }
+  .obs-thumb-link {
+    stroke: var(--fg);
+    stroke-width: 1.2;
+    opacity: 0.5;
+  }
+  .obs-thumb-link-agent {
+    stroke-dasharray: 3 2.5;
+    opacity: 0.35;
+  }
+  .obs-thumb-agent {
+    fill: var(--fg);
+  }
+  .obs-thumb-fwd {
+    fill: var(--bg);
+    stroke: var(--fg);
+    stroke-width: 1.5;
+  }
+  .obs-thumb-prod {
+    fill: var(--fg);
+  }
+  .obs-thumb-prod-core {
+    fill: var(--data-fill);
+  }
+  .obs-thumb-plus {
+    stroke: var(--fg-subtle);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+
+  /* The NDN engine's windows. */
+  .obs-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .obs-ndn-log {
+    display: flex;
+    flex-direction: column;
+    font-size: 11.5px;
+  }
+  .obs-ndn-log li {
+    display: grid;
+    grid-template-columns: 8ch 12ch minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px dashed var(--obs-dash);
+  }
+  .obs-ndn-log-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fg-muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .obs-modal,
+    .obs-modal-scrim,
+    .obs-start,
+    .obs-toast,
+    .obs-link-handle {
+      animation: none;
+    }
+    .obs-chip-node,
+    .obs-pick,
+    .obs-net-pick,
+    .obs-icon-btn {
+      transition: none;
+    }
   }
 }

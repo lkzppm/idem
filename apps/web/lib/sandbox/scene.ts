@@ -7,7 +7,10 @@ export type NodeKind = "agent" | "forwarder" | "producer";
 export type PacketKind = "interest" | "data" | "nack" | "call" | "result";
 export type FlashKind = "cs" | "pit" | "fail" | "produce" | "bypass";
 
-/** A node placed in normalized [0, 1] coordinates inside its pane. */
+/**
+ * A node's place: normalized [0, 1] coordinates inside its pane when the scene lays nodes out itself,
+ * or world units (CSS px at zoom 1) when it has a {@link Camera} (the network editor).
+ */
 export interface SceneNode {
   id: string;
   kind: NodeKind;
@@ -27,6 +30,16 @@ export interface ScenePacket {
   /** The IDEM name (or tool, for plain calls) it carries; the log highlights by it. */
   label?: string;
 }
+
+/** The editor's view: the world point at the pane's center, and the zoom (1 = one unit per CSS px). */
+export interface Camera {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export const MIN_ZOOM = 0.35;
+export const MAX_ZOOM = 2.5;
 
 /** What the owner knows about a forwarder's tables, for its fill color. */
 export interface NodeState {
@@ -128,11 +141,11 @@ function bfsDepth(
   topology: { nodes: { id: string; kind: NodeKind }[] },
   adj: Map<string, string[]>,
 ): Map<string, number> {
-  const producer = topology.nodes.find((n) => n.kind === "producer");
+  // Hops from the nearest producer (every producer is a source, so several producers work).
+  const producers = topology.nodes.filter((n) => n.kind === "producer");
   const depth = new Map<string, number>();
-  if (!producer) return depth;
-  depth.set(producer.id, 0);
-  const q = [producer.id];
+  for (const p of producers) depth.set(p.id, 0);
+  const q = producers.map((p) => p.id);
   while (q.length > 0) {
     const n = q.shift() as string;
     for (const m of adj.get(n) ?? []) {
@@ -182,24 +195,43 @@ export class TopologyScene {
   highlight: string | undefined;
   /** Node under the pointer: its path to the producer is drawn in blue. */
   hover: string | undefined;
-  /** Node whose tables are open. */
+  /** Node whose tables are open (or the editor's selected node). */
   selected: string | undefined;
+  /** The editor's selected link, as an index into `links`. */
+  selectedLink: number | undefined;
+  /**
+   * The editor's link being drawn: from a node to a screen point, `ok` when it would land on a node
+   * it may link to.
+   */
+  draft: { from: string; x: number; y: number; ok: boolean } | undefined;
   /** Bumped on topology change, so overlays can re-render. */
   version = 0;
+  /**
+   * Set by the network editor: nodes keep the world positions they are given and are drawn through
+   * this view (pan and zoom) instead of being laid out in the pane. `null`: the automatic layout.
+   */
+  camera: Camera | null = null;
   readonly #state = new Map<string, NodeState>();
   readonly #live = new Map<string, Live>();
   #parent = new Map<string, string>();
 
   /** Replace the topology; nodes pop in from the producer outward, starting at real time `at`. */
   setTopology(
-    t: { nodes: { id: string; kind: NodeKind }[]; links: { a: string; b: string }[] },
+    t: { nodes: { id: string; kind: NodeKind; x?: number; y?: number }[]; links: { a: string; b: string }[] },
     at = performance.now(),
+    /** Keep the packets in flight whose ends still exist (an edit, not a new run). */
+    keepTraffic = false,
   ): void {
-    const placed = layoutTopology(t);
+    // With a camera the nodes come placed (world units); otherwise they are laid out in columns.
+    const placed: SceneNode[] = this.camera
+      ? t.nodes.map((n) => ({ id: n.id, kind: n.kind, x: n.x ?? 0, y: n.y ?? 0 }))
+      : layoutTopology(t);
     const before = new Set(this.nodes.keys());
     this.nodes = new Map(placed.map((n) => [n.id, n]));
     this.links = t.links.map((l) => [l.a, l.b]);
-    this.packets = [];
+    this.packets = keepTraffic
+      ? this.packets.filter((p) => this.nodes.has(p.from) && this.nodes.has(p.to))
+      : [];
     // Parents toward the producer, for the hover path.
     const adj = new Map<string, string[]>();
     for (const l of t.links) {
@@ -226,6 +258,7 @@ export class TopologyScene {
     for (const id of this.#state.keys()) if (!this.nodes.has(id)) this.#state.delete(id);
     if (this.hover && !this.nodes.has(this.hover)) this.hover = undefined;
     if (this.selected && !this.nodes.has(this.selected)) this.selected = undefined;
+    this.selectedLink = undefined;
     this.version++;
   }
 
@@ -261,17 +294,87 @@ export class TopologyScene {
     return n;
   }
 
+  /** Move a node (world units, editor only); packets on its links follow it. */
+  move(id: string, x: number, y: number): void {
+    const n = this.nodes.get(id);
+    if (!n) return;
+    n.x = x;
+    n.y = y;
+  }
+
+  /** How big nodes are drawn in `frame`: the pane's size, or the camera's zoom in the editor. */
+  scaleFor(frame: Rect): number {
+    if (this.camera) return Math.max(0.6, Math.min(1.6, this.camera.zoom));
+    return nodeScale(frame);
+  }
+
+  /** Screen position of a world point (editor) inside `frame`. */
+  toScreen(frame: Rect, x: number, y: number): [number, number] {
+    const c = this.camera ?? { x: 0, y: 0, zoom: 1 };
+    return [frame.x + frame.w / 2 + (x - c.x) * c.zoom, frame.y + frame.h / 2 + (y - c.y) * c.zoom];
+  }
+
+  /** World point under a screen position (editor) inside `frame`. */
+  toWorld(frame: Rect, sx: number, sy: number): [number, number] {
+    const c = this.camera ?? { x: 0, y: 0, zoom: 1 };
+    return [c.x + (sx - frame.x - frame.w / 2) / c.zoom, c.y + (sy - frame.y - frame.h / 2) / c.zoom];
+  }
+
+  /** Center and zoom the camera on every node, leaving `pad` px around them. */
+  fit(frame: Rect, pad = 72): void {
+    if (!this.camera) return;
+    const ns = [...this.nodes.values()];
+    // In place: the editor shares one camera object between the panes of a comparison.
+    if (ns.length === 0) {
+      Object.assign(this.camera, { x: 0, y: 0, zoom: 1 });
+      return;
+    }
+    const xs = ns.map((n) => n.x);
+    const ys = ns.map((n) => n.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const zoom = Math.min(
+      1.4,
+      Math.max(
+        MIN_ZOOM,
+        Math.min((frame.w - 2 * pad) / Math.max(1, x1 - x0), (frame.h - 2 * pad) / Math.max(1, y1 - y0)),
+      ),
+    );
+    Object.assign(this.camera, { x: (x0 + x1) / 2, y: (y0 + y1) / 2, zoom });
+  }
+
   /** Screen position of a node inside `frame`. */
   screen(frame: Rect, id: string): [number, number] | undefined {
     const n = this.nodes.get(id);
     if (!n) return undefined;
+    if (this.camera) return this.toScreen(frame, n.x, n.y);
     const f = innerFrame(frame);
     return [f.x + n.x * f.w, f.y + n.y * f.h];
   }
 
+  /** The link drawn nearest to (x, y) within `reach` px, as its index in `links`, if any. */
+  linkAt(frame: Rect, x: number, y: number, reach = 7): number | undefined {
+    let best: number | undefined;
+    let bd = reach;
+    this.links.forEach(([a, b], i) => {
+      const p = this.screen(frame, a);
+      const q = this.screen(frame, b);
+      if (!p || !q) return;
+      const dx = q[0] - p[0];
+      const dy = q[1] - p[1];
+      const len2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((x - p[0]) * dx + (y - p[1]) * dy) / len2));
+      const d = Math.hypot(p[0] + t * dx - x, p[1] + t * dy - y);
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    });
+    return best;
+  }
+
   /** The node drawn nearest to (x, y) within `reach` px, if any. */
   nodeAt(frame: Rect, x: number, y: number, reach = 12): string | undefined {
-    const k = nodeScale(frame);
+    const k = this.scaleFor(frame);
     let best: string | undefined;
     let bd = reach;
     for (const n of this.nodes.values()) {
@@ -292,7 +395,7 @@ export class TopologyScene {
    * the simulator, real ms for live mode); `real` is `performance.now()` for the cartoon motion.
    */
   build(list: InstanceList, frame: Rect, pal: Palette, now: number, real: number, o: BuildOptions): void {
-    const k = nodeScale(frame);
+    const k = this.scaleFor(frame);
     const pos = (id: string) => this.screen(frame, id);
     const body = mix(pal.bg, pal.fg, pal.dark ? 0.08 : 0.05);
     const age = (t: number) => (real - t) / 1000;
@@ -305,6 +408,14 @@ export class TopologyScene {
     // The hovered node's path to the producer.
     const path = new Set<string>();
     for (let n = this.hover; n !== undefined; n = this.#parent.get(n)) path.add(n);
+
+    // The editor's selected link, under everything: a wide ink band.
+    const sel = this.selectedLink !== undefined ? this.links[this.selectedLink] : undefined;
+    if (sel) {
+      const pa = pos(sel[0]);
+      const pb = pos(sel[1]);
+      if (pa && pb) list.capsule(pa[0], pa[1], pb[0], pb[1], 3.2, pal.fg, 0.22);
+    }
 
     // Links: dashed toward agents, solid between forwarders; drawn in from the child to its parent.
     for (const [a, b] of this.links) {
@@ -346,6 +457,23 @@ export class TopologyScene {
         }
       } else {
         list.capsule(from[0], from[1], ex, ey, agentLink ? 0.55 : 0.95, pal.fg, agentLink ? 0.26 : 0.42);
+      }
+    }
+
+    // The link being drawn in the editor: dashed, blue once it would land on a node it may join.
+    if (this.draft) {
+      const p = pos(this.draft.from);
+      if (p) {
+        const { x, y, ok } = this.draft;
+        const len = Math.hypot(x - p[0], y - p[1]);
+        const ux = (x - p[0]) / Math.max(1, len);
+        const uy = (y - p[1]) / Math.max(1, len);
+        const ink = ok ? pal.interest : pal.fg;
+        for (let s = 0; s < len; s += 10) {
+          const e = Math.min(len, s + 6);
+          list.capsule(p[0] + ux * s, p[1] + uy * s, p[0] + ux * e, p[1] + uy * e, 1.1, ink, ok ? 1 : 0.6);
+        }
+        list.circle(x, y, 3.2, ink, ok ? 1 : 0.6);
       }
     }
 
@@ -451,6 +579,7 @@ export class TopologyScene {
           list.box(x, y, h + 2.2, h + 2.2, 5, pal.bg);
           list.box(x, y, h, h, 3.8, pal.fg);
           list.box(x, y, h * 0.42, h * 0.42, 1.8, pal.data);
+          if (this.selected === n.id) list.boxOutline(x, y, h + 5, h + 5, 6, 1.4, pal.fg, 0.9);
           ring(x, y, l.produce, h, pal.data);
           cross(x, y, l.fail);
         }

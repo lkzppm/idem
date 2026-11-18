@@ -193,6 +193,8 @@ export interface CircleMask {
 export interface Layer {
   list: InstanceList;
   mask?: CircleMask;
+  /** Draw only inside this rectangle (CSS px): a pane of the sandbox's side-by-side comparison. */
+  clip?: { x: number; y: number; w: number; h: number };
 }
 
 interface Backend {
@@ -347,8 +349,20 @@ class GpuBackend implements Backend {
     if (total > 0) {
       pass.setPipeline(this.#pipeline);
       pass.setVertexBuffer(0, this.#instances);
+      const W = Math.max(1, Math.round(this.#w * this.#dpr));
+      const H = Math.max(1, Math.round(this.#h * this.#dpr));
       spans.forEach((sp, i) => {
         if (sp.count === 0) return;
+        const r = layers[i]?.clip;
+        if (r) {
+          // Scissor in device pixels, kept inside the attachment (WebGPU rejects anything outside).
+          const x = Math.min(W, Math.max(0, Math.floor(r.x * this.#dpr)));
+          const y = Math.min(H, Math.max(0, Math.floor(r.y * this.#dpr)));
+          const w = Math.max(0, Math.min(W - x, Math.ceil(r.w * this.#dpr)));
+          const h = Math.max(0, Math.min(H - y, Math.ceil(r.h * this.#dpr)));
+          if (w === 0 || h === 0) return;
+          pass.setScissorRect(x, y, w, h);
+        } else pass.setScissorRect(0, 0, W, H);
         pass.setBindGroup(0, this.#uniform(i).bind);
         pass.draw(6, sp.count, 0, sp.first);
       });
@@ -390,8 +404,13 @@ class Canvas2DBackend implements Backend {
     const c = this.#ctx;
     c.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     c.clearRect(0, 0, this.#w, this.#h);
-    for (const { list, mask } of layers) {
+    for (const { list, mask, clip } of layers) {
       c.save();
+      if (clip) {
+        c.beginPath();
+        c.rect(clip.x, clip.y, clip.w, clip.h);
+        c.clip();
+      }
       if (mask) {
         c.beginPath();
         if (mask.keep === "outside") c.rect(0, 0, this.#w, this.#h);

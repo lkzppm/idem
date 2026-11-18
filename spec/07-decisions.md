@@ -105,7 +105,7 @@ WebGPU-rendered backgrounds and sandbox.
 static fallback when `navigator.gpu` is missing, honoring reduced motion. Labels are an HTML overlay.
 **Consequences.** One less dependency; we own the renderer. Fallback path must be kept working.
 
-## ADR-016 — Sandbox "Live" mode is real transport and the default
+## ADR-016 — Sandbox "Live" mode is real transport and the default (default superseded by ADR-028)
 **Context.** The owner requires the sandbox to exercise the real protocol, not only a simulation.
 **Decision.** `/sandbox` defaults to **Live**: browser agents send real HTTP Interests to the deployed
 edge (`/api/edge`), which forwards over HTTP to the deployed producer (`/api/producer`); the browser
@@ -217,7 +217,7 @@ through `lib/i18n/messages/landing.ts`, so a Portuguese string that runs longer 
 narrow drawing. Panels elsewhere that used `.t-eyebrow` for field labels now show the small mark;
 they can switch to `.t-label`.
 
-## ADR-021 — The sandbox is an observatory: sidebar, stage, floating windows
+## ADR-021 — The sandbox is an observatory: sidebar, stage, floating windows (amended by ADR-028)
 **Context.** The sandbox was a long scrolling page of panels (header, mode tabs, canvas, attacks,
 tables). The author asked for "something like the observatory I got in GraphMan, with a sidebar,
 draggable windows", in this project's flat cartoon style. GraphMan's observatory has the full-height
@@ -514,6 +514,53 @@ counted as upstream (a fix). The source digest of `packages/*/src` changes, so b
 after this change carries a new run id; the committed E1, E2 and E5 results are not relabeled. Their
 numbers would come out identical (the fingerprints show it for E2; E1 and E5 do not run the
 `Simulation`), so no rerun is required for correctness, only to name the current code.
+
+## ADR-028 — The sandbox is a network editor; NDN routers in the page are YaNFD on WebAssembly
+**Context.** The author asked for the sandbox to let visitors build agent networks (several edges and
+producers, every node draggable and configurable, a tool list per agent), to open on a screen that
+picks what to load (examples or a blank canvas) rather than on a network, to drop the Live / Swarm
+switch (the swarm becomes one example), and to run the native NDN binding in the page. NDNts' in-page
+forwarder neither aggregates nor caches, and nothing hosts a persistent shared NFD for free (Vercel
+functions are per request; Vercel Sandbox sessions end after 45 min on the free tier, checked
+2026-11-18). ndnd's forwarder (YaNFD, MIT) builds for `js/wasm` with a small JS face bridge, and its
+PIT aggregation, Content Store and a 3-router chain were shown on real packets
+(`experiments/ndn/yanfd-wasm/`).
+**Decision.** (1) *Start screen.* `/sandbox` opens on a screen of cards: the examples (Swarm, Two
+producers, Regional tree), a blank canvas, Live (real HTTP), and "continue where you left off" when
+this browser saved a network. A shared link opens its network directly (`#n=` carries the network as
+base64url JSON, validated and repaired on read; `?example=<id>`; the old `?mode=swarm` and
+`?mode=live` map to their examples). (2) *The editor.* A network is plain data
+(`lib/sandbox/network.ts`): agents (calls, think time, shared-page overlap, Zipf, a weighted list of
+`{producer, tool}`), forwarders (CS size), producers (name, tools served with their TTL, service
+time), links (latency, loss) and run settings (seed, speed, compared protocols, engine). Agents link
+only to forwarders, never to producers or each other (where IDEM aggregates and caches is the point);
+an agent's tool list offers what the producers it reaches serve; what stops a network from running is
+listed. The stage edits it: drag a node (no restart), drag empty space to pan, wheel or pinch to
+zoom, click a node or a link to select it, drag from the selected node's handle (or Shift-drag) onto
+another node to link them, Delete, arrow keys, undo and redo. The sidebar is the network head
+(example name, undo, redo, Share), Run, Add (chips to click, linking the new node to the selection,
+or to drag onto the stage), Selected (the properties form, an info tip on every field), Attacks
+(target producer), Windows. The network autosaves in `localStorage`. (3) *Two engines.* **IDEM**:
+`@idem/sim` (ADR-027) runs the network once per compared protocol, side by side, seeded, on the
+virtual clock; every edit but a move restarts it (debounced). **NDN**: one YaNFD instance per
+forwarder node, each its own WebAssembly instance (own memory, one realm, no workers needed), JS
+links with the network's latency and loss, producers as `@idem/ndn` `serveNdn` over the simulator's
+deterministic tools, agents as `NdnConsumer`s replaying the simulator's plan for the seed. It runs in
+real time (Go timers), one network, no protocol comparison; routers verify nothing (agents verify
+both signatures) and `private` and side-effect calls stay off NDN (ADR-026). Cache hits and
+aggregation are read from the traffic the links carry, since the routers report nothing. The router
+is built by `experiments/ndn/yanfd-wasm/build.sh` from a pinned ndnd commit into
+`apps/web/public/ndn/` with a `build.json` record, and loaded only when the NDN engine is chosen
+(9.7 MB, 2.6 MB gzipped). (4) *Live* stays as the example over real HTTP, with its own runner,
+unchanged. (5) Connecting the editor to the public NDN testbed is future work (roadmap).
+**Consequences.** Supersedes ADR-016's "Live is the default" (Live is one choice on the start screen)
+and amends ADR-021 (the mode switch is gone; the shell keeps one window set for Live and one for the
+editor, old saved layouts carry over). The swarm's URL parameters (`?a=8&ov=60…`) are gone; links
+carry the whole network instead. The NDN engine's numbers are wall-clock, per visit and not seeded
+end to end, so they are shown as live counters only and never quoted as results. Signing through
+the NDNts keychain failed in WebKit (its Ed25519 ponyfill cannot use a native `CryptoKey`), so
+`@idem/ndn` now signs and verifies with WebCrypto directly. Comparison panes are clipped to their
+frames (scissor rectangles), since a shared camera can carry a network past its pane.
 
 ## Open questions
 

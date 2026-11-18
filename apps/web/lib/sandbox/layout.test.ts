@@ -82,7 +82,7 @@ describe("layout persistence", () => {
     fakeStorage();
     const l = defaultLayout();
     l.rects.log = { x: 40, y: 50, w: 400, h: 220 };
-    l.open.swarm.metrics = true;
+    l.open.net.metrics = true;
     l.collapsed.tables = true;
     l.order = ["safety", "log", "tables", "inspector", "metrics", "compare"];
     l.sidebar = 333;
@@ -118,10 +118,19 @@ describe("layout persistence", () => {
     const l = loadLayout();
     expect(Object.keys(l.rects)).toEqual(["tables"]);
     expect(l.open.live).toEqual({ log: true });
-    expect(l.open.swarm).toEqual(defaultLayout().open.swarm);
+    expect(l.open.net).toEqual(defaultLayout().open.net);
     expect(l.collapsed).toEqual({ inspector: true });
     expect([...l.order].sort()).toEqual([...WINDOW_IDS].sort());
     expect(l.sidebar).toBe(SIDEBAR_MAX);
+  });
+});
+
+describe("layouts saved before the editor", () => {
+  it("read the old swarm window set as the editor's", () => {
+    fakeStorage({
+      "idem.sandbox.layout.v1": JSON.stringify({ v: 1, open: { swarm: { metrics: true, log: false } } }),
+    });
+    expect(loadLayout().open.net).toEqual({ metrics: true, log: false });
   });
 });
 

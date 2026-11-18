@@ -57,6 +57,8 @@ export {
   CORPUS_ORIGIN,
   isToolId,
   SEARCH_QUERIES,
+  type SimToolContext,
+  simTool,
   TOOL_CATALOG,
   TOOL_IDS,
   type ToolCatalogEntry,

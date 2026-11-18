@@ -1,160 +1,82 @@
 import { type CsEntry, type Data, entryAge, type ForwarderEvent, type Scope } from "@idem/core";
 import {
   type AttackRecord,
-  buildTopology,
   defaultConfig,
   type Metrics,
   type SimConfig,
   type SimMode,
   Simulation,
 } from "@idem/sim";
-import { TopologyScene } from "./scene";
+import { type Network, producerNodes } from "./network";
+import { type Camera, TopologyScene } from "./scene";
 
-/** Every knob of the swarm sandbox. The URL encodes all of it. */
-export interface SwarmParams {
-  agents: number;
-  callsPerAgent: number;
-  /** 0..100 */
-  overlap: number;
-  zipf: number;
-  catalog: number;
-  /** seconds */
-  ttl: number;
-  /** KiB */
-  csKiB: number;
-  agentLinkMs: number;
-  producerLinkMs: number;
-  lossPct: number;
-  /** virtual ms per real ms */
-  speed: number;
-  seed: number;
-  topo: "star" | "tree";
-  localCache: boolean;
-  /** 0..100 */
-  privatePct: number;
-  /** 0..100 */
-  sideEffectPct: number;
-}
+/** The protocols the editor can compare side by side. */
+export type CompareMode = Network["run"]["compare"][number];
 
-export const DEFAULT_PARAMS: SwarmParams = {
-  agents: 8,
-  callsPerAgent: 10,
-  overlap: 60,
-  zipf: 0.9,
-  catalog: 40,
-  ttl: 60,
-  csKiB: 8192,
-  agentLinkMs: 10,
-  producerLinkMs: 40,
-  lossPct: 0,
-  speed: 0.1,
-  seed: 42,
-  topo: "star",
-  localCache: false,
-  privatePct: 5,
-  sideEffectPct: 5,
-};
-
-const KEYS: Record<keyof SwarmParams, string> = {
-  agents: "a",
-  callsPerAgent: "cpa",
-  overlap: "ov",
-  zipf: "z",
-  catalog: "cat",
-  ttl: "ttl",
-  csKiB: "cs",
-  agentLinkMs: "al",
-  producerLinkMs: "pl",
-  lossPct: "loss",
-  speed: "spd",
-  seed: "seed",
-  topo: "topo",
-  localCache: "lc",
-  privatePct: "pf",
-  sideEffectPct: "sf",
-};
-
-const LIMITS: Partial<Record<keyof SwarmParams, [number, number]>> = {
-  agents: [1, 32],
-  callsPerAgent: [1, 40],
-  overlap: [0, 100],
-  zipf: [0, 2],
-  catalog: [5, 500],
-  ttl: [1, 600],
-  csKiB: [16, 65536],
-  agentLinkMs: [1, 200],
-  producerLinkMs: [1, 500],
-  lossPct: [0, 30],
-  speed: [0.01, 2],
-  seed: [0, 2 ** 31 - 1],
-  privatePct: [0, 50],
-  sideEffectPct: [0, 50],
-};
-
-/** Read params from a query string; anything missing or out of range falls back to defaults. */
-export function paramsFromQuery(q: URLSearchParams): SwarmParams {
-  const p: SwarmParams = { ...DEFAULT_PARAMS };
-  for (const k of Object.keys(KEYS) as (keyof SwarmParams)[]) {
-    const raw = q.get(KEYS[k]);
-    if (raw === null) continue;
-    if (k === "topo") p.topo = raw === "tree" ? "tree" : "star";
-    else if (k === "localCache") p.localCache = raw === "1";
-    else {
-      const n = Number(raw);
-      const lim = LIMITS[k];
-      if (!Number.isFinite(n) || !lim) continue;
-      (p[k] as number) = Math.min(lim[1], Math.max(lim[0], n));
-    }
-  }
-  p.agents = Math.round(p.agents);
-  p.seed = Math.round(p.seed);
-  return p;
-}
-
-/** Write params into a query string (only non-default values, to keep links short). */
-export function paramsToQuery(p: SwarmParams, base: URLSearchParams): URLSearchParams {
-  const q = new URLSearchParams(base);
-  for (const k of Object.keys(KEYS) as (keyof SwarmParams)[]) {
-    const v = p[k];
-    const d = DEFAULT_PARAMS[k];
-    if (v === d) q.delete(KEYS[k]);
-    else q.set(KEYS[k], typeof v === "boolean" ? (v ? "1" : "0") : String(v));
-  }
-  return q;
-}
-
-/** True when two param sets would produce a different simulation (speed does not). */
-export function sameRun(a: SwarmParams, b: SwarmParams): boolean {
-  return (Object.keys(KEYS) as (keyof SwarmParams)[]).every((k) => k === "speed" || a[k] === b[k]);
-}
-
-export function toSimConfig(p: SwarmParams, mode: SimMode): SimConfig {
+/**
+ * The simulator configuration of an editor network in one mode (ADR-027): its graph as drawn, one
+ * producer per producer node with the tools it serves and their TTLs, one plan per agent with its
+ * tool mix, and each forwarder's Content Store size.
+ */
+export function networkToSim(net: Network, mode: SimMode): SimConfig {
+  const producers = producerNodes(net);
+  const nameOf = new Map(producers.map((p) => [p.id, p.config.name]));
+  const service = (ms: number) => ({ dist: "lognormal" as const, mu: Math.log(Math.max(1, ms)), sigma: 0.5 });
   return defaultConfig({
-    topology: buildTopology({
-      kind: p.topo,
-      agents: p.agents,
-      agentLinkMs: p.agentLinkMs,
-      coreLinkMs: Math.max(1, Math.round(p.producerLinkMs / 4)),
-      producerLinkMs: p.producerLinkMs,
-      lossPct: p.lossPct,
-      edges: 2,
-    }),
-    mode,
-    workload: {
-      kind: "synthetic",
-      agents: p.agents,
-      callsPerAgent: p.callsPerAgent,
-      zipfAlpha: p.zipf,
-      overlap: p.overlap / 100,
-      catalogSize: p.catalog,
-      thinkTimeMs: 300,
-      surfaceVariation: 0.3,
-      privateFraction: p.privatePct / 100,
-      sideEffectFraction: p.sideEffectPct / 100,
+    topology: {
+      nodes: net.nodes.map((n) =>
+        n.kind === "forwarder"
+          ? { id: n.id, kind: n.kind, csMaxBytes: n.config.csKiB * 1024 }
+          : { id: n.id, kind: n.kind },
+      ),
+      links: net.links.map((l) => ({ a: l.a, b: l.b, latencyMs: l.latencyMs, lossPct: l.lossPct })),
     },
-    producer: { serviceTimeMs: { dist: "lognormal", mu: Math.log(150), sigma: 0.5 }, ttlMs: p.ttl * 1000 },
-    cs: { maxBytes: p.csKiB * 1024, policy: "lru" },
+    mode,
+    producers: producers.map((p) => ({
+      node: p.id,
+      name: p.config.name,
+      tools: p.config.tools.map((t) => ({ tool: t.tool, ttlMs: t.ttl * 1000 })),
+      serviceTimeMs: service(p.config.serviceMs),
+    })),
+    workload: {
+      kind: "per-agent",
+      agents: net.nodes.flatMap((n) =>
+        n.kind === "agent"
+          ? [
+              {
+                node: n.id,
+                calls: n.config.calls,
+                thinkTimeMs: n.config.thinkMs,
+                overlap: n.config.overlap,
+                zipfAlpha: n.config.zipf,
+                mix: n.config.tools.flatMap((t) => {
+                  const producer = nameOf.get(t.producer);
+                  return producer ? [{ producer, tool: t.tool, weight: t.weight }] : [];
+                }),
+              },
+            ]
+          : [],
+      ),
+    },
+    producer: { serviceTimeMs: service(150), ttlMs: 60_000 },
+    cs: { maxBytes: 8 * 1024 * 1024, policy: "lru" },
   });
+}
+
+/** Everything about a network that changes what a run does (positions and speed do not). */
+export function runSignature(net: Network): string {
+  return JSON.stringify({
+    nodes: net.nodes.map(({ x: _x, y: _y, ...rest }) => rest),
+    links: net.links,
+    seed: net.run.seed,
+    compare: net.run.compare,
+    engine: net.run.engine,
+  });
+}
+
+/** Total calls the agents of a network make in one run. */
+export function totalCalls(net: Network): number {
+  return net.nodes.reduce((s, n) => s + (n.kind === "agent" ? n.config.calls : 0), 0);
 }
 
 /** A Content Store entry as the tables window shows it. */
@@ -201,8 +123,11 @@ export interface LoggedEvent {
 
 const LOG_CAP = 3000;
 
-/** One running simulation plus its scene and logs. */
-export class SwarmRun {
+/**
+ * One run of an editor network in one mode: the simulation, the scene it draws on, and its logs. A
+ * network that cannot run yet still gets a scene (so the editor can draw it) and no simulation.
+ */
+export class NetworkRun {
   readonly mode: SimMode;
   readonly scene = new TopologyScene();
   readonly events: LoggedEvent[] = [];
@@ -218,17 +143,23 @@ export class SwarmRun {
     this.mode = mode;
   }
 
-  async start(p: SwarmParams): Promise<void> {
-    const cfg = toSimConfig(p, this.mode);
-    this.scene.setTopology(cfg.topology);
+  /**
+   * Draw `net` (through the shared `camera`) and, when `runnable`, start simulating it. `at` is when
+   * nodes pop in: an edit passes 0 so the network does not re-enter on every change.
+   */
+  async start(net: Network, camera: Camera, runnable: boolean, at = performance.now()): Promise<void> {
+    this.scene.camera = camera;
+    this.scene.setTopology(net, at);
     this.events.length = 0;
     this.attacks.length = 0;
     this.#tampered.clear();
     this.error = undefined;
-    const producer = cfg.topology.nodes.find((n) => n.kind === "producer")?.id ?? "producer";
+    if (!runnable) return;
+    const cfg = networkToSim(net, this.mode);
+    const producers = new Set(producerNodes(net).map((p) => p.id));
     try {
       this.sim = await Simulation.create(cfg, {
-        seed: p.seed,
+        seed: net.run.seed,
         onTransmit: (tx) => {
           if (tx.tampered && tx.label !== undefined && !this.#tampered.has(tx.label))
             this.#tampered.set(tx.label, undefined);
@@ -242,8 +173,8 @@ export class SwarmRun {
             ...(tx.tampered && { tampered: true }),
             ...(tx.label !== undefined && { label: tx.label }),
           });
-          if (tx.from === producer && (tx.kind === "data" || tx.kind === "result"))
-            this.scene.flash(producer, "produce");
+          if (producers.has(tx.from) && (tx.kind === "data" || tx.kind === "result"))
+            this.scene.flash(tx.from, "produce");
         },
         onEvent: (e) => {
           this.events.push({ seq: this.#seq++, e });
