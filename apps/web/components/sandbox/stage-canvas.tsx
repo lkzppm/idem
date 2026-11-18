@@ -426,8 +426,12 @@ export function StageCanvas({
       if (!ed) return;
       e.preventDefault();
       const [sx, sy] = local(e);
+      // WebKit and Blink report a trackpad's wheelDeltaY as -3 × deltaY; a mouse wheel's is not.
+      const legacy = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
+      const trackpad = typeof legacy === "number" && legacy !== 0 && legacy === -3 * e.deltaY;
       const mouse =
-        e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY));
+        e.deltaMode !== 0 ||
+        (!trackpad && e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY));
       if (e.ctrlKey || e.metaKey || mouse) {
         const scale = e.deltaMode === 1 ? 0.05 : e.ctrlKey ? 0.01 : 0.0022;
         zoomAt(sx, sy, Math.exp(-e.deltaY * scale));
@@ -436,8 +440,34 @@ export function StageCanvas({
         ed.camera.y += e.deltaY / ed.camera.zoom;
       }
     };
+    // Safari: a trackpad pinch arrives as gesture events (not ctrl + wheel) and would zoom the page.
+    type Gesture = Event & { scale: number; clientX: number; clientY: number };
+    let z0 = 1;
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      z0 = editorRef.current?.camera.zoom ?? 1;
+    };
+    const onGestureChange = (e: Event) => {
+      const ed = editorRef.current;
+      e.preventDefault();
+      // On a touch screen the two pointers already drive the pinch.
+      if (!ed || pointers.current.size >= 2) return;
+      const g = e as Gesture;
+      const [sx, sy] = local(g);
+      const target = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z0 * g.scale));
+      zoomAt(sx, sy, target / ed.camera.zoom);
+    };
+    const onGestureEnd = (e: Event) => e.preventDefault();
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener("gesturestart", onGestureStart);
+    el.addEventListener("gesturechange", onGestureChange);
+    el.addEventListener("gestureend", onGestureEnd);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
+      el.removeEventListener("gestureend", onGestureEnd);
+    };
   }, [editor !== undefined]);
 
   const endDraft = () => {
@@ -454,6 +484,12 @@ export function StageCanvas({
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()] as [[number, number], [number, number]];
       endDraft();
+      // A node being dragged by the first finger stays where it was put.
+      const g = gesture.current;
+      if (g?.type === "node" && g.moved) {
+        const n = panesRef.current[0]?.scene.nodes.get(g.id);
+        if (n) ed.onMove(g.id, n.x, n.y, true);
+      }
       gesture.current = {
         type: "pinch",
         d0: Math.hypot(a[0] - b[0], a[1] - b[1]),

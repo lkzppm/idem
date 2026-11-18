@@ -6,12 +6,14 @@ import {
   attachTo,
   decodeNetwork,
   encodeNetwork,
+  isProducerName,
   issues,
   linkProblem,
   moveNode,
   type NetNode,
   type Network,
   placeNear,
+  producerNodes,
   reachableProducers,
   removeNode,
   sanitizeNetwork,
@@ -154,6 +156,30 @@ describe("saving and sharing", () => {
     expect(net.links[0]?.latencyMs).toBe(2000);
     expect(net.run.engine).toBe("idem");
     expect(net.run.compare).toEqual(["idem"]);
+  });
+
+  it("keeps a producer name the editor accepts, and makes repeated names unique", () => {
+    const prod = (id: string, name: string) => ({
+      id,
+      kind: "producer",
+      x: 0,
+      y: 0,
+      config: { name, tools: [{ tool: "weather", ttl: 60 }] },
+    });
+    const raw = {
+      v: 1,
+      nodes: [prod("p1", "my-host:8080"), prod("p2", "my-host:8080"), prod("p3", "p2.idem.dev")],
+      links: [],
+      run: {},
+    };
+    const net = sanitizeNetwork(raw) as Network;
+    const names = producerNodes(net).map((p) => p.config.name);
+    expect(names[0]).toBe("my-host:8080");
+    expect(isProducerName("my-host:8080")).toBe(true);
+    expect(isProducerName("BAD NAME")).toBe(false);
+    expect(new Set(names).size).toBe(3);
+    // A round trip through a share link changes nothing.
+    expect(sanitizeNetwork(JSON.parse(JSON.stringify(net)))).toEqual(net);
   });
 
   it("rejects what is not a network", () => {

@@ -5,6 +5,7 @@ import { useMessages } from "@/lib/i18n/client";
 import { editor } from "@/lib/i18n/messages/editor";
 import {
   type AgentConfig,
+  isProducerName,
   linkProblem,
   type NetLink,
   type NetNode,
@@ -22,8 +23,6 @@ import { aboutLabel, Button, fmtBytes, InfoTip, Label, Slider } from "../ui";
 
 type Edit = (next: Network, coalesce?: string) => void;
 type T = (typeof editor)["en"];
-
-const HOST = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:\d{1,5})?$/;
 
 /**
  * The selected node's or link's settings, every field with its info tip. Changes apply at once
@@ -264,7 +263,7 @@ function ProducerProps({
   const [draft, setDraft] = useState(c.name);
   useEffect(() => setDraft(c.name), [c.name]);
   const taken = producerNodes(net).some((x) => x.id !== n.id && x.config.name === draft);
-  const valid = HOST.test(draft) && !taken;
+  const valid = isProducerName(draft) && !taken;
   const serves = (tool: ToolId) => c.tools.find((x) => x.tool === tool);
   const setTools = (tools: typeof c.tools, key: string) =>
     edit(setNodeConfig<"producer">(net, n.id, { ...c, tools }), `${n.id}.${key}`);
@@ -285,7 +284,8 @@ function ProducerProps({
           onChange={(e) => {
             const v = e.target.value.trim().toLowerCase();
             setDraft(v);
-            const ok = HOST.test(v) && !producerNodes(net).some((x) => x.id !== n.id && x.config.name === v);
+            const ok =
+              isProducerName(v) && !producerNodes(net).some((x) => x.id !== n.id && x.config.name === v);
             if (ok) edit(setNodeConfig<"producer">(net, n.id, { ...c, name: v }), `${n.id}.name`);
           }}
           onBlur={() => setDraft(c.name)}

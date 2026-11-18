@@ -168,6 +168,7 @@ export const editor = defineMessages(
     ] as [string, string][],
     attacks: {
       target: "Target producer",
+      needsIdem: "The attacks run on the IDEM run: tick IDEM in Compare.",
     },
     ndn: {
       title: "NDN routers",
@@ -364,6 +365,7 @@ export const editor = defineMessages(
     ] as [string, string][],
     attacks: {
       target: "Produtor alvo",
+      needsIdem: "Os ataques rodam na execução IDEM: marque IDEM em Comparar.",
     },
     ndn: {
       title: "Roteadores NDN",

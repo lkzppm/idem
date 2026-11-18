@@ -362,9 +362,16 @@ const isTool = (t: unknown): t is ToolId =>
   typeof t === "string" && (TOOL_IDS as readonly string[]).includes(t);
 const isId = (s: unknown): s is string => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(s);
 
+const HOST = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:\d{1,5})?$/;
+
+/** A producer name the editor accepts: a lowercase host name, optionally with a port (≤ 253 chars). */
+export function isProducerName(s: string): boolean {
+  return s.length <= 253 && HOST.test(s);
+}
+
 /**
  * Read a network from untrusted JSON (storage or a shared link): unknown fields are dropped, numbers
- * clamped, dangling links and tool entries removed. Returns `undefined` when it is not a network.
+ * clamped, dangling links and tool entries removed, producer names made valid and unique. Returns `undefined` when it is not a network.
  */
 export function sanitizeNetwork(raw: unknown): Network | undefined {
   if (!raw || typeof raw !== "object") return undefined;
@@ -372,6 +379,7 @@ export function sanitizeNetwork(raw: unknown): Network | undefined {
   if (r.v !== 1 || !Array.isArray(r.nodes) || !Array.isArray(r.links)) return undefined;
   const nodes: NetNode[] = [];
   const ids = new Set<string>();
+  const names = new Set<string>();
   for (const n of r.nodes.slice(0, 200) as Record<string, unknown>[]) {
     if (!n || !isId(n.id) || ids.has(n.id)) continue;
     const x = clampNum(n.x, -1e5, 1e5, 0);
@@ -408,8 +416,13 @@ export function sanitizeNetwork(raw: unknown): Network | undefined {
         config: { csKiB: clampNum(c.csKiB, 16, 65_536, 8192) },
       });
     } else if (n.kind === "producer") {
-      const name =
-        typeof c.name === "string" && /^[a-z0-9.-]{1,63}$/.test(c.name) ? c.name : `${n.id}.idem.dev`;
+      // A missing, malformed or repeated name falls back to one derived from the (unique) id.
+      let name =
+        typeof c.name === "string" && isProducerName(c.name) && !names.has(c.name)
+          ? c.name
+          : `${n.id}.idem.dev`;
+      for (let k = 2; names.has(name); k++) name = `${n.id}-${k}.idem.dev`;
+      names.add(name);
       const tools = (Array.isArray(c.tools) ? c.tools : [])
         .filter((t: Record<string, unknown>) => t && isTool(t.tool))
         .map((t: Record<string, unknown>) => ({

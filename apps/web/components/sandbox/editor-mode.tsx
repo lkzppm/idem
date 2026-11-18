@@ -213,6 +213,8 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
   const problems = useMemo(() => issues(net), [net]);
   const ndn = net.run.engine === "ndn";
   const runnable = problems.length === 0 && !ndn;
+  const hasIdem = net.run.compare.includes("idem");
+  const canAttack = runnable && hasIdem;
   const sig = useMemo(() => runSignature(net), [net]);
   const producers = producerNodes(net);
   const nameOf = (id: string) => producers.find((p) => p.id === id)?.config.name ?? id;
@@ -240,6 +242,8 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
       if (my !== startSeq.current) return;
       for (const r of next) r.scene.highlight = highlightRef.current;
       runs.current = next;
+      // A node dragged while this run was being built: the scenes take its current position.
+      for (const r of next) for (const node of netRef.current.nodes) r.scene.move(node.id, node.x, node.y);
       vt.current = 0;
       attackCount.current = 0;
       setAttacks([]);
@@ -248,9 +252,10 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
       const ids = idem?.forwarderIds() ?? [];
       const f = focusRef.current;
       const node = ids.includes(f.node) ? f.node : (ids[0] ?? "");
+      const main: SimMode = modes.includes("idem") ? "idem" : (modes[0] ?? "idem");
       setFocus({ run: "idem", node });
-      setLogSource((s) => (modes.includes(s) ? s : "idem"));
-      setMetricsRun((s) => (modes.includes(s) ? s : "idem"));
+      setLogSource((s) => (modes.includes(s) ? s : main));
+      setMetricsRun((s) => (modes.includes(s) ? s : main));
       setGeneration((g) => g + 1);
     },
     [camera, fit],
@@ -259,9 +264,16 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
   useEffect(() => {
     void sig;
     const load = lastLoads.current !== nw.loads;
-    lastLoads.current = nw.loads;
     if (load) setSel(undefined);
-    const id = setTimeout(() => void restart(netRef.current, load), load ? 0 : 250);
+    const loads = nw.loads;
+    // The load is marked as seen when its restart fires, so a cancelled timer (StrictMode) keeps it.
+    const id = setTimeout(
+      () => {
+        lastLoads.current = loads;
+        void restart(netRef.current, load);
+      },
+      load ? 0 : 250,
+    );
     return () => clearTimeout(id);
   }, [sig, nw.loads, restart]);
 
@@ -685,27 +697,29 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
             <div className="flex flex-col gap-2">
               <Button
                 wide
-                disabled={!runnable}
+                disabled={!canAttack}
                 onClick={() => attack(() => idemRun()?.sim?.attackTamper(target))}
               >
                 {ts.attack.tamper}
               </Button>
               <Button
                 wide
-                disabled={!runnable}
+                disabled={!canAttack}
                 onClick={() => attack(() => void idemRun()?.sim?.attackForge(0, target))}
               >
                 {ts.attack.forge}
               </Button>
               <Button
                 wide
-                disabled={!runnable || agentCount < 2}
+                disabled={!canAttack || agentCount < 2}
                 onClick={() => attack(() => void idemRun()?.sim?.attackPrivateProbe(0, 1, target))}
               >
                 {ts.attack.probe}
               </Button>
             </div>
-            <p className="obs-note">{playing ? t.live.attackHint : ts.resolveHint}</p>
+            <p className="obs-note">
+              {!hasIdem ? te.attacks.needsIdem : playing ? t.live.attackHint : ts.resolveHint}
+            </p>
           </Section>
         )}
         {backend && (
@@ -717,7 +731,7 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
       </Slot>
 
       {ndn ? (
-        <NdnEngine net={net} editor={editorProps} onBackend={setBackend} />
+        <NdnEngine net={net} loads={nw.loads} editor={editorProps} onBackend={setBackend} />
       ) : (
         <>
           <Slot name="stage">
@@ -785,8 +799,8 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
       )}
 
       <Slot name="hint:tables">{focus.node ? `${focus.node} · ${ts.modeLabel[focus.run]}` : ""}</Slot>
-      <Slot name="hint:log">{ts.modeLabel[logSource]}</Slot>
-      <Slot name="hint:metrics">{ts.modeLabel[metricsRun]}</Slot>
+      <Slot name="hint:log">{ndn ? te.ndn.title : ts.modeLabel[logSource]}</Slot>
+      <Slot name="hint:metrics">{ndn ? te.ndn.title : ts.modeLabel[metricsRun]}</Slot>
       <Slot name="hint:inspector">{highlight ? shortName(highlight) : ""}</Slot>
 
       {!ndn && (

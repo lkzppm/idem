@@ -183,6 +183,9 @@ export function ExamplePicker({
   const t = useMessages(editor);
   const box = useRef<HTMLDivElement>(null);
   const opener = useRef<Element | null>(null);
+  // The parent may pass a new function every render: the dialog's setup must not rerun for it.
+  const close = useRef(onClose);
+  close.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -192,9 +195,11 @@ export function ExamplePicker({
       box.current?.querySelector<HTMLButtonElement>(".obs-pick");
     first?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
+      // The page's own shortcuts (the editor's Delete, R, ⌘Z…) stay off while the dialog is open.
+      e.stopPropagation();
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        close.current();
       } else if (e.key === "Tab" && box.current) {
         // Keep focus inside the dialog.
         const f = [...box.current.querySelectorAll<HTMLElement>("button")];
@@ -209,7 +214,7 @@ export function ExamplePicker({
       window.removeEventListener("keydown", onKey, true);
       (opener.current as HTMLElement | null)?.focus?.({ preventScroll: true });
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return createPortal(
