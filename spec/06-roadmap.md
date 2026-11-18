@@ -63,7 +63,8 @@ Each milestone ends with its acceptance criteria met and the checklist ticked.
 ## M6 — Native NDN + E3, E4
 - [x] `@idem/ndn` producer/consumer with NDNts (in-process round trip over `@ndn/fw`); Q1 resolved by ADR-026 (2026-11-18)
 - [x] Sandbox: native NDN view of a Live exchange (`apps/web/lib/sandbox/ndn.ts`, `components/sandbox/ndn-packet.tsx`; not wired in yet)
-- [ ] `@idem/ndn` against a real NFD (WebSocket/UDP face) and a runnable native producer/consumer for Mini-NDN
+- [x] `@idem/ndn` against a real NFD: TCP, UDP and WebSocket faces, 9 scenarios, `pnpm exp:ndn` (2026-11-18)
+- [ ] Runnable native producer/consumer (CLI) for Mini-NDN
 - [ ] Mini-NDN topologies (star, tree) + netem scripts
 - [ ] E3 real-agent traces (budgeted); E4 overlay vs native under loss
 - [x] YaNFD (ndnd's forwarder) compiled to WebAssembly with a JS face bridge: PIT aggregation, Content Store and a 3-router chain pass on real NDN packets (`experiments/ndn/yanfd-wasm/`, 2026-11-18)

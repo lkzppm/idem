@@ -308,7 +308,10 @@ format v0.3; naming, signing and verification are `@idem/core`'s, unchanged.
 - **NDN Interest.** Name = IDEM name + ParametersSha256DigestComponent; ApplicationParameters =
   `JCS(canonical args)`, the exact bytes `args-digest` hashes; `MustBeFresh`, `InterestLifetime` and
   `HopLimit` mapped from §4; CanBePrefix unset. NDN's 32-bit Nonce replaces the IDEM nonce (the
-  first four bytes of it when present); loop detection is NFD's.
+  first four bytes of it when present); loop detection is NFD's, so every Interest sent, a
+  retransmission included, carries a fresh nonce (NFD drops a name and nonce pair it has seen).
+  The consumer always sets MustBeFresh (§4 default): NFD answers an Interest without it from a
+  stale CS entry, so the TTL would no longer bound what the consumer gets.
   - **[P-9.1]** A native Interest MUST NOT be signed and its ApplicationParameters MUST be exactly
     `JCS(canonical args)`. Then the ParametersSha256DigestComponent is a function of the canonical
     args only, and two calls share a native name iff they share an IDEM name [P-2.1].

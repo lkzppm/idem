@@ -111,6 +111,18 @@ the run folder. Output: W-trace files for E2 and E4. This experiment is the only
   consumers; compare with the overlay.
 Plots: producer-link bytes and completion time vs loss; per-hop hit distribution. Supports H4.
 
+Before E4, a functional check of the native binding against a real NFD (not a measurement):
+`pnpm exp:ndn` starts three NFD forwarders in Docker (`experiments/ndn/nfd/`, edge1 and edge2 →
+regional, image `ghcr.io/named-data/nfd:20261105` pinned by digest), runs nine scenarios over NDNts
+TCP, UDP and WebSocket faces (round trip, PIT aggregation, CS and freshness, equivalent spellings,
+`private`, tampering, the size limit, the chain, the WebSocket face) and writes
+`experiments/results/ndn-nfd/<run-id>/` with the usual files plus `summary.json` (every check with its
+expected and actual value), `metrics.csv` (one row per check) and the NFD logs; `env.json` adds the
+NFD version, image digest and NDNts versions. Its config is `experiments/ndn/nfd/config.json`
+(`kind: "nfd-check"`, which `export-web` ignores). It is wall-clock and reports PASS/FAIL, not
+numbers for the report. The same scenarios run as `packages/ndn/src/nfd.test.ts` with
+`IDEM_NFD=1` against running forwarders; without it they are skipped.
+
 ### E5 — Safety
 Adversarial runs: tamper with Data in flight, forge names (digest mismatch), replay stale Data,
 request `private` results across `authContext`s, poison attempts with a non-manifest key.
