@@ -697,28 +697,25 @@
   background: var(--fg);
 }
 
-/* The sensitivity sweeps: two by two, the fourth cell is the note on freshness. */
-.r-trio {
+/* The sensitivity sweeps: freshness full width, then two charts side by side at one height. */
+.r-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
-  margin-top: 2.25rem;
-  align-items: start;
+  margin-top: 1rem;
+  align-items: stretch;
 }
-.r-trio > .r-figure {
+.r-pair > .r-figure {
   margin-top: 0;
-}
-/* The fourth cell: a note that sits level with the charts beside it. */
-.r-trio-note {
-  margin-top: 0;
-  padding: 1.4rem 1.5rem;
-  border: 1.5px dashed var(--line-strong);
-  border-radius: 16px;
 }
 @media (max-width: 56rem) {
-  .r-trio {
+  .r-pair {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+.r-figure-title .obs-info {
+  margin-left: 0.4rem;
+  vertical-align: -2px;
 }
 
 /* ------------------------------------------------------------------ tables */

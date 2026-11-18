@@ -651,17 +651,20 @@ export function ResultsView({
               }),
             }}
           >
-            <div className="r-trio">
-              <ReductionFigure
-                t={t}
-                f={f}
-                sweep={ttl}
-                copy={t.sensitivity.ttl}
-                xFormat={(x) => f.duration(x)}
-                caption={t.sensitivity.ttl.caption}
-                compact
-                bound={false}
-              />
+            <ReductionFigure
+              t={t}
+              f={f}
+              sweep={ttl}
+              copy={t.sensitivity.ttl}
+              xFormat={(x) => f.duration(x)}
+              caption={t.sensitivity.ttl.caption}
+              bound={false}
+              info={{
+                label: t.sensitivity.staleLabel,
+                body: t.sensitivity.stale({ late: f.num(lateMax, 1), max: f.ms(lateWorst, 1) }),
+              }}
+            />
+            <div className="r-pair">
               <ReductionFigure
                 t={t}
                 f={f}
@@ -690,9 +693,6 @@ export function ResultsView({
                 compact
                 bound={false}
               />
-              <p className="r-note r-trio-note">
-                {t.sensitivity.stale({ late: f.num(lateMax, 1), max: f.ms(lateWorst, 1) })}
-              </p>
             </div>
             {mixed && (
               <div className="r-block">

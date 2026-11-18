@@ -392,6 +392,7 @@ export const results = defineMessages(
         caption:
           "Faster agents do not gain: the store already answers every repeat. Slower agents lose, because a run then outlasts the 60 s TTL.",
       },
+      staleLabel: "About answers that arrived late",
       stale: (o: { late: string; max: string }) =>
         `No Data was served stale in any run by the protocol's rule, which counts age from each hop's receipt [P-8.1]. Measured on the producer's clock instead, up to ${o.late} answers per run at the short TTLs arrived past their freshness, by ${o.max} at most: the time a Data spends in transit is not part of its age.`,
       mixed: {
@@ -987,6 +988,7 @@ export const results = defineMessages(
         caption:
           "Agentes mais rápidos não ganham: o store já responde toda repetição. Agentes mais lentos perdem, porque a execução passa a durar mais que o TTL de 60 s.",
       },
+      staleLabel: "Sobre respostas que chegaram atrasadas",
       stale: (o: { late: string; max: string }) =>
         `Nenhum Data foi servido vencido em nenhuma execução pela regra do protocolo, que conta a idade a partir do recebimento em cada salto [P-8.1]. Medido no relógio do produtor, até ${o.late} respostas por execução, nos TTLs curtos, chegaram depois do seu frescor, por no máximo ${o.max}: o tempo que um Data passa em trânsito não entra na sua idade.`,
       mixed: {
