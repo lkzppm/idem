@@ -224,6 +224,49 @@ export function setLink(
   return { ...net, links: net.links.map((l) => (l.id === id ? { ...l, ...patch } : l)) };
 }
 
+/**
+ * Give an agent with an empty tool list something to call: every cacheable public tool that the
+ * producers it can reach serve (`fetch_page` weighted up, the way the examples mix it). An agent
+ * that already has tools, or reaches no producer, is left alone.
+ */
+export function autoTools(net: Network, agent: string): Network {
+  const a = net.nodes.find((n) => n.id === agent);
+  if (!a || a.kind !== "agent" || a.config.tools.length > 0) return net;
+  const tools: AgentTool[] = [];
+  for (const pid of reachableProducers(net, agent)) {
+    const p = net.nodes.find((n) => n.id === pid);
+    if (p?.kind !== "producer") continue;
+    for (const t of p.config.tools)
+      if (TOOLS[t.tool].scope === "public")
+        tools.push({ producer: pid, tool: t.tool, weight: t.tool === "fetch_page" ? 3 : 1 });
+  }
+  return tools.length === 0 ? net : setNodeConfig<"agent">(net, agent, { ...a.config, tools });
+}
+
+/** Fill the empty tool lists of every agent (after a link or a producer changed what they reach). */
+export function autoToolsAll(net: Network): Network {
+  let out = net;
+  for (const n of net.nodes) if (n.kind === "agent") out = autoTools(out, n.id);
+  return out;
+}
+
+/** The link between two nodes, either way round. */
+export function linkBetween(net: Network, a: string, b: string): NetLink | undefined {
+  return net.links.find((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a));
+}
+
+/**
+ * Where a new node of `kind` goes when it is added next to `near`: agents to its left, producers to
+ * its right, forwarders below, stepping down past nodes already there.
+ */
+export function placeNear(net: Network, near: NetNode, kind: NetNodeKind): [number, number] {
+  const dx = kind === "agent" ? -170 : kind === "producer" ? 220 : near.kind === "agent" ? 170 : 0;
+  const dy = kind === "forwarder" && near.kind !== "agent" ? 150 : 0;
+  let [x, y] = [near.x + dx, near.y + dy];
+  for (let i = 0; i < 40 && net.nodes.some((n) => Math.hypot(n.x - x, n.y - y) < 36); i++) y += 44;
+  return [x, y];
+}
+
 // ---------------------------------------------------------------- reading
 
 export function producerNodes(net: Network): Extract<NetNode, { kind: "producer" }>[] {

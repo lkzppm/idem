@@ -195,8 +195,15 @@ export class TopologyScene {
   highlight: string | undefined;
   /** Node under the pointer: its path to the producer is drawn in blue. */
   hover: string | undefined;
-  /** Node whose tables are open. */
+  /** Node whose tables are open (or the editor's selected node). */
   selected: string | undefined;
+  /** The editor's selected link, as an index into `links`. */
+  selectedLink: number | undefined;
+  /**
+   * The editor's link being drawn: from a node to a screen point, `ok` when it would land on a node
+   * it may link to.
+   */
+  draft: { from: string; x: number; y: number; ok: boolean } | undefined;
   /** Bumped on topology change, so overlays can re-render. */
   version = 0;
   /**
@@ -251,6 +258,7 @@ export class TopologyScene {
     for (const id of this.#state.keys()) if (!this.nodes.has(id)) this.#state.delete(id);
     if (this.hover && !this.nodes.has(this.hover)) this.hover = undefined;
     if (this.selected && !this.nodes.has(this.selected)) this.selected = undefined;
+    this.selectedLink = undefined;
     this.version++;
   }
 
@@ -316,8 +324,9 @@ export class TopologyScene {
   fit(frame: Rect, pad = 72): void {
     if (!this.camera) return;
     const ns = [...this.nodes.values()];
+    // In place: the editor shares one camera object between the panes of a comparison.
     if (ns.length === 0) {
-      this.camera = { x: 0, y: 0, zoom: 1 };
+      Object.assign(this.camera, { x: 0, y: 0, zoom: 1 });
       return;
     }
     const xs = ns.map((n) => n.x);
@@ -330,7 +339,7 @@ export class TopologyScene {
         Math.min((frame.w - 2 * pad) / Math.max(1, x1 - x0), (frame.h - 2 * pad) / Math.max(1, y1 - y0)),
       ),
     );
-    this.camera = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, zoom };
+    Object.assign(this.camera, { x: (x0 + x1) / 2, y: (y0 + y1) / 2, zoom });
   }
 
   /** Screen position of a node inside `frame`. */
@@ -400,6 +409,14 @@ export class TopologyScene {
     const path = new Set<string>();
     for (let n = this.hover; n !== undefined; n = this.#parent.get(n)) path.add(n);
 
+    // The editor's selected link, under everything: a wide ink band.
+    const sel = this.selectedLink !== undefined ? this.links[this.selectedLink] : undefined;
+    if (sel) {
+      const pa = pos(sel[0]);
+      const pb = pos(sel[1]);
+      if (pa && pb) list.capsule(pa[0], pa[1], pb[0], pb[1], 3.2, pal.fg, 0.22);
+    }
+
     // Links: dashed toward agents, solid between forwarders; drawn in from the child to its parent.
     for (const [a, b] of this.links) {
       const pa = pos(a);
@@ -440,6 +457,23 @@ export class TopologyScene {
         }
       } else {
         list.capsule(from[0], from[1], ex, ey, agentLink ? 0.55 : 0.95, pal.fg, agentLink ? 0.26 : 0.42);
+      }
+    }
+
+    // The link being drawn in the editor: dashed, blue once it would land on a node it may join.
+    if (this.draft) {
+      const p = pos(this.draft.from);
+      if (p) {
+        const { x, y, ok } = this.draft;
+        const len = Math.hypot(x - p[0], y - p[1]);
+        const ux = (x - p[0]) / Math.max(1, len);
+        const uy = (y - p[1]) / Math.max(1, len);
+        const ink = ok ? pal.interest : pal.fg;
+        for (let s = 0; s < len; s += 10) {
+          const e = Math.min(len, s + 6);
+          list.capsule(p[0] + ux * s, p[1] + uy * s, p[0] + ux * e, p[1] + uy * e, 1.1, ink, ok ? 1 : 0.6);
+        }
+        list.circle(x, y, 3.2, ink, ok ? 1 : 0.6);
       }
     }
 
@@ -545,6 +579,7 @@ export class TopologyScene {
           list.box(x, y, h + 2.2, h + 2.2, 5, pal.bg);
           list.box(x, y, h, h, 3.8, pal.fg);
           list.box(x, y, h * 0.42, h * 0.42, 1.8, pal.data);
+          if (this.selected === n.id) list.boxOutline(x, y, h + 5, h + 5, 6, 1.4, pal.fg, 0.9);
           ring(x, y, l.produce, h, pal.data);
           cross(x, y, l.fail);
         }
