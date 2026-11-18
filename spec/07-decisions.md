@@ -562,7 +562,7 @@ the NDNts keychain failed in WebKit (its Ed25519 ponyfill cannot use a native `C
 `@idem/ndn` now signs and verifies with WebCrypto directly. Comparison panes are clipped to their
 frames (scissor rectangles), since a shared camera can carry a network past its pane.
 
-## ADR-029 — Sandbox chrome: start screen, back button, player bar, selection card, bottom dock
+## ADR-029 — Sandbox chrome: start screen, back button, player bar, selection card, bottom dock (start screen amended by ADR-031)
 **Context.** After using the editor, the author asked for: a better start screen (a simple plus for a
 blank canvas, the examples in their own column); no loading of another network while one is open
 (a way back to the start screen instead of the in-session picker); a smoother change between the two
@@ -595,6 +595,87 @@ sidebar width and the drawer height; v1 layouts keep their open windows and side
 ADR-028 (no in-session picker; the Selected section becomes the card). The zoom buttons move to the
 bottom right of the network's area, the help button to the tab bar. Fewer controls compete for the
 sidebar, and the run's transport sits where the run is.
+
+## ADR-030 — The routers are the main engine; Live edits its agents and shows the shared edge
+**Context.** The author asked for NDN to be the main mode, named "IDEM" (NDN wasm routers) beside
+"Simulation", with a way to pause it (holding the agents' requests), and starting paused when a
+network is loaded; and for Live to configure each agent and add agents while the edge and producer
+stay fixed (no Scenario section), with a way to see at the edge that another user's tool call
+filled the cache, to show it is truly shared.
+**Decision.** (1) *Engines.* The default engine is the routers (`run.engine: "ndn"`, shown as
+"IDEM"); the simulator is "Simulation" (`"idem"`, the value kept so shared links keep working; an
+unknown value reads as the routers). Each option has an info bubble; the selector has no subtitles.
+(2) *Pause on routers.* `NdnNetwork.pause()` holds each agent's next call until `resume()` (calls in
+flight finish; real time goes on, so freshness keeps running); the player's play button and Space
+drive it, and a network just loaded starts paused. (3) *Live's agents.* Each agent is `{n, tool,
+arg}`, with credential `token-agent-<n>`; the sidebar adds agents; an agent's card sets its tool and
+argument, asks once or removes it; the edge and the producer cannot be changed. (4) *The shared
+edge.* The edge route records each Interest and call: an anonymous per-tab id the page sends
+(`idem-visitor`, random, in `sessionStorage`), the tool, the first 8 characters of the args digest
+for public names, and the edge's outcome read from its trace; a name's owner is the visitor whose
+call went upstream (or who asked first while it is pending). A hit or an aggregation answers with
+`idem-filled-by: other|self`, and every response with `idem-edge-instance`. `GET
+/api/edge/activity?after=<seq>` lists the last ten minutes (at most 200 calls) as the asking visitor
+sees them: own calls marked, others as a short salted label, never their ids. Arguments, results
+and credentials are never recorded; private names and plain calls carry no digest and no owner. It
+lives on the same route and in the same memory as the edge's CS, so it is true of the instance that
+answered; when the poll and the calls are answered by different instances, the page says so.
+**Consequences.** The default is real time and not seeded: the sandbox's opening network is no
+longer replayable event for event (Simulation still is). The activity feed costs one function call
+per visitor every 3 s while the page is visible. What other visitors did is shown only as tool,
+digest prefix and outcome; even so, a digest of a low-entropy argument could be guessed, which is
+the price of showing that two visitors asked the same question.
+
+## ADR-031 — The visitor's networks: a library in this browser, with file export and import
+**Context.** The author asked for two buttons in the editor, one to save a network the visitor made
+and one to delete it, kept in the browser or exported and imported as a file, and a start screen
+that reflects it. Until now the sandbox remembered only the last network edited (one autosave).
+**Decision.** (1) *Library.* `lib/sandbox/library.ts` keeps entries `{id, name, savedAt, net}` in
+`localStorage` under `idem.sandbox.library.v1` as `{v: 1, items}`. Names are 1 to 60 characters;
+at most 40 entries; a network of at most 200,000 characters of JSON; an import file of at most
+1,000,000. Beyond the count a new entry is refused with a message (an update still works). Every
+storage access is in try/catch, and a read drops what is not an entry or whose network
+`sanitizeNetwork` rejects. (2) *File.* `{format: "idem-network", v: 1, name, savedAt, network}`,
+named `<slug>.idem.json`; an import also accepts a bare network. Every import goes through
+`sanitizeNetwork`; the file is never trusted and nothing is sent to a server. (3) *Editor.* Save,
+Export and Delete sit at the end of the name row of the sidebar head, not in the top row (which is
+full): Save updates the entry the network was opened from or saved to, and otherwise asks for a name
+in the row itself (Enter saves, Escape cancels); a dot on Save marks changes since the last save;
+Delete is disabled until the network is saved, asks to confirm in the row, deletes the entry and
+returns to the start screen. Live has none of the three. (4) *Autosave kept.* The single autosave
+(`idem.sandbox.network.v1`) stays, now also noting which entry it came from (`lib`); "Continue where
+you left off" shows only when the autosave differs from that entry (or has none), and deleting the
+entry deletes its autosave. (5) *Start screen.* A "Your networks" section above the examples in the
+right column: cards with rename, export and delete, import by button or by dropping a file, an empty
+state, four shown and "Show all" for more. The file's size is checked before it is read.
+**Consequences.** Amends ADR-029's start screen (the left column keeps the plus tile and Continue;
+the right column gains a section). The library lives and dies with the site's storage (a private
+window or cleared data loses it), which the docs say, with Export as the way to keep one. No server
+state and no new dependency. The names a visitor types are stored as text and shown as text.
+
+## ADR-032 — Benchmarks tells one story about IDEM over native NDN; charts are interactive; no C-shaped edges
+**Context.** The author found the Benchmarks tab weak: no mini navbar like the home page, charts that
+could only be looked at, and stat tiles whose thick coloured top border bends into a C on the rounded
+corners. He then asked for the whole benchmark to make sense around the protocol itself, "the real
+NDN version". E4 (overlay against native NDN under loss) was running and had no result yet; the NFD
+conformance check already had committed runs that the page ignored.
+**Decision.** (1) *Story.* `/benchmarks` leads with IDEM on real NDN (E4, then the NFD check), then
+the hypotheses' verdicts, then the evidence: E2 sweeps, E1 costs, E5 safety, method. Each section
+opens with its question and a verdict computed from its data (spec 04 §1.1). (2) *Data.* `export-web`
+exports `e4` (a run of `kind: "emulation"` in `experiments/results/e4/`, `null` until one exists) and
+`nfd` (the last five runs of `ndn-nfd`, from `summary.json`); the page has an honest pending state for
+E4 and never shows a placeholder number. The E4 fixture lives only in tests. (3) *Navbar.* The home
+page's `SectionNav` also mounts on `/benchmarks`; sections are marked, not duplicated. (4) *Charts.*
+The line chart becomes a client component with a readout (crosshair, card, keyboard, live region),
+legend toggles and highlight; it stays SVG and React, no chart library. Everything it shows is passed
+in from the server. (5) *Edges.* A coloured accent never follows a rounded corner: tiles use an
+inset solid square. The thick left bars on the docs' rule and quote plates stay: their corners on
+that side are square.
+**Consequences.** `ResultsData` gains `e4` and `nfd`. The page is no longer a pure server render:
+charts hydrate, so the readout works, and the marks' entrance animation is unchanged. The NFD run of
+2026-11-18 05:25 stopped on scenario S8 (`nfdc route add` rejected, an environment error, no check
+ran) and is shown as it is, beside the run before it that passed 9 of 9. When E4 is committed,
+nothing in the page changes; only its verdict wording may need a second look.
 
 ## Open questions
 

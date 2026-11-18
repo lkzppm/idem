@@ -31,14 +31,19 @@ function readSections(): Section[] {
 }
 
 /**
- * The home page's section nav: a floating bar of glass under the header, shown once the hero has
- * scrolled away. Mounted by the root layout on `/` only; renders nothing elsewhere.
+ * The section nav: a floating bar of glass under the header, shown once the hero has scrolled away.
+ * Mounted by the root layout on the pages that opt in (`SECTION_NAV_PATHS`: the home page and
+ * `/benchmarks`); renders nothing elsewhere. Each page only marks its sections.
  */
 export function SectionNav() {
   const path = usePathname();
-  if (path !== "/") return null;
-  return <SectionNavBar />;
+  if (!SECTION_NAV_PATHS.includes(path)) return null;
+  // Keyed by route: a client navigation between two pages that both have the nav starts it afresh.
+  return <SectionNavBar key={path} />;
 }
+
+/** The routes whose sections the nav follows. */
+export const SECTION_NAV_PATHS: readonly string[] = ["/", "/benchmarks"];
 
 /**
  * The bar itself. It finds the page's sections (re-reading on DOM changes), tracks the one being
@@ -213,7 +218,9 @@ function SectionNavBar() {
     // Land the section's heading, not its padded edge, by the bar (measured at its resting place,
     // whatever its transform right now). Where the label clears the bar sideways (the bar sits
     // centred on a desk), the label lines up with the bar; where they would overlap (a phone, where
-    // the bar spans the width), the label lands just below it.
+    // the bar spans the width), the label lands just below it. Where the label clears it but
+    // something beside the label would sit under the bar (a card in the next column), the whole
+    // section lands below the bar, with room to breathe.
     const root = bar.current;
     const panel = root?.firstElementChild;
     const barTop = root ? root.offsetTop : 74;
@@ -227,7 +234,10 @@ function SectionNavBar() {
       const l = label.getBoundingClientRect();
       const p = panel.getBoundingClientRect();
       const clear = l.right + 16 <= p.left || l.left >= p.right + 16;
-      if (clear) land = barTop + (barH - label.offsetHeight) / 2;
+      // The bar's bottom edge, measured from the label's top once the label sits beside the bar.
+      const barEnd = l.top + (barH + label.offsetHeight) / 2 + 4;
+      if (clear && besideUnder(label, el, p, barEnd)) land = barTop + barH + 48;
+      else if (clear) land = barTop + (barH - label.offsetHeight) / 2;
     }
     const top = Math.max(0, contentTop - land);
     lock.current = { id, until: performance.now() + (reduced ? 0 : 1200) };
@@ -292,4 +302,23 @@ function SectionNavBar() {
       </nav>
     </div>
   );
+}
+
+/**
+ * Whether a box beside the label (a sibling of the label or of one of its ancestors, up to the
+ * section) spans the bar's columns and starts above `below` (page-relative to the label's row):
+ * landed beside the bar, that box would sit under it.
+ */
+function besideUnder(label: HTMLElement, section: HTMLElement, bar: DOMRect, below: number): boolean {
+  for (let node: HTMLElement | null = label; node && node !== section; node = node.parentElement) {
+    const parent: HTMLElement | null = node.parentElement;
+    if (!parent) break;
+    for (const sib of parent.children) {
+      if (sib === node || !(sib instanceof HTMLElement)) continue;
+      const r = sib.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.right > bar.left && r.left < bar.right && r.top < below) return true;
+    }
+  }
+  return false;
 }

@@ -60,7 +60,7 @@ import {
   shortName,
 } from "./ui";
 import { useDragToStage } from "./window/drag-to-stage";
-import { isTyping, Slot, useWorkspace } from "./workspace";
+import { isTyping, Slot, usePanels, useWorkspace } from "./workspace";
 
 type Strings = (typeof sandbox)["en"];
 type SwarmStrings = Strings["swarm"];
@@ -268,6 +268,8 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
     void sig;
     const load = lastLoads.current !== nw.loads;
     if (load) setSel(undefined);
+    // A network just loaded on the routers starts paused: the visitor presses play.
+    if (load && netRef.current.run.engine === "ndn") setPlaying(false);
     const loads = nw.loads;
     // The load is marked as seen when its restart fires, so a cancelled timer (StrictMode) keeps it.
     const id = setTimeout(
@@ -503,6 +505,20 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
     : 0;
   const now = views[0]?.now ?? 0;
   const modes = views.map((v) => v.mode);
+  // The routers fill the log and the metrics; the simulation adds its tables and inspector, the
+  // comparison when more than one protocol runs, and safety when an attack can be (or was) sent.
+  usePanels(
+    ndn
+      ? ["log", "metrics"]
+      : [
+          "log",
+          "tables",
+          "inspector",
+          "metrics",
+          ...(net.run.compare.length > 1 ? (["compare"] as const) : []),
+          ...(canAttack || attacks.length > 0 ? (["safety"] as const) : []),
+        ],
+  );
 
   // Event log rows (bounded).
   const logRun = runs.current.find((r) => r.mode === logSource) ?? runs.current[0];
@@ -540,29 +556,21 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
     <>
       {drag.ghost}
       <Slot name="controls">
-        <Section title={te.run.engine} aside={<InfoTip label={te.run.engine}>{te.run.tips.engine}</InfoTip>}>
+        <Section title={te.run.engine}>
           <Segmented
             label={te.run.engine}
             value={net.run.engine}
             onChange={(v) => setRun({ engine: v }, "engine")}
             options={[
               {
-                value: "idem",
-                label: (
-                  <span className="obs-mode">
-                    {te.run.engineIdem}
-                    <span className="obs-mode-hint">{te.run.engineIdemHint}</span>
-                  </span>
-                ),
+                value: "ndn",
+                label: te.run.engineNdn,
+                tip: { label: te.run.aboutEngine(te.run.engineNdn), body: te.run.tips.engineNdn },
               },
               {
-                value: "ndn",
-                label: (
-                  <span className="obs-mode">
-                    {te.run.engineNdn}
-                    <span className="obs-mode-hint">{te.run.engineNdnHint}</span>
-                  </span>
-                ),
+                value: "idem",
+                label: te.run.engineIdem,
+                tip: { label: te.run.aboutEngine(te.run.engineIdem), body: te.run.tips.engineIdem },
               },
             ]}
           />
@@ -692,7 +700,7 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
       </Slot>
 
       {ndn ? (
-        <NdnEngine net={net} loads={nw.loads} editor={editorProps} />
+        <NdnEngine net={net} loads={nw.loads} editor={editorProps} playing={playing} onPlaying={setPlaying} />
       ) : (
         <>
           <Slot name="stage">
@@ -705,8 +713,9 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
                   scene: run.scene,
                   now: () => run.now,
                   nodes: v.nodes,
-                  title: views.length > 1 || runnable ? ts.modeLabel[v.mode] : undefined,
-                  note: v.error ? ts.error(v.error) : runnable ? ts.modeNote[v.mode] : undefined,
+                  // A pane is named only beside another one, to tell them apart; an error always shows.
+                  title: views.length > 1 ? ts.modeLabel[v.mode] : undefined,
+                  note: v.error ? ts.error(v.error) : views.length > 1 ? ts.modeNote[v.mode] : undefined,
                   agentLabels: true,
                   badges: Object.fromEntries(
                     Object.entries(v.tables)
@@ -731,6 +740,7 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
 
           <Slot name="player">
             <PlayerButton
+              spin
               label={ts.restart}
               kbd="R"
               disabled={!runnable}

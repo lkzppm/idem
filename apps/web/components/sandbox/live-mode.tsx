@@ -2,11 +2,14 @@
 
 import { argsDigestOf, type Data, type JsonValue, jcs, parseName, verifyData } from "@idem/core";
 import { type CallOutcome, IdemClient } from "@idem/gateway";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { HTML_LANG } from "@/lib/i18n/locale";
 import { sandbox } from "@/lib/i18n/messages/sandbox";
+import { WINDOW_IDS } from "@/lib/sandbox/layout";
 import { type PacketKind, type SceneNode, TopologyScene } from "@/lib/sandbox/scene";
+import { AsideCard } from "./aside-card";
+import { NodeGlyph } from "./editor/glyph";
 import { PlayIcon } from "./icons";
 import { NdnPacket } from "./ndn-packet";
 import { DataFacts, DigestCheck, NameParts, type SafetyItem, SafetyList, useContentCheck } from "./panels";
@@ -26,7 +29,7 @@ import {
   Stat,
   shortName,
 } from "./ui";
-import { isTyping, Slot, useWorkspace } from "./workspace";
+import { isTyping, Slot, usePanels, useWorkspace } from "./workspace";
 
 const PRODUCER = "demo.idem.dev";
 const HOP_MS = 300;
@@ -34,6 +37,79 @@ const MAX_AGENTS = 16;
 
 type Tool = "fetch_page" | "search_corpus" | "weather" | "my_notes" | "send_email";
 const TOOLS: Tool[] = ["fetch_page", "search_corpus", "weather", "my_notes", "send_email"];
+
+/** One agent in this browser: the tool it calls and the argument it passes. */
+interface LiveAgent {
+  /** Stable number: its node id (`agent-<n>`) and its credential (`token-agent-<n>`). */
+  n: number;
+  tool: Tool;
+  arg: string;
+}
+
+/** The node that stands for every other visitor of the edge (ADR-030). */
+const VISITORS = "visitors";
+/** How often the page asks the edge what other visitors sent (while the tab is visible). */
+const POLL_MS = 1000;
+/** The most of other visitors' calls replayed from one poll (a burst is at most 16). */
+const REPLAY_MAX = 16;
+
+/** The argument a new agent starts with for each tool. */
+const DEFAULT_ARG: Record<Tool, string> = {
+  fetch_page: "https://corpus.idem.dev/doc/3",
+  search_corpus: "named data",
+  weather: "Rio de Janeiro",
+  my_notes: "",
+  send_email: "team@example.com",
+};
+
+/** The call an agent makes. */
+function argsOf(a: LiveAgent): unknown {
+  switch (a.tool) {
+    case "fetch_page":
+      return { url: a.arg };
+    case "search_corpus":
+      return { query: a.arg };
+    case "weather":
+      return { city: a.arg };
+    case "my_notes":
+      return {};
+    case "send_email":
+      return { to: a.arg, body: `hello from agent ${a.n}` };
+  }
+}
+
+/** A new agent: it fetches the shared page, spelling the URL its own way (one name for all). */
+function newAgent(n: number): LiveAgent {
+  return { n, tool: "fetch_page", arg: urlVariant("3", n) };
+}
+
+/** This tab's anonymous id at the edge (kept across reloads of the tab, never across tabs). */
+function visitorId(): string {
+  const make = () =>
+    Array.from(crypto.getRandomValues(new Uint8Array(9)), (b) => b.toString(16).padStart(2, "0")).join("");
+  try {
+    const k = "idem.sandbox.visitor";
+    const v = window.sessionStorage.getItem(k) ?? make();
+    window.sessionStorage.setItem(k, v);
+    return v;
+  } catch {
+    return make();
+  }
+}
+
+/** One call at the edge, as the edge's activity reports it (`/api/edge/activity`). */
+export interface EdgeCall {
+  seq: number;
+  ago: number;
+  mine: boolean;
+  who: string;
+  tool: string;
+  digest?: string;
+  outcome: "hit" | "aggregate" | "miss" | "bypass" | "error";
+  filled?: "self" | "other";
+  /** performance.now() when this page learned of it. */
+  at: number;
+}
 
 /** Equivalent spellings of the same corpus URL; one per agent in a burst. */
 function urlVariant(doc: string, i: number): string {
@@ -64,6 +140,8 @@ interface Row {
   thrown?: string;
   /** Client used (the tamper attack uses its own). */
   client?: IdemClient;
+  /** For an answer from the edge's cache or PIT: who first fetched that name (ADR-030). */
+  filled?: "self" | "other";
 }
 
 /** An edge CS entry this page learned about from its traces. */
@@ -113,15 +191,18 @@ export function LiveMode() {
   const t = useMessages(sandbox);
   const tl = t.live;
   const ws = useWorkspace();
-  const [agents, setAgents] = useState(6);
-  const [tool, setTool] = useState<Tool>("fetch_page");
-  const [arg, setArg] = useState<Record<Tool, string>>({
-    fetch_page: "3",
-    search_corpus: "named data",
-    weather: "Rio de Janeiro",
-    my_notes: "",
-    send_email: "team@example.com",
-  });
+  usePanels(WINDOW_IDS);
+  const [agents, setAgents] = useState<LiveAgent[]>(() => Array.from({ length: 4 }, (_, i) => newAgent(i)));
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+  const nextN = useRef(4);
+  const [picked, setPicked] = useState<string>();
+  const [remote, setRemote] = useState<EdgeCall[]>([]);
+  /** Bumped when other visitors' calls arrive: the box on the canvas answers with a small pop. */
+  const [pulse, setPulse] = useState(0);
+  const [instances, setInstances] = useState<{ calls?: string; feed?: string }>({});
+  const visitor = useRef("");
+  const filled = useRef(new Map<string, "self" | "other" | "none">());
   const [status, setStatus] = useState<Status>({ kind: "connecting" });
   const [rows, setRows] = useState<Row[]>([]);
   const [selected, setSelected] = useState<number>();
@@ -138,31 +219,71 @@ export function LiveMode() {
     setOrigin(window.location.origin);
   }, []);
 
-  const clients = useMemo(() => {
-    if (!origin) return [];
-    return Array.from(
-      { length: MAX_AGENTS },
-      (_, i) =>
-        new IdemClient({ edge: `${origin}/api/edge`, producer: PRODUCER, credential: `token-agent-${i}` }),
-    );
-  }, [origin]);
+  /**
+   * Every request carries this tab's anonymous id, and the edge says back which instance answered
+   * and, for a cache hit or a joined Interest, whether another visitor filled that name (ADR-030).
+   */
+  const liveFetch = useCallback<typeof fetch>(async (input, init) => {
+    const headers = new Headers(init?.headers);
+    if (visitor.current) headers.set("idem-visitor", visitor.current);
+    const res = await fetch(input, { ...init, headers });
+    const inst = res.headers.get("idem-edge-instance");
+    if (inst) setInstances((x) => (x.calls === inst ? x : { ...x, calls: inst }));
+    if (typeof init?.body === "string" && String(input).endsWith("/idem/v1/interest")) {
+      try {
+        const name = (JSON.parse(init.body) as { name?: unknown }).name;
+        const f = res.headers.get("idem-filled-by");
+        if (typeof name === "string") filled.current.set(name, f === "other" || f === "self" ? f : "none");
+      } catch {
+        // Not an Interest body.
+      }
+    }
+    return res;
+  }, []);
 
-  // Topology: N agents → edge → producer.
+  // One client per agent number (its own credential), made when first needed.
+  const clientMap = useRef(new Map<number, IdemClient>());
+  const clientFor = useCallback(
+    (n: number): IdemClient | undefined => {
+      if (!origin) return undefined;
+      let c = clientMap.current.get(n);
+      if (!c) {
+        c = new IdemClient({
+          edge: `${origin}/api/edge`,
+          producer: PRODUCER,
+          credential: `token-agent-${n}`,
+          fetch: liveFetch,
+        });
+        clientMap.current.set(n, c);
+      }
+      return c;
+    },
+    [origin, liveFetch],
+  );
+
+  // Topology: the agents and the other visitors → the deployed edge → the deployed producer.
+  const agentKey = agents.map((a) => a.n).join();
   useEffect(() => {
-    const ids = Array.from({ length: agents }, (_, i) => `agent-${i}`);
+    const ids = agentKey ? agentKey.split(",").map((n) => `agent-${n}`) : [];
     scene.setTopology({
       nodes: [
+        // Above the edge, apart from this page's agents: everyone else reaches the same edge.
+        { id: VISITORS, kind: "agent" as const, at: { x: 0.5, y: 0.1 } },
         ...ids.map((id) => ({ id, kind: "agent" as const })),
         { id: "edge", kind: "forwarder" },
         { id: "producer", kind: "producer" },
       ],
-      links: [...ids.map((a) => ({ a, b: "edge" })), { a: "edge", b: "producer" }],
+      links: [
+        { a: VISITORS, b: "edge" },
+        ...ids.map((a) => ({ a, b: "edge" })),
+        { a: "edge", b: "producer" },
+      ],
     });
     setNodes([...scene.nodes.values()]);
-  }, [agents, scene]);
+  }, [agentKey, scene]);
 
   const connect = useCallback(async () => {
-    const c = clients[0];
+    const c = clientFor(0);
     if (!c) return;
     setStatus({ kind: "connecting" });
     try {
@@ -171,7 +292,7 @@ export function LiveMode() {
     } catch (e) {
       setStatus({ kind: "down", message: e instanceof Error ? e.message : "fetch failed" });
     }
-  }, [clients]);
+  }, [clientFor]);
 
   useEffect(() => {
     void connect();
@@ -247,24 +368,6 @@ export function LiveMode() {
     [scene],
   );
 
-  const argsFor = useCallback(
-    (which: Tool, agentIndex: number): unknown => {
-      switch (which) {
-        case "fetch_page":
-          return { url: urlVariant(arg.fetch_page, agentIndex) };
-        case "search_corpus":
-          return { query: agentIndex % 2 ? `  ${arg.search_corpus.toUpperCase()} ` : arg.search_corpus };
-        case "weather":
-          return { city: arg.weather };
-        case "my_notes":
-          return {};
-        case "send_email":
-          return { to: arg.send_email, body: `hello from agent ${agentIndex}` };
-      }
-    },
-    [arg],
-  );
-
   /** Learn about the edge's CS from a returned trace. */
   const observe = useCallback((r: Row) => {
     const out = r.out;
@@ -311,7 +414,7 @@ export function LiveMode() {
   }, []);
 
   const callOne = useCallback(
-    async (agentIndex: number, which: Tool, args: unknown, client = clients[agentIndex]): Promise<Row> => {
+    async (agentIndex: number, which: Tool, args: unknown, client = clientFor(agentIndex)): Promise<Row> => {
       const id = ++seq.current;
       const agent = `agent-${agentIndex}`;
       const started = performance.now();
@@ -336,7 +439,13 @@ export function LiveMode() {
           }
         }
         const out = await client.call(which, args);
-        done = { ...done, out };
+        const f = out.name ? filled.current.get(out.name) : undefined;
+        done = { ...done, out, ...(f && f !== "none" && { filled: f }) };
+        if (f === "other") {
+          const t = performance.now() + HOP_MS;
+          setTimeout(() => scene.flash(VISITORS, "cs"), HOP_MS);
+          void t;
+        }
         animate(agent, out, started + HOP_MS, out.via === "idem" ? "idem" : "call");
         observe(done);
       } catch (e) {
@@ -347,18 +456,96 @@ export function LiveMode() {
       setRows((rs) => rs.map((x) => (x.id === id ? final : x)));
       return final;
     },
-    [clients, scene, animate, observe],
+    [clientFor, scene, animate, observe],
   );
 
   const ready = status.kind === "ready";
 
+  const ask = useCallback((a: LiveAgent) => callOne(a.n, a.tool, argsOf(a)), [callOne]);
+
   const burst = useCallback(async () => {
     if (!ready) return;
-    const results = await Promise.all(
-      Array.from({ length: agents }, (_, i) => callOne(i, tool, argsFor(tool, i))),
-    );
+    const results = await Promise.all(agentsRef.current.map((a) => ask(a)));
     setLastBurst(results.filter((r) => edgeEvents(r.out).some((e) => e.kind === "pit_aggregate")).length);
-  }, [ready, agents, tool, argsFor, callOne]);
+  }, [ready, ask]);
+
+  const addAgent = useCallback(() => {
+    if (agentsRef.current.length >= MAX_AGENTS) return;
+    const a = newAgent(nextN.current++);
+    setAgents((l) => [...l, a]);
+    setPicked(`agent-${a.n}`);
+  }, []);
+  const setAgent = useCallback((n: number, patch: Partial<LiveAgent>) => {
+    setAgents((l) => l.map((a) => (a.n === n ? { ...a, ...patch } : a)));
+  }, []);
+  const removeAgent = useCallback((n: number) => {
+    setAgents((l) => l.filter((a) => a.n !== n));
+    setPicked(undefined);
+  }, []);
+
+  // What the edge saw from every visitor: polled while the tab is visible (ADR-030). Others' calls
+  // are replayed on the canvas from the visitors node; the first answer only fills the list.
+  useEffect(() => {
+    visitor.current = visitorId();
+    if (!origin) return;
+    // Each edge instance numbers its calls itself, and any of them may answer a poll: the page keeps
+    // where it is in each instance's list, and the first answer from an instance only fills the feed.
+    const afterBy = new Map<string, number>();
+    let last = "";
+    let stopped = false;
+    const replay = (e: EdgeCall, delay: number) => {
+      const go = (from: string, to: string, kind: PacketKind, at: number) =>
+        scene.addPacket({ from, to, kind, t0: at, t1: at + HOP_MS });
+      const t0 = performance.now() + delay;
+      const req: PacketKind = e.outcome === "bypass" ? "call" : "interest";
+      const res: PacketKind = e.outcome === "bypass" ? "result" : "data";
+      go(VISITORS, "edge", req, t0);
+      if (e.outcome === "miss" || e.outcome === "bypass") {
+        go("edge", "producer", req, t0 + HOP_MS);
+        go("producer", "edge", res, t0 + 2 * HOP_MS);
+        go("edge", VISITORS, res, t0 + 3 * HOP_MS);
+      } else if (e.outcome === "hit" || e.outcome === "aggregate") {
+        setTimeout(() => scene.flash("edge", e.outcome === "hit" ? "cs" : "pit"), delay + HOP_MS);
+        go("edge", VISITORS, res, t0 + HOP_MS);
+      } else {
+        go("edge", VISITORS, "nack", t0 + HOP_MS);
+      }
+    };
+    const poll = async () => {
+      if (stopped || document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch(`${origin}/api/edge/activity?after=${afterBy.get(last) ?? 0}`, {
+          headers: { "idem-visitor": visitor.current },
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const body = (await res.json()) as { instance: string; seq: number; entries: Omit<EdgeCall, "at">[] };
+        if (stopped) return;
+        // Another instance answered (or this one restarted): its sequence is its own.
+        const now = performance.now();
+        setInstances((x) => (x.feed === body.instance ? x : { ...x, feed: body.instance }));
+        const known = afterBy.get(body.instance);
+        const fresh = body.entries.filter((e) => e.seq > (known ?? 0));
+        afterBy.set(body.instance, body.seq);
+        last = body.instance;
+        if (fresh.length === 0) return;
+        const others = fresh.filter((e) => !e.mine);
+        if (known !== undefined && others.length > 0) {
+          others.slice(-REPLAY_MAX).forEach((e, i) => replay({ ...e, at: now }, i * 120));
+          setPulse((n) => n + 1);
+        }
+        setRemote((l) => [...fresh.map((e) => ({ ...e, at: now - e.ago })).reverse(), ...l].slice(0, 60));
+      } catch {
+        // The feed is best effort: the calls themselves are unaffected.
+      }
+    };
+    void poll();
+    const id = setInterval(() => void poll(), POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [origin, scene]);
 
   const report = useCallback(
     (item: SafetyItem) => {
@@ -369,16 +556,18 @@ export function LiveMode() {
   );
 
   const tamper = useCallback(async () => {
+    const first = agentsRef.current[0]?.n ?? 0;
     const evil = new IdemClient({
       edge: `${origin}/api/edge`,
       producer: PRODUCER,
-      credential: "token-agent-0",
+      credential: `token-agent-${first}`,
+      fetch: liveFetch,
       intercept: (d: Data): Data => ({
         ...d,
         content: { content: [{ type: "text", text: "tampered on the last hop" }] },
       }),
     });
-    const r = await callOne(0, "fetch_page", { url: urlVariant(arg.fetch_page, 0) }, evil);
+    const r = await callOne(first, "fetch_page", { url: DEFAULT_ARG.fetch_page }, evil);
     const ok = r.out?.retried === true && r.out.verify?.ok === true;
     report({
       id: `live-${r.id}`,
@@ -392,19 +581,21 @@ export function LiveMode() {
               `retried=${String(r.out?.retried)}, verify=${String(r.out?.verify?.ok)}`,
             ),
     });
-  }, [origin, arg.fetch_page, callOne, report, tl]);
+  }, [origin, liveFetch, callOne, report, tl]);
 
   const forge = useCallback(async () => {
-    const c = clients[0];
+    const first = agentsRef.current[0]?.n ?? 0;
+    const c = clientFor(first);
     if (!c) return;
     const id = ++seq.current;
     const t0 = performance.now();
-    scene.addPacket({ from: "agent-0", to: "edge", kind: "interest", t0, t1: t0 + HOP_MS, tampered: true });
+    const from = `agent-${first}`;
+    scene.addPacket({ from, to: "edge", kind: "interest", t0, t1: t0 + HOP_MS, tampered: true });
     try {
-      const I = await c.prepare("fetch_page", { url: urlVariant(arg.fetch_page, 0) });
+      const I = await c.prepare("fetch_page", { url: DEFAULT_ARG.fetch_page });
       if (!I) throw new Error("fetch_page is not cacheable here");
       const r = await c.sendInterest({ ...I, args: { url: "https://evil.example/" } });
-      animate("agent-0", undefined, t0 + HOP_MS, "idem", true);
+      animate(from, undefined, t0 + HOP_MS, "idem", true);
       const ok = r.error?.code === "DIGEST_MISMATCH";
       report({
         id: `live-${id}`,
@@ -422,11 +613,13 @@ export function LiveMode() {
         detail: tl.attackResult.failed(e instanceof Error ? e.message : String(e)),
       });
     }
-  }, [clients, arg.fetch_page, scene, animate, report, tl]);
+  }, [clientFor, scene, animate, report, tl]);
 
   const crossUser = useCallback(async () => {
-    const a = await callOne(0, "my_notes", {});
-    const b = await callOne(1, "my_notes", {});
+    const [x, y] = agentsRef.current;
+    if (!x || !y) return;
+    const a = await callOne(x.n, "my_notes", {});
+    const b = await callOne(y.n, "my_notes", {});
     const ta = resultText(a.out);
     const tb = resultText(b.out);
     const ok = !a.thrown && !b.thrown && ta !== "" && ta !== tb;
@@ -449,20 +642,25 @@ export function LiveMode() {
       if (e.key === " " && !(e.target instanceof HTMLButtonElement)) {
         e.preventDefault();
         void burst();
+      } else if (e.key === "Escape") {
+        setPicked(undefined);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && picked?.startsWith("agent-")) {
+        e.preventDefault();
+        removeAgent(Number(picked.slice(6)));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [burst]);
+  }, [burst, picked, removeAgent]);
+
+  // The picked node is drawn selected; an agent that is gone is unpicked.
+  useEffect(() => {
+    scene.selected = picked;
+  }, [picked, scene]);
 
   const onNodeClick = (_pane: string, node: string) => {
-    if (node.startsWith("agent-") && ready) {
-      const i = Number(node.slice(6));
-      void callOne(i, tool, argsFor(tool, i));
-    } else if (node === "edge") {
-      scene.selected = "edge";
-      ws.reveal("tables");
-    }
+    setPicked((p) => (p === node ? undefined : node));
+    if (node === "edge") ws.reveal("tables");
   };
 
   const select = (id: number) => {
@@ -471,6 +669,8 @@ export function LiveMode() {
   };
 
   const sel = rows.find((r) => r.id === selected) ?? rows[0];
+  // Other visitors seen at the edge in the last ten minutes (their labels).
+  const others = new Set(remote.filter((e) => !e.mine).map((e) => e.who)).size;
   const statusText =
     status.kind === "ready"
       ? tl.status.ready
@@ -481,50 +681,20 @@ export function LiveMode() {
   return (
     <>
       <Slot name="controls">
-        <Section title={tl.scenario}>
-          <fieldset className="obs-radio">
-            <legend className="obs-legend-row">
-              <Label tip={tl.tips.tool}>{tl.tool}</Label>
-            </legend>
-            {TOOLS.map((x) => (
-              <label key={x} className="obs-radio-row" data-on={tool === x || undefined}>
-                <input
-                  type="radio"
-                  name="live-tool"
-                  value={x}
-                  checked={tool === x}
-                  onChange={() => setTool(x)}
-                />
-                <span className="t-mono">{x}</span>
-              </label>
-            ))}
-          </fieldset>
-          <p className="obs-note">{tl.toolNotes[tool]}</p>
-          {tool !== "my_notes" && (
-            <div className="obs-input-row">
-              <Label htmlFor="live-arg" tip={tl.tips.arg}>
-                {tl.argLabel[tool]}
-              </Label>
-              <input
-                id="live-arg"
-                value={arg[tool]}
-                onChange={(e) => setArg((a) => ({ ...a, [tool]: e.target.value }))}
-                spellCheck={false}
-                className="obs-input t-mono"
-              />
-            </div>
-          )}
-          <Slider
-            label={tl.agents}
-            tip={tl.tips.agents}
-            value={agents}
-            min={1}
-            max={MAX_AGENTS}
-            onChange={setAgents}
-          />
-          <p className="obs-note">
-            {tool === "fetch_page" ? `${tl.burstNote} ${tl.clickHint}` : tl.clickHint}
-          </p>
+        <Section title={tl.add.title}>
+          <div className="obs-palette">
+            <button
+              type="button"
+              className="obs-chip-node"
+              title={tl.add.tip}
+              disabled={agents.length >= MAX_AGENTS}
+              onClick={addAgent}
+            >
+              <NodeGlyph kind="agent" />
+              {tl.add.agent}
+            </button>
+          </div>
+          <p className="obs-note">{tl.add.hint(agents.length, MAX_AGENTS)}</p>
         </Section>
         <Section title={tl.attacks}>
           <div className="flex flex-col gap-2">
@@ -540,7 +710,53 @@ export function LiveMode() {
           </div>
           <p className="obs-note">{tl.attackHint}</p>
         </Section>
-        <p className="obs-footnote">{tl.instanceNote}</p>
+      </Slot>
+
+      <Slot name="aside">
+        <AsideCard
+          item={picked}
+          keyOf={(id) => id}
+          closeLabel={tl.card.close}
+          onClose={() => setPicked(undefined)}
+          face={(id) => {
+            if (id.startsWith("agent-")) {
+              const a = agents.find((x) => `agent-${x.n}` === id);
+              if (!a) return null;
+              return {
+                glyph: <NodeGlyph kind="agent" size={16} />,
+                title: id,
+                sub: tl.card.agent,
+                body: (
+                  <AgentCard
+                    a={a}
+                    ready={ready}
+                    labels={tl}
+                    onChange={(patch) => setAgent(a.n, patch)}
+                    onAsk={() => void ask(a)}
+                    onRemove={() => removeAgent(a.n)}
+                  />
+                ),
+              };
+            }
+            if (id === "edge" || id === VISITORS) {
+              return {
+                glyph: <NodeGlyph kind={id === "edge" ? "forwarder" : "agent"} size={16} />,
+                title: id === "edge" ? "edge" : tl.card.visitorsTitle,
+                sub: id === "edge" ? tl.card.edge : tl.card.visitors,
+                body: <EdgeFeed calls={remote} instances={instances} labels={tl.feed} />,
+              };
+            }
+            if (id === "producer") {
+              return {
+                glyph: <NodeGlyph kind="producer" size={16} />,
+                title: PRODUCER,
+                sub: tl.card.producer,
+                body: <p className="obs-note">{tl.card.producerBody}</p>,
+              };
+            }
+            return null;
+          }}
+        />
       </Slot>
 
       <Slot name="stage">
@@ -551,6 +767,14 @@ export function LiveMode() {
               scene,
               now: () => performance.now(),
               nodes,
+              boxes: {
+                [VISITORS]: (
+                  <span key={pulse} className="obs-node-box" data-pulse={pulse > 0 || undefined}>
+                    <span className="obs-node-box-title">{tl.card.visitorsBox}</span>
+                    <span className="obs-node-box-sub">· {others > 0 ? others : tl.card.visitorsNone}</span>
+                  </span>
+                ),
+              },
               badges: {
                 edge:
                   seen.size > 0 || inFlight.length > 0 ? (
@@ -573,9 +797,7 @@ export function LiveMode() {
           area={ws.area}
           label={t.shell.canvas}
           onNodeClick={onNodeClick}
-          nodeAction={(_pane, n) =>
-            n.kind === "agent" && ready ? tl.nodeAsk(n.id) : n.id === "edge" ? tl.nodeTables(n.id) : undefined
-          }
+          nodeAction={(_pane, n) => tl.nodeOpen(n.id)}
         />
         {status.kind === "down" && (
           <div className="obs-stage-card" role="alert">
@@ -590,12 +812,14 @@ export function LiveMode() {
       </Slot>
 
       <Slot name="player">
-        <PlayerAction primary disabled={!ready} kbd="Space" onClick={() => void burst()}>
+        <PlayerAction
+          primary
+          disabled={!ready || agents.length === 0}
+          kbd="Space"
+          onClick={() => void burst()}
+        >
           <PlayIcon />
-          {tl.burst(agents)}
-        </PlayerAction>
-        <PlayerAction disabled={!ready} onClick={() => void callOne(0, tool, argsFor(tool, 0))}>
-          {tl.callOne}
+          {tl.burst(agents.length)}
         </PlayerAction>
         <PlayerSep />
         <span className="obs-status" data-state={status.kind}>
@@ -603,6 +827,14 @@ export function LiveMode() {
           {statusText}
           <span className="t-mono text-faint">/api/edge</span>
         </span>
+        {others > 0 && (
+          <>
+            <PlayerSep />
+            <button type="button" className="obs-pothers" onClick={() => setPicked(VISITORS)}>
+              {tl.feed.othersSeen(others)}
+            </button>
+          </>
+        )}
       </Slot>
 
       <Slot name="hint:tables">edge</Slot>
@@ -638,6 +870,132 @@ export function LiveMode() {
 
 type LiveStrings = (typeof sandbox)["en"]["live"];
 
+/** An agent's card: the tool it calls and its argument, a call now, removal. */
+function AgentCard({
+  a,
+  ready,
+  labels,
+  onChange,
+  onAsk,
+  onRemove,
+}: {
+  a: LiveAgent;
+  ready: boolean;
+  labels: LiveStrings;
+  onChange: (patch: Partial<LiveAgent>) => void;
+  onAsk: () => void;
+  onRemove: () => void;
+}) {
+  const id = useId();
+  return (
+    <div className="obs-props">
+      <fieldset className="obs-radio">
+        <legend className="obs-legend-row">
+          <Label tip={labels.tips.tool}>{labels.tool}</Label>
+        </legend>
+        {TOOLS.map((x) => (
+          <label key={x} className="obs-radio-row" data-on={a.tool === x || undefined}>
+            <input
+              type="radio"
+              name={`${id}-tool`}
+              value={x}
+              checked={a.tool === x}
+              onChange={() =>
+                onChange({ tool: x, arg: x === "fetch_page" ? urlVariant("3", a.n) : DEFAULT_ARG[x] })
+              }
+            />
+            <span className="t-mono">{x}</span>
+          </label>
+        ))}
+      </fieldset>
+      <p className="obs-note">{labels.toolNotes[a.tool]}</p>
+      {a.tool !== "my_notes" && (
+        <div className="obs-input-row">
+          <Label htmlFor={`${id}-arg`} tip={labels.tips.arg}>
+            {labels.argLabel[a.tool]}
+          </Label>
+          <input
+            id={`${id}-arg`}
+            value={a.arg}
+            onChange={(e) => onChange({ arg: e.target.value })}
+            spellCheck={false}
+            className="obs-input t-mono"
+          />
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Button variant="primary" disabled={!ready} onClick={onAsk} className="flex-1">
+          {labels.card.ask}
+        </Button>
+        <Button variant="ghost" onClick={onRemove} kbd="Del">
+          {labels.card.remove}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the deployed edge saw from every visitor (ADR-030): the tool, the args digest (public names
+ * only) and how the edge answered, newest first; this tab's calls are marked "you". The list comes
+ * from the instance that answered the poll, which may not be the one that answered this tab's calls.
+ */
+function EdgeFeed({
+  calls,
+  instances,
+  labels,
+}: {
+  calls: EdgeCall[];
+  instances: { calls?: string; feed?: string };
+  labels: LiveStrings["feed"];
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const now = performance.now();
+  const tone: Record<EdgeCall["outcome"], string> = {
+    hit: "text-data",
+    aggregate: "text-interest",
+    miss: "text-muted",
+    bypass: "text-muted",
+    error: "text-fg",
+  };
+  return (
+    <div className="obs-feed">
+      <p className="obs-note">{labels.intro}</p>
+      {calls.length === 0 ? (
+        <p className="obs-empty-inline">{labels.empty}</p>
+      ) : (
+        <ul className="obs-feed-list">
+          {calls.slice(0, 30).map((c) => (
+            <li key={`${instances.feed}-${c.seq}`} data-mine={c.mine || undefined}>
+              <span className="obs-feed-who">{c.mine ? labels.you : labels.visitor(c.who)}</span>
+              <span className="t-mono text-fg">{c.tool}</span>
+              {c.digest && <span className="t-mono text-faint">{c.digest}…</span>}
+              <span className={tone[c.outcome]}>
+                {labels.outcome[c.outcome]}
+                {c.filled && ` · ${c.filled === "other" ? labels.filledOther : labels.filledSelf}`}
+              </span>
+              <span className="obs-feed-ago tabular-nums">{fmtAgo(now - c.at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="obs-note">{labels.instance(instances.feed ?? "…")}</p>
+      {instances.calls && instances.feed && instances.calls !== instances.feed && (
+        <p className="obs-note obs-note-warn">{labels.otherInstance(instances.calls, instances.feed)}</p>
+      )}
+    </div>
+  );
+}
+
+function fmtAgo(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 60 ? `${s} s` : `${Math.round(s / 60)} min`;
+}
+
 function servedBy(r: Row, s: LiveStrings["served"]): { text: string; tone: string } {
   if (r.thrown) return { text: s.network, tone: "text-fg" };
   const out = r.out;
@@ -656,6 +1014,7 @@ function servedBy(r: Row, s: LiveStrings["served"]): { text: string; tone: strin
     tone = "text-interest";
   }
   if (out.retried) text += s.retried;
+  if (r.filled === "other") text += s.byOther;
   return { text, tone };
 }
 

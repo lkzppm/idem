@@ -4,6 +4,7 @@ import {
   addLink,
   addNode,
   attachTo,
+  cleanNodeName,
   decodeNetwork,
   encodeNetwork,
   isProducerName,
@@ -16,6 +17,8 @@ import {
   producerNodes,
   reachableProducers,
   removeNode,
+  renameNode,
+  renameProblem,
   sanitizeNetwork,
 } from "./network";
 import { TopologyScene } from "./scene";
@@ -154,7 +157,7 @@ describe("saving and sharing", () => {
     expect(p?.kind === "producer" && p.config.tools[0]?.ttl).toBe(0);
     expect(net.links.map((l) => l.id)).toEqual(["l2"]);
     expect(net.links[0]?.latencyMs).toBe(2000);
-    expect(net.run.engine).toBe("idem");
+    expect(net.run.engine).toBe("ndn");
     expect(net.run.compare).toEqual(["idem"]);
   });
 
@@ -272,5 +275,40 @@ describe("running an editor network in the simulator", () => {
     ]);
     const a2 = cfg.workload.kind === "per-agent" ? cfg.workload.agents[2] : undefined;
     expect(a2?.mix.map((m) => m.producer)).toEqual(["docs.idem.dev", "weather.idem.dev"]);
+  });
+});
+
+describe("renaming a node", () => {
+  it("moves its links and the tool lists that point at it", () => {
+    const net = example("two-producers") as Network;
+    const prod = producerNodes(net)[0];
+    if (!prod) throw new Error("no producer");
+    const next = renameNode(net, prod.id, "docs-box");
+    expect(next.nodes.some((n) => n.id === prod.id)).toBe(false);
+    expect(next.nodes.some((n) => n.id === "docs-box")).toBe(true);
+    expect(next.links.some((l) => l.a === prod.id || l.b === prod.id)).toBe(false);
+    expect(next.links.filter((l) => l.a === "docs-box" || l.b === "docs-box").length).toBe(
+      net.links.filter((l) => l.a === prod.id || l.b === prod.id).length,
+    );
+    for (const n of next.nodes)
+      if (n.kind === "agent") expect(n.config.tools.some((t) => t.producer === prod.id)).toBe(false);
+    expect(reachableProducers(next, next.nodes.find((n) => n.kind === "agent")?.id ?? "").length).toBe(
+      reachableProducers(net, net.nodes.find((n) => n.kind === "agent")?.id ?? "").length,
+    );
+  });
+
+  it("refuses a name in use or not fit for an id, and leaves the network as it was", () => {
+    const net = example("swarm") as Network;
+    const [a, b] = net.nodes;
+    if (!a || !b) throw new Error("too few nodes");
+    expect(renameProblem(net, a.id, b.id)).toBe("taken");
+    expect(renameProblem(net, a.id, "-bad")).toBe("invalid");
+    expect(renameProblem(net, a.id, a.id)).toBeUndefined();
+    expect(renameNode(net, a.id, b.id)).toBe(net);
+  });
+
+  it("makes typed text fit for an id", () => {
+    expect(cleanNodeName("Édge Router 2")).toBe("edge-router-2");
+    expect(cleanNodeName("--a__b")).toBe("a-b");
   });
 });

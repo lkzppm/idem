@@ -27,9 +27,14 @@ export {
   type TraceWorkload,
 } from "./config";
 export type {
+  EmulationData,
+  EmulationModeId,
   MicrobenchCell,
   MicrobenchData,
   MissOverhead,
+  NfdData,
+  NfdRunData,
+  NfdScenario,
   ResultsData,
   RunRef,
   SafetyData,

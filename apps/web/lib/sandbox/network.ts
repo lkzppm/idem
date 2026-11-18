@@ -94,8 +94,10 @@ export interface RunSettings {
   /** Protocols compared side by side (IDEM engine). */
   compare: ("mcp-direct" | "mcp-local-cache" | "idem")[];
   /**
-   * `idem`: the IDEM forwarders on the simulator's seeded virtual clock. `ndn`: real NDN routers
-   * (YaNFD compiled to WebAssembly) in this browser, in real time.
+   * `ndn` (shown as "IDEM", the default): real NDN routers (YaNFD compiled to WebAssembly) in this
+   * browser, in real time. `idem` (shown as "Simulation"): the IDEM forwarders on the simulator's
+   * seeded virtual clock, protocols compared side by side. The values predate the labels and stay,
+   * so shared links keep working.
    */
   engine: "idem" | "ndn";
 }
@@ -113,7 +115,7 @@ export const DEFAULT_RUN: RunSettings = {
   seed: 42,
   speed: 0.1,
   compare: ["mcp-direct", "idem"],
-  engine: "idem",
+  engine: "ndn",
 };
 
 export const DEFAULT_AGENT: AgentConfig = { tools: [], calls: 10, thinkMs: 300, overlap: 0.6, zipf: 0.9 };
@@ -170,6 +172,53 @@ export function removeNode(net: Network, id: string): Network {
           : n,
       ),
     links: net.links.filter((l) => l.a !== id && l.b !== id),
+  };
+}
+
+/** A typed name made fit for a node id: lowercase, spaces and other characters as dashes, ≤ 40. */
+export function cleanNodeName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 40);
+}
+
+/** Why a node cannot take `next` as its name, or `undefined` when it can (or it is its name already). */
+export type RenameProblem = "invalid" | "taken";
+
+export function renameProblem(net: Network, id: string, next: string): RenameProblem | undefined {
+  if (next === id) return undefined;
+  if (!isId(next)) return "invalid";
+  if (net.nodes.some((n) => n.id === next) || net.links.some((l) => l.id === next)) return "taken";
+  return undefined;
+}
+
+/**
+ * Rename a node: its id is the name shown on the canvas and in the panels. Its links and the agents'
+ * tool-list entries that point at it (a producer) follow. Unchanged when the name is not allowed.
+ */
+export function renameNode(net: Network, id: string, next: string): Network {
+  if (next === id || renameProblem(net, id, next)) return net;
+  const to = (x: string) => (x === id ? next : x);
+  return {
+    ...net,
+    nodes: net.nodes.map((n) => {
+      const renamed = n.id === id ? { ...n, id: next } : n;
+      return renamed.kind === "agent"
+        ? {
+            ...renamed,
+            config: {
+              ...renamed.config,
+              tools: renamed.config.tools.map((t) => ({ ...t, producer: to(t.producer) })),
+            },
+          }
+        : renamed;
+    }),
+    links: net.links.map((l) => ({ ...l, a: to(l.a), b: to(l.b) })),
   };
 }
 
@@ -471,7 +520,7 @@ export function sanitizeNetwork(raw: unknown): Network | undefined {
       seed: Math.round(clampNum(run.seed, 0, 1e9, DEFAULT_RUN.seed)),
       speed: clampNum(run.speed, 0.01, 2, DEFAULT_RUN.speed),
       compare: compare.length > 0 ? compare : ["idem"],
-      engine: run.engine === "ndn" ? "ndn" : "idem",
+      engine: run.engine === "idem" ? "idem" : "ndn",
     },
   };
 }

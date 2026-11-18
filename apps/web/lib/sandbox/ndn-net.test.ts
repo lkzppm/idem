@@ -100,6 +100,22 @@ describe("NDN engine: the editor's network on YaNFD routers", () => {
     expect(ended).toBe(1);
   }, 30_000);
 
+  it("sends no new call while paused, and finishes the plan once resumed", async () => {
+    const net = small("swarm", 2, 4);
+    const events: NdnNetEvents = { packet: () => {}, flash: () => {}, call: () => {} };
+    const n = await NdnNetwork.create(net, () => instantiate(mod), events);
+    n.pause();
+    n.start();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(n.stats().done).toBe(0);
+    n.resume();
+    const t0 = Date.now();
+    while (n.stats().done < n.stats().calls && Date.now() - t0 < 20_000)
+      await new Promise((r) => setTimeout(r, 50));
+    n.stop();
+    expect(n.stats().done).toBe(8);
+  }, 30_000);
+
   it("keeps private and side-effect calls off NDN", async () => {
     const net = small("swarm", 1, 3);
     const a = net.nodes.find((n) => n.kind === "agent");

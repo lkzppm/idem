@@ -236,6 +236,9 @@ export class NdnNetwork {
   readonly #agents: { id: string; run: () => Promise<void> }[] = [];
   readonly #routers: Yanfd[] = [];
   #stopped = false;
+  /** While paused, agents send no new call (the ones in flight finish). */
+  #paused = false;
+  #unpause: (() => void)[] = [];
   #stats = { calls: 0, done: 0, ok: 0, failed: 0, bypass: 0, upstream: 0, latency: 0 };
 
   private constructor(net: Network, events: NdnNetEvents) {
@@ -396,6 +399,7 @@ export class NdnNetwork {
       const run = async () => {
         for (const call of plan) {
           await new Promise<void>((res) => this.#later(think(r, a.config.thinkMs), res));
+          await this.#whilePaused();
           if (this.#stopped) return;
           const producer = call.producer ?? producerNodes(net)[0]?.config.name ?? "";
           const t0 = performance.now();
@@ -449,6 +453,26 @@ export class NdnNetwork {
     for (const a of this.#agents) void a.run();
   }
 
+  /** Hold every agent's next call until {@link resume} (calls in flight still finish). */
+  pause(): void {
+    this.#paused = true;
+  }
+
+  /** Let the agents call again. */
+  resume(): void {
+    this.#paused = false;
+    for (const f of this.#unpause.splice(0)) f();
+  }
+
+  get paused(): boolean {
+    return this.#paused;
+  }
+
+  #whilePaused(): Promise<void> {
+    if (!this.#paused || this.#stopped) return Promise.resolve();
+    return new Promise((res) => this.#unpause.push(res));
+  }
+
   stats(): NdnStats {
     const s = this.#stats;
     const forwarders: NdnStats["forwarders"] = {};
@@ -481,6 +505,7 @@ export class NdnNetwork {
   stop(): void {
     if (this.#stopped) return;
     this.#stopped = true;
+    for (const f of this.#unpause.splice(0)) f();
     for (const t of this.#timers) clearTimeout(t);
     this.#timers.clear();
     for (const c of this.#closers) c();

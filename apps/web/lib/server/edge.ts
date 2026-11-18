@@ -1,7 +1,15 @@
 import { createGateway, type Gateway } from "@idem/gateway";
 import { DEMO_PRODUCER } from "./demo-producer";
+import { EdgeActivity } from "./edge-activity";
 
 let gateway: Gateway | undefined;
+let activity: EdgeActivity | undefined;
+
+/** What this instance's edge saw, for the Live example's shared view (ADR-030). */
+export function edgeActivity(): EdgeActivity {
+  activity ??= new EdgeActivity();
+  return activity;
+}
 
 /**
  * The edge gateway (one per server instance, so its PIT and CS live in this instance's memory).

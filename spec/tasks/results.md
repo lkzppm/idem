@@ -14,9 +14,21 @@ seed and the source revision recorded (spec 05).
 - [ ] `/results` checked in the running site: `curl` 200 in both locales and a look at the entrance motion. Pending, the author's dev server was down. Done instead: typecheck, lint, and an offline render of the page component in en and pt, dark and light, at 1280 px and 390 px (screenshots reviewed, then discarded)
 - [x] Roadmap M4 boxes ticked; spec 05 updated with the pipeline "as run"; ADR-023 recorded; E5 reworded against ADR-025
 - [ ] E3 (real-agent traces) and W-trace replay: out of scope, needs a budgeted LLM swarm
-- [ ] E4 (Docker / Mini-NDN emulation): out of scope, needs Docker; H4 stays not evaluated
+- [x] E4 run on the Docker bench (2026-11-18, `experiments/results/e4/20261118T141957Z-de2bcf73`); the page's H4 rule is still not written, so H4 shows as not evaluated
 - [x] `pnpm exp:e1` and `pnpm exp:all` wired in the root `package.json` by the main session (was: not wired in the root `package.json`, which this area does not own; the equivalent is `pnpm sim -- --config experiments/configs/e1-node.json`
 - [x] (already updated by the spec reconciliation, ADR-024 round) `spec/03-api.md` still shows the old `SimConfig` (no `idem-noverify`, `processing` or `signPlainCalls`); that file belongs to another area
 - [ ] Rerun E1 on a quiet machine: half of the kept runs carry a load average far above the core count, which widens the reported spread (the medians barely move the E2 results: a miss costs 272 µs against a 90 ms round trip)
 - [ ] Fix for Q7 (the engine should derive `authContext` itself and ignore one that arrives), then rerun E5: `safety.test.ts` fails on purpose when the finding is fixed
 - [x] Tab and route renamed: "Results" → "Benchmarks", `/results` → `/benchmarks` (permanent redirect in `next.config.mts`), en + pt labels, links in the landing, sandbox, footer, docs and spec (2026-11-18)
+
+## Benchmarks redesign (ADR-032)
+
+- [x] Mini navbar on `/benchmarks`: the home page's `SectionNav` mounts on both routes (`SECTION_NAV_PATHS`); sections marked with `data-nav-section` and a translated `data-nav-label`
+- [x] One story: Native NDN (E4, NFD check) first, then Verdicts, E2 (Redundancy, Latency, Sensitivity), E1 (Cost), E5 (Safety), Method; each section opens with its question and a computed one-line verdict (en and pt)
+- [x] Interactive line charts: crosshair and readout card with exact values and 95% interval, nearest-x and nearest-point modes, one tab stop with arrow keys, live region, legend that highlights and toggles; tabs for the E4 metrics and loss levels; the per-miss CPU bar and list light each other
+- [x] No C-shaped edges: `.r-tile` uses an inset solid square; a test fails on a thick one-sided border in `results.css`
+- [x] `export-web` exports `nfd` (last five `ndn-nfd` runs) and `e4` (`kind: "emulation"`), tested with in-memory fixtures; `data.json` regenerated
+- [x] E4 pending state on the page: no E4 data, no number; the headline tile and the hero say it has not run
+- [x] E4 full run committed under `experiments/results/e4/`, exported, lead section checked in WebKit; the verdict line adds the p95 tail; the completion axis stops at 100%
+- [ ] Re-run `pnpm exp:ndn` so the latest NFD run is not the one where S8 stopped on a route authorization error
+- [ ] Look at `/benchmarks` in the running site (Safari, 390 px, light and dark): readout card placement, legend toggles, tabs, the navbar over the sections

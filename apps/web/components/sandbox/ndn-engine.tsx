@@ -9,7 +9,7 @@ import { browserYanfd, type NdnCall, NdnNetwork, type NdnStats } from "@/lib/san
 import type { Network } from "@/lib/sandbox/network";
 import { runSignature } from "@/lib/sandbox/run";
 import { TopologyScene } from "@/lib/sandbox/scene";
-import { RestartIcon } from "./icons";
+import { PauseIcon, PlayIcon, RestartIcon } from "./icons";
 import { PlayerButton, PlayerProgress, PlayerSep } from "./player";
 import { StageCanvas, type StageEditor } from "./stage-canvas";
 import { Empty, fixed, Stat, shortName } from "./ui";
@@ -37,11 +37,16 @@ export function NdnEngine({
   net,
   loads,
   editor,
+  playing,
+  onPlaying,
 }: {
   net: Network;
   /** Bumped when another network is loaded: the stage is then fitted to it. */
   loads: number;
   editor: StageEditor;
+  /** Agents send calls while playing; paused, they hold their next call. */
+  playing: boolean;
+  onPlaying: (v: boolean) => void;
 }) {
   const t = useMessages(editorMessages);
   const tn = t.ndn;
@@ -63,6 +68,12 @@ export function NdnEngine({
   netRef.current = net;
   const sig = useMemo(() => runSignature(net), [net]);
   const log = useRef<NdnCall[]>([]);
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+  const runningRef = useRef<NdnNetwork | undefined>(undefined);
+  // After the first start, a rebuild keeps the player's texts as they are (no "starting…" flash).
+  const started = useRef(false);
+  const lastCalls = useRef(0);
   const fitted = useRef(-1);
 
   // The drawn network follows every change at once; a newly loaded one is fitted to the stage.
@@ -102,7 +113,7 @@ export function NdnEngine({
         try {
           await ready;
           if (abort.signal.aborted) return;
-          setPhase({ kind: "starting" });
+          if (!started.current) setPhase({ kind: "starting" });
           const made = await NdnNetwork.create(
             n,
             factory,
@@ -121,7 +132,11 @@ export function NdnEngine({
             return;
           }
           running = made;
+          runningRef.current = made;
+          if (!playingRef.current) made.pause();
           made.start();
+          started.current = true;
+          lastCalls.current = made.stats().calls;
           setPhase({ kind: "running", routers: n.nodes.filter((x) => x.kind === "forwarder").length });
         } catch (e) {
           if (!abort.signal.aborted)
@@ -142,8 +157,17 @@ export function NdnEngine({
       clearTimeout(timer);
       clearInterval(id);
       running?.stop();
+      if (runningRef.current === running) runningRef.current = undefined;
     };
   }, [sig, runId, scene]);
+
+  // Pause holds the agents' next calls; play lets them go on.
+  useEffect(() => {
+    const r = runningRef.current;
+    if (!r) return;
+    if (playing) r.resume();
+    else r.pause();
+  }, [playing]);
 
   // Positions move the drawn nodes only.
   useEffect(() => {
@@ -173,8 +197,6 @@ export function NdnEngine({
               scene,
               now: () => performance.now(),
               nodes,
-              title: tn.title,
-              note: `${tn.note} · ${tn.realTime}`,
               agentLabels: true,
               badges: Object.fromEntries(
                 Object.entries(s?.forwarders ?? {})
@@ -197,18 +219,29 @@ export function NdnEngine({
         />
       </Slot>
       <Slot name="player">
-        <PlayerButton label={tn.restart} onClick={() => setRunId((r) => r + 1)}>
+        <PlayerButton spin label={tn.restart} onClick={() => setRunId((r) => r + 1)}>
           <RestartIcon />
+        </PlayerButton>
+        <PlayerButton
+          primary
+          label={playing ? ts.pause : ts.play}
+          kbd="Space"
+          disabled={phase.kind !== "running"}
+          onClick={() => onPlaying(!playing)}
+        >
+          {playing ? <PauseIcon /> : <PlayIcon />}
         </PlayerButton>
         <PlayerSep />
         <span className="obs-ptime" role="status">
           <span className="text-fg">{status}</span>
-          {phase.kind === "running" && <span className="obs-ptime-note">{tn.realTime}</span>}
+          {phase.kind === "running" && (
+            <span className="obs-ptime-note">{playing ? tn.realTime : tn.paused}</span>
+          )}
         </span>
-        {s && phase.kind === "running" && (
+        {(phase.kind === "running" || phase.kind === "starting") && (
           <PlayerProgress
-            value={s.done / Math.max(1, s.calls)}
-            label={`${s.done}/${s.calls}`}
+            value={s ? s.done / Math.max(1, s.calls) : 0}
+            label={s ? `${s.done}/${s.calls}` : `0/${lastCalls.current || "…"}`}
             title={t.run.progress}
           />
         )}

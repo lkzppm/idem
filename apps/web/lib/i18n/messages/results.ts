@@ -10,30 +10,92 @@ export const results = defineMessages(
     meta: {
       title: "Benchmarks",
       description:
-        "Measured and simulated results of IDEM: the cost of naming, signing and verifying (E1), a simulated agent swarm against direct MCP and per-agent caches (E2), and an adversarial suite against the core engine (E5).",
+        "IDEM measured: the native NDN binding against real NFD forwarders and the HTTP overlay against native NDN under loss (E4), then the evidence behind it: simulated agent swarms (E2), the cost of naming, signing and verifying (E1) and an adversarial suite (E5).",
+    },
+    nav: {
+      native: "Native NDN",
+      verdicts: "Verdicts",
+      redundancy: "Redundancy",
+      latency: "Latency",
+      sensitivity: "Sensitivity",
+      cost: "Cost",
+      safety: "Safety",
+      method: "Method",
+    },
+    ask: {
+      question: "Question",
+      verdict: "What the data says",
+      native: {
+        e4: (o: {
+          loss: string;
+          n2ok: string;
+          b2ok: string;
+          n2p50: string;
+          b2p50: string;
+          n2p95: string;
+          b2p95: string;
+          n2bytes: string;
+          b2bytes: string;
+        }) =>
+          `At ${o.loss}% loss on every link, the native star (N2) answered ${o.n2ok} of its calls and the overlay star (B2) ${o.b2ok}; median latency ${o.n2p50} against ${o.b2p50}, 95th percentile ${o.n2p95} against ${o.b2p95}; bytes over the producer link ${o.n2bytes} against ${o.b2bytes}.`,
+        e4Partial:
+          "E4 has a run, but it does not include both the native and the overlay star at its highest loss, so no comparison is stated.",
+        e4Pending: "E4, the overlay against native NDN under loss, has not run: there is no result to state.",
+        nfd: (o: { passed: string; total: string; stopped: string; failing: string; previous: string }) =>
+          `Against real NFD forwarders the latest conformance run passed ${o.passed} of ${o.total} scenarios${o.stopped ? `; ${o.stopped} stopped on an error before any check ran` : ""}${o.failing ? `; checks failed in ${o.failing}` : ""}.${o.previous ? ` ${o.previous}` : ""}`,
+        nfdPrevious: (passed: string, total: string) => `The run before it passed ${passed} of ${total}.`,
+      },
     },
     hero: {
       kicker: "Benchmarks",
-      title: "What the runs say.",
-      lead: "Three of the five planned experiments have run: the cost of naming, signing and verifying a call (E1), a simulated agent swarm compared with direct MCP and with per-agent caches (E2), and an adversarial suite against the core engine (E5). Every number below is read from a committed run folder, and each figure names its runs.",
-      simulationLabel: "Simulation",
-      simulation:
-        "E2 and E5 run on a virtual clock. They are simulation results, not measurements of a deployed network. E1 is wall-clock time on one machine. The real-agent traces (E3) and the network emulation (E4) have not run.",
+      title: "IDEM, measured.",
+      lead: "IDEM names a tool call, signs the answer and lets any forwarder on the path serve it. This page starts with IDEM on real NDN forwarders: the native binding against NFD, and the HTTP overlay against native NDN under loss (E4). Below come the experiments that back it: what sharing saves (E2), what the crypto costs (E1) and what an attacker can do (E5). Every number is read from a committed run folder, and each figure names its runs.",
+      kindsLabel: "What kind of result each experiment is",
+      kinds: [
+        {
+          id: "nfd",
+          name: "NFD check",
+          text: "The native binding against real NFD forwarders in Docker. Pass or fail, not a measurement.",
+        },
+        {
+          id: "e4",
+          name: "E4",
+          text: "The HTTP overlay and native NDN on the same emulated links with packet loss (Docker, tc netem). Wall-clock time on one machine.",
+        },
+        {
+          id: "sim",
+          name: "E2, E5",
+          text: "Simulation on a virtual clock, not a measurement of a deployed network.",
+        },
+        {
+          id: "e1",
+          name: "E1",
+          text: "Wall-clock time of the naming and crypto operations, on one machine.",
+        },
+      ],
+      notRun: "Has not run yet.",
     },
     tiles: {
       label: "Headline numbers",
+      nfd: {
+        value: (ok: string, all: string) => `${ok} of ${all}`,
+        label: "scenarios pass against real NFD forwarders, latest run",
+        sub: (o: { stopped: number; previous: string }) =>
+          `${o.stopped > 0 ? `${o.stopped} stopped on an error before any check ran. ` : ""}${o.previous}`.trim() ||
+          "A conformance check, not a measurement.",
+        earlier: (passed: string, total: string) => `The run before: ${passed} of ${total}.`,
+      },
+      e4: {
+        pending: "Pending",
+        pendingLabel: "overlay against native NDN under loss (E4)",
+        pendingSub: "E4 has not run yet. No number is shown.",
+        label: (loss: string) => `of calls answered over native NDN at ${loss}% loss`,
+        sub: (b2: string) => `HTTP overlay, same star topology: ${b2}`,
+      },
       upstream: {
-        label: "fewer calls reach the producer",
+        label: "fewer calls reach the producer (simulation)",
         sub: (agents: string, ci: string) =>
           `B2 against direct MCP, ${agents} agents, overlap 0.5 · ±${ci} points`,
-      },
-      latency: {
-        label: "median latency per call",
-        sub: (ci: string) => `B2 against direct MCP, same seeds · ±${ci}`,
-      },
-      overhead: {
-        label: "of CPU added to a cache miss",
-        sub: (share: string, rtt: string) => `${share} of the ${rtt} round trip to the producer`,
       },
       safety: {
         value: (ok: string, all: string) => `${ok} of ${all}`,
@@ -50,6 +112,9 @@ export const results = defineMessages(
     },
     hyp: {
       title: "The hypotheses",
+      question: "Do the four hypotheses the project stated before running anything hold?",
+      verdict: (o: { supported: number; partly: number; refuted: number; pending: number }) =>
+        `${o.supported} supported, ${o.partly} partly supported, ${o.refuted} refuted and ${o.pending} not evaluated, by the rules written next to each.`,
       lead: "The project stated four falsifiable hypotheses before any experiment ran. The verdicts are computed from the data, with the rule given next to each.",
       h1: {
         claim:
@@ -88,8 +153,98 @@ export const results = defineMessages(
       h4: {
         claim:
           "Under loss and multi-hop topologies, on-path caching reduces bytes on the producer's link and recovery time, compared with end-to-end TCP/HTTP.",
+        ran: "E4 has run and is shown first on this page. This page encodes no rule for H4, so it states no verdict.",
         evidence:
           "Needs the network emulation (E4), which has not run. The E2 sweeps ran without loss, so nothing here speaks to recovery.",
+      },
+    },
+    native: {
+      title: "IDEM on real NDN",
+      lead: "The question the project stands on: does IDEM work when its names and signed Data cross real NDN forwarders, and what does that change against the HTTP overlay when the network drops packets? Two pieces of evidence, E4 first.",
+      question:
+        "Does IDEM work on real NDN forwarders, and what does the native binding change compared with the HTTP overlay when the network loses packets?",
+      e4: {
+        title: "E4: HTTP overlay against native NDN under loss",
+        lead: "The same agents, producer and links (Docker, with tc netem delay and loss on every link) carry IDEM two ways: over HTTP forwarders (B2, B3) and as native NDN Interests and Data through NFD (N2, N3). B0 is plain MCP. The loss on every link, in each direction, is the x axis.",
+        pending: {
+          title: "E4 has not run yet",
+          text: "There is no E4 result to show, so this section shows no number. Once its run folder is committed under experiments/results/e4, the figures appear here without any change to the page.",
+          will: "When it has run, this section shows, for the five modes above: calls answered, median and 95th-percentile latency and bytes over the producer link against loss; the latency distribution at each loss level; and a table of every value with its confidence interval. To run it:",
+        },
+        x: "loss on every link",
+        tabs: "Metric",
+        chartsTitle: "What loss does to each mode",
+        chart: {
+          completion: {
+            tab: "Completion",
+            title: "Calls answered as loss grows",
+            desc: "Line chart of the share of calls answered against the loss on every link, one line per mode.",
+            y: "calls answered",
+          },
+          p50: {
+            tab: "Median latency",
+            title: "Median latency as loss grows",
+            desc: "Line chart of the median latency of answered calls against the loss on every link, one line per mode.",
+            y: "median latency (ms)",
+          },
+          p95: {
+            tab: "95th percentile",
+            title: "95th-percentile latency as loss grows",
+            desc: "Line chart of the 95th-percentile latency of answered calls against the loss on every link, one line per mode.",
+            y: "95th percentile (ms)",
+          },
+          bytes: {
+            tab: "Producer-link bytes",
+            title: "Bytes over the producer link as loss grows",
+            desc: "Line chart of the bytes that crossed the link to the producer against the loss on every link, one line per mode.",
+            y: "bytes over the producer link",
+          },
+        },
+        caption: (o: { agents: string; calls: string; seeds: number }) =>
+          `${o.agents} agents × ${o.calls} calls, W-syn at the E2 base point, ${o.seeds} seeds per point. Whiskers: 95% confidence interval. Pages are capped to fit one NDN packet, so every mode serves the same pages.`,
+        cdf: {
+          title: "Latency of every answered call",
+          desc: "Cumulative distribution of the latency of answered calls up to the 99th percentile, one curve per mode, for the chosen loss level.",
+          tabs: "Loss level",
+          tab: (loss: string) => `${loss} loss`,
+          x: "latency (ms)",
+          y: "share of calls",
+          caption:
+            "Answered calls pooled over seeds, up to the 99th percentile. Calls that failed are not in it; the share answered is in the chart above.",
+        },
+        table: {
+          row: "Mode · loss",
+          completion: "Answered",
+          p50: "p50",
+          p95: "p95",
+          bytes: "Producer link",
+          retrans: "Retransmissions",
+        },
+        guard: (n: number) =>
+          `The validity guard discarded and repeated ${n} ${n === 1 ? "run" : "runs"} in which the host froze.`,
+      },
+      nfd: {
+        title: "The native binding against real NFD",
+        lead: "@idem/ndn talks to NFD forwarders in Docker over TCP, UDP and WebSocket faces. Each scenario checks rules of the protocol on the wire. It reports pass or fail, not a measurement.",
+        pass: "pass",
+        fail: "fail",
+        stopped: "stopped before any check:",
+        checks: (n: number, failed: number) => (failed > 0 ? `${n} checks, ${failed} failed` : `${n} checks`),
+        version: (o: { nfd: string; ndnts: string; image: string }) =>
+          `NFD ${o.nfd}, NDNts ${o.ndnts}, image ${o.image}. The latest run is shown.`,
+        previous: (o: { id: string; passed: string; total: string }) =>
+          `The run before it (${o.id}) passed ${o.passed} of ${o.total}.`,
+        scenario: {
+          S1: "Round trip and manifest bootstrap",
+          S2: "PIT aggregation",
+          S3: "Content Store and freshness",
+          S4: "Equivalent spellings share one name",
+          S5: "private is never sent on NDN",
+          S6: "Tampered Data is rejected",
+          S7: "The packet size limit",
+          S8: "Two-forwarder chain",
+          S9: "WebSocket face",
+        } as Record<string, string>,
       },
     },
     modes: {
@@ -98,6 +253,8 @@ export const results = defineMessages(
       B2: "IDEM",
       B3: "IDEM, two tiers",
       B4: "IDEM, no verify at forwarders",
+      N2: "IDEM on native NDN",
+      N3: "IDEM on native NDN, two tiers",
       bound: "perfect shared cache",
       desc: {
         B0: "Every call goes to the producer, a plain MCP server. The edge only relays.",
@@ -105,6 +262,8 @@ export const results = defineMessages(
         B2: "Agents → one edge forwarder (PIT and Content Store) → producer. Every hop and every agent verifies.",
         B3: "Agents → two edges → one regional forwarder → producer, with the same end-to-end delay as B2.",
         B4: "B2 with verification before caching switched off at the forwarder, only to isolate what it costs.",
+        N2: "B2's star on native NDN: agents → one edge NFD → producer, Interests and signed Data over UDP faces, no HTTP.",
+        N3: "B3's tree on native NDN: agents → two edge NFDs → one regional NFD → producer.",
       },
     },
     chart: {
@@ -117,13 +276,20 @@ export const results = defineMessages(
       run: "run",
       runs: "runs",
       seeds: (n: number) => `${n} seeds per point`,
-      tipCi: (label: string, x: string, y: string, ci: string) => `${label} at ${x}: ${y} (95% CI ±${ci})`,
-      tipRange: (label: string, x: string, y: string, lo: string, hi: string) =>
-        `${label} at ${x}: ${y} (runs from ${lo} to ${hi})`,
-      tipPlain: (label: string, x: string, y: string) => `${label} at ${x}: ${y}`,
+      emulation: "Emulation",
+      hint: "Hover, touch or use the arrow keys to read exact values. Press a legend entry to hide or show a series.",
+      hide: "Hide",
+      show: "Show",
+      showAll: "Show all series",
+      noteCi: (n: number) => `Mean ± 95% CI over ${n} seeds`,
+      noteRange: (n: number) => `Median of ${n} runs; the range of the runs in brackets`,
+      notePooled: (n: number) => `All answered calls pooled over ${n} seeds`,
     },
     redundancy: {
       title: "Calls that never reach the producer",
+      question: "How many tool calls does sharing keep from reaching the producer?",
+      verdict: (o: { agents: string; b2: string; ci: string; b1: string }) =>
+        `At ${o.agents} agents and overlap 0.5, IDEM sent ${o.b2} (±${o.ci} points) fewer calls to the producer than direct MCP; per-agent caches, ${o.b1}.`,
       lead: "Upstream reduction is the share of tool calls that did not reach the producer, relative to direct MCP on the same workload and seed. The workload is synthetic (W-syn): every agent makes 20 calls with a think time between them, and a fraction of them, the overlap, is drawn from a catalog the whole swarm shares.",
       agents: {
         title: "Upstream reduction as the swarm grows",
@@ -156,6 +322,9 @@ export const results = defineMessages(
     },
     latency: {
       title: "Latency",
+      question: "Does a call get faster, and what does the extra work on a miss cost?",
+      verdict: (o: { agents: string; p50: string; ci: string; cpu: string; share: string }) =>
+        `At ${o.agents} agents the per-run median latency changed by ${o.p50} (±${o.ci}) against direct MCP, paired by seed; a miss pays ${o.cpu} of extra CPU, ${o.share} of the round trip.`,
       lead: (o: { agent: string; producer: string; service: string }) =>
         `Latency is what the agent observes per call on the virtual clock: ${o.agent} to the edge, ${o.producer} on to the producer, each way, and a log-normal service time with a median of ${o.service}. In the IDEM modes the clock is also charged for the CPU work measured in E1.`,
       cdf: {
@@ -185,6 +354,7 @@ export const results = defineMessages(
         lead: (o: { args: string; result: string }) =>
           `On a miss, IDEM does work plain MCP does not. Priced with E1's medians for ${o.args} of arguments and the median ${o.result} result:`,
         who: { consumer: "consumer", edge: "edge", producer: "producer" },
+        barTotal: (us: string) => `Hover or focus a part. Total: ${us}.`,
         total: (o: { us: string; share: string; rtt: string; service: string }) =>
           `${o.us} in all: ${o.share} of the ${o.rtt} round trip, before the ${o.service} median service time.`,
         b4: (delta: string) =>
@@ -196,6 +366,9 @@ export const results = defineMessages(
     },
     sensitivity: {
       title: "Where it stops helping",
+      question: "When does sharing stop helping?",
+      verdict: (o: { losing: string; late: string; max: string }) =>
+        `${o.losing ? `A shared store of ${o.losing} or less is clearly beaten by private caches` : "No tested store size is clearly beaten by private caches"}; measured on the producer's clock, up to ${o.late} answers per run arrived past their freshness, by ${o.max} at most.`,
       lead: "Three sweeps move one parameter of the base workload (8 agents, overlap 0.5) at a time.",
       y: "upstream reduction",
       ttl: {
@@ -219,6 +392,7 @@ export const results = defineMessages(
         caption:
           "Faster agents do not gain: the store already answers every repeat. Slower agents lose, because a run then outlasts the 60 s TTL.",
       },
+      staleLabel: "About answers that arrived late",
       stale: (o: { late: string; max: string }) =>
         `No Data was served stale in any run by the protocol's rule, which counts age from each hop's receipt [P-8.1]. Measured on the producer's clock instead, up to ${o.late} answers per run at the short TTLs arrived past their freshness, by ${o.max} at most: the time a Data spends in transit is not part of its age.`,
       mixed: {
@@ -232,6 +406,9 @@ export const results = defineMessages(
     },
     e1: {
       title: "The cost of the crypto path",
+      question: "What does naming, signing and verifying a call cost?",
+      verdict: (o: { small: string; verify: string; big: string; canon: string }) =>
+        `verifyData takes ${o.verify} at ${o.small} and canonicalizeArgs ${o.canon} at ${o.big} (medians over runs).`,
       lead: "One call of each operation in @idem/core, timed with performance.now() after a warm-up, for payloads from 1 KiB to 1 MiB. The payload is the argument text for canonicalizeArgs and makeName, and the result text for signData and verifyData.",
       chart: {
         title: "Time per call by payload size",
@@ -259,6 +436,9 @@ export const results = defineMessages(
     },
     e5: {
       title: "Safety",
+      question: "Does any attack on a claim of the protocol get through?",
+      verdict: (o: { stopped: string; expected: string; findings: number; limits: number }) =>
+        `${o.stopped} of ${o.expected} attack variants the protocol must stop were stopped in every trial; ${o.findings} open ${o.findings === 1 ? "finding" : "findings"}, ${o.limits} documented ${o.limits === 1 ? "limit" : "limits"} measured.`,
       lead: (o: { trials: string; variants: number }) =>
         `${o.variants} attack variants, ${o.trials} trials each, against the real forwarder, producer, trust store and verifier of @idem/core on a virtual clock. Each trial builds a fresh world from its seed and is judged on ground truth: a variant counts as rejected only if no victim accepted forged, foreign or expired content and no cache kept any.`,
       findings: {
@@ -358,6 +538,7 @@ export const results = defineMessages(
     },
     method: {
       title: "Method",
+      question: "How were these numbers produced, and what has not run?",
       lead: "The plan for all five experiments, the metrics and the reporting rules are in the documentation.",
       docs: "Read the evaluation method",
       modesTitle: "Modes compared",
@@ -421,30 +602,94 @@ export const results = defineMessages(
     meta: {
       title: "Benchmarks",
       description:
-        "Resultados medidos e simulados do IDEM: o custo de nomear, assinar e verificar (E1), um enxame de agentes simulado contra MCP direto e caches por agente (E2) e uma suíte adversarial contra o motor do núcleo (E5).",
+        "O IDEM medido: o binding NDN nativo contra forwarders NFD reais e o overlay HTTP contra o NDN nativo sob perda (E4), e depois as evidências que o sustentam: enxames de agentes simulados (E2), o custo de nomear, assinar e verificar (E1) e uma suíte adversarial (E5).",
+    },
+    nav: {
+      native: "NDN nativo",
+      verdicts: "Veredictos",
+      redundancy: "Redundância",
+      latency: "Latência",
+      sensitivity: "Sensibilidade",
+      cost: "Custo",
+      safety: "Segurança",
+      method: "Método",
+    },
+    ask: {
+      question: "Pergunta",
+      verdict: "O que os dados dizem",
+      native: {
+        e4: (o: {
+          loss: string;
+          n2ok: string;
+          b2ok: string;
+          n2p50: string;
+          b2p50: string;
+          n2p95: string;
+          b2p95: string;
+          n2bytes: string;
+          b2bytes: string;
+        }) =>
+          `Com ${o.loss}% de perda em cada enlace, a estrela nativa (N2) respondeu ${o.n2ok} das suas chamadas e a estrela do overlay (B2) ${o.b2ok}; latência mediana de ${o.n2p50} contra ${o.b2p50}, percentil 95 de ${o.n2p95} contra ${o.b2p95}; bytes no enlace do produtor: ${o.n2bytes} contra ${o.b2bytes}.`,
+        e4Partial:
+          "O E4 tem uma execução, mas ela não inclui as estrelas nativa e do overlay na maior perda, então nenhuma comparação é afirmada.",
+        e4Pending:
+          "O E4, overlay contra NDN nativo sob perda, ainda não foi executado: não há resultado a afirmar.",
+        nfd: (o: { passed: string; total: string; stopped: string; failing: string; previous: string }) =>
+          `Contra forwarders NFD reais, a última execução de conformidade passou em ${o.passed} de ${o.total} cenários${o.stopped ? `; ${o.stopped} parou em um erro antes de qualquer verificação` : ""}${o.failing ? `; verificações falharam em ${o.failing}` : ""}.${o.previous ? ` ${o.previous}` : ""}`,
+        nfdPrevious: (passed: string, total: string) =>
+          `A execução anterior passou em ${passed} de ${total}.`,
+      },
     },
     hero: {
       kicker: "Benchmarks",
-      title: "O que as execuções dizem.",
-      lead: "Três dos cinco experimentos planejados foram executados: o custo de nomear, assinar e verificar uma chamada (E1), um enxame de agentes simulado comparado com MCP direto e com caches por agente (E2) e uma suíte adversarial contra o motor do núcleo (E5). Todo número abaixo é lido de uma pasta de execução versionada, e cada figura cita as suas execuções.",
-      simulationLabel: "Simulação",
-      simulation:
-        "E2 e E5 rodam em um relógio virtual. São resultados de simulação, não medições de uma rede implantada. E1 é tempo de relógio real em uma máquina. Os traços de agentes reais (E3) e a emulação de rede (E4) não foram executados.",
+      title: "O IDEM, medido.",
+      lead: "O IDEM nomeia uma chamada de ferramenta, assina a resposta e deixa qualquer forwarder do caminho servi-la. Esta página começa pelo IDEM em forwarders NDN reais: o binding nativo contra o NFD e o overlay HTTP contra o NDN nativo sob perda (E4). Depois vêm os experimentos que o sustentam: o que o compartilhamento economiza (E2), o que a criptografia custa (E1) e o que um atacante consegue (E5). Todo número é lido de uma pasta de execução versionada, e cada figura cita as suas execuções.",
+      kindsLabel: "Que tipo de resultado cada experimento é",
+      kinds: [
+        {
+          id: "nfd",
+          name: "Verificação NFD",
+          text: "O binding nativo contra forwarders NFD reais em Docker. Passa ou falha, não é uma medição.",
+        },
+        {
+          id: "e4",
+          name: "E4",
+          text: "O overlay HTTP e o NDN nativo nos mesmos enlaces emulados, com perda de pacotes (Docker, tc netem). Tempo de relógio real em uma máquina.",
+        },
+        {
+          id: "sim",
+          name: "E2, E5",
+          text: "Simulação em um relógio virtual, não uma medição de uma rede implantada.",
+        },
+        {
+          id: "e1",
+          name: "E1",
+          text: "Tempo de relógio real das operações de nomeação e criptografia, em uma máquina.",
+        },
+      ],
+      notRun: "Ainda não foi executado.",
     },
     tiles: {
       label: "Números principais",
+      nfd: {
+        value: (ok: string, all: string) => `${ok} de ${all}`,
+        label: "cenários passam contra forwarders NFD reais, última execução",
+        sub: (o: { stopped: number; previous: string }) =>
+          `${o.stopped > 0 ? `${o.stopped} parou em um erro antes de qualquer verificação. ` : ""}${o.previous}`.trim() ||
+          "Uma verificação de conformidade, não uma medição.",
+        earlier: (passed: string, total: string) => `A execução anterior: ${passed} de ${total}.`,
+      },
+      e4: {
+        pending: "Pendente",
+        pendingLabel: "overlay contra NDN nativo sob perda (E4)",
+        pendingSub: "O E4 ainda não foi executado. Nenhum número é mostrado.",
+        label: (loss: string) => `das chamadas respondidas sobre NDN nativo com ${loss}% de perda`,
+        sub: (b2: string) => `Overlay HTTP, mesma topologia em estrela: ${b2}`,
+      },
       upstream: {
-        label: "menos chamadas chegam ao produtor",
+        label: "menos chamadas chegam ao produtor (simulação)",
         sub: (agents: string, ci: string) =>
           `B2 contra MCP direto, ${agents} agentes, sobreposição 0,5 · ±${ci} pontos`,
-      },
-      latency: {
-        label: "latência mediana por chamada",
-        sub: (ci: string) => `B2 contra MCP direto, mesmas sementes · ±${ci}`,
-      },
-      overhead: {
-        label: "de CPU a mais em uma falta de cache",
-        sub: (share: string, rtt: string) => `${share} da ida e volta de ${rtt} até o produtor`,
       },
       safety: {
         value: (ok: string, all: string) => `${ok} de ${all}`,
@@ -461,6 +706,9 @@ export const results = defineMessages(
     },
     hyp: {
       title: "As hipóteses",
+      question: "As quatro hipóteses que o projeto enunciou antes de executar qualquer coisa se sustentam?",
+      verdict: (o: { supported: number; partly: number; refuted: number; pending: number }) =>
+        `${o.supported} sustentadas, ${o.partly} sustentadas em parte, ${o.refuted} refutadas e ${o.pending} não avaliadas, pelas regras escritas ao lado de cada uma.`,
       lead: "O projeto enunciou quatro hipóteses falseáveis antes de qualquer experimento. Os veredictos são calculados a partir dos dados, com a regra ao lado de cada um.",
       h1: {
         claim:
@@ -499,8 +747,99 @@ export const results = defineMessages(
       h4: {
         claim:
           "Sob perda e em topologias de múltiplos saltos, o cache no caminho reduz os bytes no enlace do produtor e o tempo de recuperação, em comparação com TCP/HTTP fim a fim.",
+        ran: "O E4 foi executado e aparece primeiro nesta página. Esta página não codifica regra para a H4, então não afirma veredicto.",
         evidence:
           "Depende da emulação de rede (E4), que não foi executada. As varreduras do E2 rodaram sem perda, então nada aqui fala de recuperação.",
+      },
+    },
+    native: {
+      title: "O IDEM em NDN real",
+      lead: "A pergunta em que o projeto se apoia: o IDEM funciona quando os seus nomes e Data assinados atravessam forwarders NDN reais, e o que isso muda em relação ao overlay HTTP quando a rede perde pacotes? Duas evidências, o E4 primeiro.",
+      question:
+        "O IDEM funciona em forwarders NDN reais, e o que o binding nativo muda em relação ao overlay HTTP quando a rede perde pacotes?",
+      e4: {
+        title: "E4: overlay HTTP contra NDN nativo sob perda",
+        lead: "Os mesmos agentes, produtor e enlaces (Docker, com atraso e perda do tc netem em cada enlace) carregam o IDEM de dois jeitos: por forwarders HTTP (B2, B3) e como Interests e Data NDN nativos pelo NFD (N2, N3). O B0 é MCP comum. A perda em cada enlace, nos dois sentidos, é o eixo x.",
+        pending: {
+          title: "O E4 ainda não foi executado",
+          text: "Não há resultado do E4 para mostrar, então esta seção não mostra número algum. Quando a sua pasta de execução for versionada em experiments/results/e4, as figuras aparecem aqui sem nenhuma mudança na página.",
+          will: "Depois de executado, esta seção mostra, para os cinco modos acima: chamadas respondidas, latência mediana e do percentil 95 e bytes no enlace do produtor contra a perda; a distribuição da latência em cada nível de perda; e uma tabela de cada valor com o seu intervalo de confiança. Para executá-lo:",
+        },
+        x: "perda em cada enlace",
+        tabs: "Métrica",
+        chartsTitle: "O que a perda faz com cada modo",
+        chart: {
+          completion: {
+            tab: "Conclusão",
+            title: "Chamadas respondidas conforme a perda cresce",
+            desc: "Gráfico de linhas da parcela de chamadas respondidas contra a perda em cada enlace, uma linha por modo.",
+            y: "chamadas respondidas",
+          },
+          p50: {
+            tab: "Latência mediana",
+            title: "Latência mediana conforme a perda cresce",
+            desc: "Gráfico de linhas da latência mediana das chamadas respondidas contra a perda em cada enlace, uma linha por modo.",
+            y: "latência mediana (ms)",
+          },
+          p95: {
+            tab: "Percentil 95",
+            title: "Latência do percentil 95 conforme a perda cresce",
+            desc: "Gráfico de linhas da latência do percentil 95 das chamadas respondidas contra a perda em cada enlace, uma linha por modo.",
+            y: "percentil 95 (ms)",
+          },
+          bytes: {
+            tab: "Bytes no enlace do produtor",
+            title: "Bytes no enlace do produtor conforme a perda cresce",
+            desc: "Gráfico de linhas dos bytes que cruzaram o enlace até o produtor contra a perda em cada enlace, uma linha por modo.",
+            y: "bytes no enlace do produtor",
+          },
+        },
+        caption: (o: { agents: string; calls: string; seeds: number }) =>
+          `${o.agents} agentes × ${o.calls} chamadas, W-syn no ponto base do E2, ${o.seeds} sementes por ponto. Barras: intervalo de confiança de 95%. As páginas são limitadas para caber em um pacote NDN, então todos os modos servem as mesmas páginas.`,
+        cdf: {
+          title: "Latência de cada chamada respondida",
+          desc: "Distribuição acumulada da latência das chamadas respondidas até o percentil 99, uma curva por modo, para o nível de perda escolhido.",
+          tabs: "Nível de perda",
+          tab: (loss: string) => `${loss} de perda`,
+          x: "latência (ms)",
+          y: "parcela das chamadas",
+          caption:
+            "Chamadas respondidas, juntas entre as sementes, até o percentil 99. As que falharam não estão nela; a parcela respondida está no gráfico acima.",
+        },
+        table: {
+          row: "Modo · perda",
+          completion: "Respondidas",
+          p50: "p50",
+          p95: "p95",
+          bytes: "Enlace do produtor",
+          retrans: "Retransmissões",
+        },
+        guard: (n: number) =>
+          `A guarda de validade descartou e repetiu ${n} ${n === 1 ? "execução" : "execuções"} em que o host congelou.`,
+      },
+      nfd: {
+        title: "O binding nativo contra o NFD real",
+        lead: "O @idem/ndn conversa com forwarders NFD em Docker por faces TCP, UDP e WebSocket. Cada cenário verifica regras do protocolo no fio. O resultado é passa ou falha, não uma medição.",
+        pass: "passa",
+        fail: "falha",
+        stopped: "parou antes de qualquer verificação:",
+        checks: (n: number, failed: number) =>
+          failed > 0 ? `${n} verificações, ${failed} falharam` : `${n} verificações`,
+        version: (o: { nfd: string; ndnts: string; image: string }) =>
+          `NFD ${o.nfd}, NDNts ${o.ndnts}, imagem ${o.image}. A última execução é a mostrada.`,
+        previous: (o: { id: string; passed: string; total: string }) =>
+          `A execução anterior (${o.id}) passou em ${o.passed} de ${o.total}.`,
+        scenario: {
+          S1: "Ida e volta e bootstrap do manifesto",
+          S2: "Agregação no PIT",
+          S3: "Content Store e frescor",
+          S4: "Grafias equivalentes dão um só nome",
+          S5: "private nunca é enviado no NDN",
+          S6: "Data adulterado é rejeitado",
+          S7: "O limite de tamanho do pacote",
+          S8: "Cadeia de dois forwarders",
+          S9: "Face WebSocket",
+        } as Record<string, string>,
       },
     },
     modes: {
@@ -509,6 +848,8 @@ export const results = defineMessages(
       B2: "IDEM",
       B3: "IDEM, dois níveis",
       B4: "IDEM, sem verificar nos forwarders",
+      N2: "IDEM em NDN nativo",
+      N3: "IDEM em NDN nativo, dois níveis",
       bound: "cache compartilhado perfeito",
       desc: {
         B0: "Toda chamada vai ao produtor, um servidor MCP comum. A borda apenas repassa.",
@@ -516,6 +857,8 @@ export const results = defineMessages(
         B2: "Agentes → um forwarder de borda (PIT e Content Store) → produtor. Cada salto e cada agente verifica.",
         B3: "Agentes → duas bordas → um forwarder regional → produtor, com o mesmo atraso fim a fim do B2.",
         B4: "B2 com a verificação antes do cache desligada no forwarder, só para isolar o que ela custa.",
+        N2: "A estrela do B2 em NDN nativo: agentes → um NFD de borda → produtor, Interests e Data assinados sobre faces UDP, sem HTTP.",
+        N3: "A árvore do B3 em NDN nativo: agentes → dois NFDs de borda → um NFD regional → produtor.",
       },
     },
     chart: {
@@ -528,13 +871,20 @@ export const results = defineMessages(
       run: "execução",
       runs: "execuções",
       seeds: (n: number) => `${n} sementes por ponto`,
-      tipCi: (label: string, x: string, y: string, ci: string) => `${label} em ${x}: ${y} (IC 95% ±${ci})`,
-      tipRange: (label: string, x: string, y: string, lo: string, hi: string) =>
-        `${label} em ${x}: ${y} (execuções de ${lo} a ${hi})`,
-      tipPlain: (label: string, x: string, y: string) => `${label} em ${x}: ${y}`,
+      emulation: "Emulação",
+      hint: "Passe o mouse, toque ou use as setas para ler os valores exatos. Pressione uma entrada da legenda para ocultar ou mostrar uma série.",
+      hide: "Ocultar",
+      show: "Mostrar",
+      showAll: "Mostrar todas as séries",
+      noteCi: (n: number) => `Média ± IC 95% em ${n} sementes`,
+      noteRange: (n: number) => `Mediana de ${n} execuções; a faixa das execuções entre parênteses`,
+      notePooled: (n: number) => `Todas as chamadas respondidas, juntas, em ${n} sementes`,
     },
     redundancy: {
       title: "Chamadas que nunca chegam ao produtor",
+      question: "Quantas chamadas de ferramenta o compartilhamento impede de chegar ao produtor?",
+      verdict: (o: { agents: string; b2: string; ci: string; b1: string }) =>
+        `Com ${o.agents} agentes e sobreposição 0,5, o IDEM enviou ${o.b2} (±${o.ci} pontos) menos chamadas ao produtor do que o MCP direto; os caches por agente, ${o.b1}.`,
       lead: "A redução a montante é a parcela das chamadas de ferramenta que não chegou ao produtor, em relação ao MCP direto na mesma carga e semente. A carga é sintética (W-syn): cada agente faz 20 chamadas com um tempo de reflexão entre elas, e uma fração delas, a sobreposição, é sorteada de um catálogo que o enxame inteiro compartilha.",
       agents: {
         title: "Redução a montante conforme o enxame cresce",
@@ -567,6 +917,9 @@ export const results = defineMessages(
     },
     latency: {
       title: "Latência",
+      question: "Uma chamada fica mais rápida, e quanto custa o trabalho extra em uma falta?",
+      verdict: (o: { agents: string; p50: string; ci: string; cpu: string; share: string }) =>
+        `Com ${o.agents} agentes, a latência mediana por execução mudou ${o.p50} (±${o.ci}) em relação ao MCP direto, pareada por semente; uma falta paga ${o.cpu} de CPU a mais, ${o.share} da ida e volta.`,
       lead: (o: { agent: string; producer: string; service: string }) =>
         `Latência é o que o agente observa por chamada no relógio virtual: ${o.agent} até a borda, mais ${o.producer} até o produtor, em cada sentido, e um tempo de serviço log-normal com mediana de ${o.service}. Nos modos IDEM o relógio também é cobrado pelo trabalho de CPU medido no E1.`,
       cdf: {
@@ -597,6 +950,7 @@ export const results = defineMessages(
         lead: (o: { args: string; result: string }) =>
           `Em uma falta, o IDEM faz trabalho que o MCP comum não faz. Com as medianas do E1 para ${o.args} de argumentos e o resultado mediano de ${o.result}:`,
         who: { consumer: "consumidor", edge: "borda", producer: "produtor" },
+        barTotal: (us: string) => `Passe o mouse ou foque uma parte. Total: ${us}.`,
         total: (o: { us: string; share: string; rtt: string; service: string }) =>
           `${o.us} ao todo: ${o.share} da ida e volta de ${o.rtt}, antes do tempo de serviço mediano de ${o.service}.`,
         b4: (delta: string) =>
@@ -608,6 +962,9 @@ export const results = defineMessages(
     },
     sensitivity: {
       title: "Onde deixa de ajudar",
+      question: "Quando o compartilhamento deixa de ajudar?",
+      verdict: (o: { losing: string; late: string; max: string }) =>
+        `${o.losing ? `Um store compartilhado de ${o.losing} ou menos é claramente superado por caches privados` : "Nenhum tamanho de store testado é claramente superado por caches privados"}; medido no relógio do produtor, até ${o.late} respostas por execução chegaram depois do seu frescor, por no máximo ${o.max}.`,
       lead: "Três varreduras mudam um parâmetro da carga base (8 agentes, sobreposição 0,5) de cada vez.",
       y: "redução a montante",
       ttl: {
@@ -631,6 +988,7 @@ export const results = defineMessages(
         caption:
           "Agentes mais rápidos não ganham: o store já responde toda repetição. Agentes mais lentos perdem, porque a execução passa a durar mais que o TTL de 60 s.",
       },
+      staleLabel: "Sobre respostas que chegaram atrasadas",
       stale: (o: { late: string; max: string }) =>
         `Nenhum Data foi servido vencido em nenhuma execução pela regra do protocolo, que conta a idade a partir do recebimento em cada salto [P-8.1]. Medido no relógio do produtor, até ${o.late} respostas por execução, nos TTLs curtos, chegaram depois do seu frescor, por no máximo ${o.max}: o tempo que um Data passa em trânsito não entra na sua idade.`,
       mixed: {
@@ -644,6 +1002,9 @@ export const results = defineMessages(
     },
     e1: {
       title: "O custo do caminho criptográfico",
+      question: "Quanto custa nomear, assinar e verificar uma chamada?",
+      verdict: (o: { small: string; verify: string; big: string; canon: string }) =>
+        `verifyData leva ${o.verify} com ${o.small} e canonicalizeArgs ${o.canon} com ${o.big} (medianas entre execuções).`,
       lead: "Uma chamada de cada operação de @idem/core, cronometrada com performance.now() depois de um aquecimento, para cargas de 1 KiB a 1 MiB. A carga é o texto do argumento para canonicalizeArgs e makeName, e o texto do resultado para signData e verifyData.",
       chart: {
         title: "Tempo por chamada conforme o tamanho da carga",
@@ -671,6 +1032,9 @@ export const results = defineMessages(
     },
     e5: {
       title: "Segurança",
+      question: "Algum ataque a uma afirmação do protocolo passa?",
+      verdict: (o: { stopped: string; expected: string; findings: number; limits: number }) =>
+        `${o.stopped} de ${o.expected} variantes de ataque que o protocolo deve barrar foram barradas em todas as tentativas; ${o.findings} ${o.findings === 1 ? "achado em aberto" : "achados em aberto"}, ${o.limits} ${o.limits === 1 ? "limite documentado medido" : "limites documentados medidos"}.`,
       lead: (o: { trials: string; variants: number }) =>
         `${o.variants} variantes de ataque, ${o.trials} tentativas cada, contra o forwarder, o produtor, o trust store e o verificador reais de @idem/core em um relógio virtual. Cada tentativa constrói um mundo novo a partir da sua semente e é julgada pelo que de fato aconteceu: uma variante só conta como rejeitada se nenhuma vítima aceitou conteúdo forjado, alheio ou expirado e nenhum cache guardou algum.`,
       findings: {
@@ -778,6 +1142,7 @@ export const results = defineMessages(
     },
     method: {
       title: "Método",
+      question: "Como estes números foram produzidos, e o que não foi executado?",
       lead: "O plano dos cinco experimentos, as métricas e as regras de relato estão na documentação.",
       docs: "Ler o método de avaliação",
       modesTitle: "Modos comparados",

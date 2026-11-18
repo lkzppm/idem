@@ -131,3 +131,36 @@ Self-contained new files; no existing sandbox file was touched while the layout 
   menu, issues, back and continue, blank canvas, NDN engine, phone (dark), desktop dark; no console errors
 - [ ] Author check in Safari: the transitions, the dock drawer (open, resize, close), the card, the
   player's menus, phone width, Portuguese
+
+## Routers first, Live agents, shared edge (ADR-030), built 2026-11-18
+
+- [x] The routers are the default engine, named "IDEM" (NDN wasm routers) beside "Simulation"; an
+  info bubble per option, no subtitles (`Segmented` `tip`)
+- [x] Pause on the routers holds the agents' next calls (`NdnNetwork.pause/resume`, tested); a
+  network just loaded starts paused
+- [x] Restart animates: the icon turns once, the progress bar drains back on an ease
+- [x] Live: add agents, set each agent's tool and argument in its card; edge and producer fixed;
+  Scenario section removed
+- [x] Shared edge: `lib/server/edge-activity.ts` (tested), `/api/edge/activity`, `idem-filled-by`,
+  the visitors node, the edge's card
+- [x] Headless WebKit (2026-11-18): two contexts on Live (the second's hit says "filled by another
+  visitor"; the first sees one other visitor), routers paused on load then 80/80 after play, the
+  engine bubbles, the reset animation; no console errors
+- [ ] Author check in Safari, and on the deployment (two devices on Live)
+
+## Your networks: save, delete, export, import (ADR-031), built 2026-11-18
+
+- [x] `lib/sandbox/library.ts`: list, save (create or update), rename, delete, export file, import
+  parse; caps on count, size and name; every storage access wrapped (`library.test.ts`, fake storage)
+- [x] `use-network.ts`: library state, the entry a network is linked to, `unsaved`, `save`, `open`,
+  `rename`, `remove`, `importText`; the autosave notes its entry; `back({remove})`
+- [x] Sidebar head: Save, Export, Delete at the end of the name row; inline name form and inline
+  delete confirm (no browser dialog); dot for unsaved changes; the toast sits under the head
+- [x] Start screen: "Your networks" (cards: open, rename, export, delete with confirm), Import a
+  file, drop a `.json` on the screen, empty state, "Show all", phone layout, springs and reduced motion
+- [x] Strings in EN and PT; docs (`content/docs/{en,pt}/sandbox.md`), `spec/04-showcase.md` §2, ADR-031
+- [x] Headless WebKit (2026-11-18): save new and name it, reload, open, edit, save again; delete
+  from the editor and from a card; export then import; malformed and non-network files; rename;
+  drop; phone, dark, Portuguese; no console errors
+- [ ] Author check in Safari: the head's three icons at the default sidebar width, the card leave
+  animation, a real file drag from Finder

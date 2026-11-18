@@ -67,13 +67,9 @@ export const sandbox = defineMessages(
       tips: {
         tool: "Which demo tool the agents call. The producer's signed manifest says whether its results may be cached, for how long, and whether they are public or private.",
         arg: "The argument of the call. Spellings that the manifest's normalizers make equal get the same name, so they share one PIT entry and one cached answer.",
-        agents:
-          "How many agents in this browser fire at once in a burst. Each call is a real HTTP request to the edge gateway.",
       },
       intro:
         "Real HTTP from this browser through the edge gateway to the producer. Every answer is verified here, with WebCrypto.",
-      instanceNote:
-        "The edge's Content Store lives in the memory of one serverless instance: hits depend on the platform reusing it, and a cold instance starts empty.",
       status: {
         connecting: "connecting…",
         ready: "manifest verified",
@@ -83,7 +79,6 @@ export const sandbox = defineMessages(
       downBody: (message: string) =>
         `The edge gateway did not answer with a valid signed manifest (${message}). The swarm mode works offline.`,
       retry: "Try again",
-      scenario: "Scenario",
       tool: "Tool",
       toolNotes: {
         fetch_page: "Cacheable, public. The url:sortQuery normalizer gives equivalent spellings one name.",
@@ -93,19 +88,56 @@ export const sandbox = defineMessages(
         send_email: "A side effect, not cacheable: it passes through as a plain call.",
       },
       argLabel: {
-        fetch_page: "doc #",
+        fetch_page: "URL",
         search_corpus: "query",
         weather: "city",
         my_notes: "",
         send_email: "to",
       },
-      agents: "Agents",
-      callOne: "Call from agent 0",
-      burst: (n: number) => `Burst: ${n} agents at once`,
-      burstNote: "In a burst each agent spells the URL its own way.",
-      clickHint: "Click an agent on the canvas to make it ask; click the edge to open its tables.",
-      nodeAsk: (id: string) => `${id}: make it ask`,
-      nodeTables: (id: string) => `${id}: open its tables`,
+      burst: (n: number) => `Burst: ${n} ${n === 1 ? "agent" : "agents"} at once`,
+      nodeOpen: (id: string) => `${id}: open its card`,
+      add: {
+        title: "Agents",
+        agent: "Agent",
+        tip: "Add an agent in this browser, with its own credential",
+        hint: (n: number, max: number) =>
+          `${n} of ${max}. Click an agent to set the tool it calls and its argument. The edge and the producer are the deployed ones, so they stay as they are.`,
+      },
+      card: {
+        close: "Close",
+        agent: "Agent in this browser",
+        ask: "Ask now",
+        remove: "Remove",
+        edge: "Forwarder · deployed, shared by every visitor",
+        visitorsTitle: "other visitors",
+        visitorsBox: "Agents of other visitors",
+        visitorsNone: "none now",
+        visitors: "Everyone else using this edge",
+        producer: "Producer · deployed",
+        producerBody:
+          "The demo MCP server, behind the edge. It signs every result with its key; this page checks the signature of every answer, wherever it came from.",
+      },
+      feed: {
+        intro:
+          "Every visitor's calls reach this same edge. A call answered from its cache or joined to a pending Interest says whose call filled it: when it is another visitor, that answer was shared.",
+        empty: "No calls at the edge in the last ten minutes.",
+        you: "you",
+        visitor: (who: string) => `visitor ${who}`,
+        outcome: {
+          hit: "cache hit",
+          aggregate: "joined a pending Interest",
+          miss: "fetched from the producer",
+          bypass: "passed through",
+          error: "error",
+        },
+        filledOther: "filled by another visitor",
+        filledSelf: "filled by the same visitor",
+        othersSeen: (n: number) => `${n} other ${n === 1 ? "visitor" : "visitors"} at the edge`,
+        instance: (id: string) =>
+          `As seen by edge instance ${id}. The edge's Content Store lives in the memory of one serverless instance: a cold instance starts empty, and another instance keeps its own.`,
+        otherInstance: (calls: string, feed: string) =>
+          `Your last call was answered by instance ${calls}, this list by ${feed}: their caches are separate.`,
+      },
       attacks: "Attacks",
       attackHint: "Each attack must be visibly rejected. The verdict lands in the Safety window.",
       attack: {
@@ -132,6 +164,7 @@ export const sandbox = defineMessages(
         edgeCs: (age: string) => `edge CS · ${age} old`,
         edgePit: "edge PIT (aggregated)",
         retried: " → retried direct",
+        byOther: " · filled by another visitor",
         network: "network error",
       },
       log: {
@@ -140,7 +173,7 @@ export const sandbox = defineMessages(
         servedBy: "served by",
         latency: "latency",
         verify: "verify",
-        empty: "No calls yet. Press Space for a burst, or click an agent.",
+        empty: "No calls yet. Press Space for a burst, or open an agent and ask.",
         count: (n: number) => `${n} calls · latest first`,
       },
       tables: {
@@ -149,7 +182,7 @@ export const sandbox = defineMessages(
           "Calls waiting for an answer, grouped by name: several agents on one name meet in one PIT entry.",
         cache: "The edge's Content Store, as this page saw it",
         cacheNote:
-          "Built from the idem-trace headers of this page's own calls. Other visitors and other instances are invisible from here.",
+          "Built from the idem-trace headers of this page's own calls. Other visitors' calls are listed in the edge's card.",
         noPending: "Nothing in flight.",
         noCache: "No entries seen yet.",
         name: "name",
@@ -422,13 +455,9 @@ export const sandbox = defineMessages(
       tips: {
         tool: "Qual ferramenta de demonstração os agentes chamam. O manifesto assinado do produtor diz se o resultado pode ir para o cache, por quanto tempo, e se é público ou privado.",
         arg: "O argumento da chamada. Grafias que os normalizadores do manifesto tornam iguais recebem o mesmo nome, e por isso dividem uma entrada na PIT e uma resposta em cache.",
-        agents:
-          "Quantos agentes deste navegador disparam juntos numa rajada. Cada chamada é uma requisição HTTP de verdade ao gateway de borda.",
       },
       intro:
         "HTTP de verdade, deste navegador, pelo gateway de borda até o produtor. Cada resposta é verificada aqui, com WebCrypto.",
-      instanceNote:
-        "O Content Store da borda vive na memória de uma instância serverless: os acertos dependem de a plataforma reaproveitá-la, e uma instância fria começa vazia.",
       status: {
         connecting: "conectando…",
         ready: "manifesto verificado",
@@ -438,7 +467,6 @@ export const sandbox = defineMessages(
       downBody: (message: string) =>
         `O gateway de borda não respondeu com um manifesto assinado válido (${message}). O modo enxame funciona offline.`,
       retry: "Tentar de novo",
-      scenario: "Cenário",
       tool: "Ferramenta",
       toolNotes: {
         fetch_page:
@@ -449,20 +477,56 @@ export const sandbox = defineMessages(
         send_email: "Um efeito colateral, não cacheável: passa como chamada comum.",
       },
       argLabel: {
-        fetch_page: "doc nº",
+        fetch_page: "URL",
         search_corpus: "consulta",
         weather: "cidade",
         my_notes: "",
         send_email: "para",
       },
-      agents: "Agentes",
-      callOne: "Chamar do agente 0",
-      burst: (n: number) => `Rajada: ${n} agentes juntos`,
-      burstNote: "Numa rajada, cada agente escreve a URL do seu jeito.",
-      clickHint:
-        "Clique num agente no canvas para ele perguntar; clique na borda para abrir as tabelas dela.",
-      nodeAsk: (id: string) => `${id}: fazer perguntar`,
-      nodeTables: (id: string) => `${id}: abrir as tabelas`,
+      burst: (n: number) => `Rajada: ${n} ${n === 1 ? "agente" : "agentes"} juntos`,
+      nodeOpen: (id: string) => `${id}: abrir o cartão`,
+      add: {
+        title: "Agentes",
+        agent: "Agente",
+        tip: "Adicionar um agente neste navegador, com a sua própria credencial",
+        hint: (n: number, max: number) =>
+          `${n} de ${max}. Clique num agente para escolher a ferramenta que ele chama e o argumento. A borda e o produtor são os implantados, então ficam como estão.`,
+      },
+      card: {
+        close: "Fechar",
+        agent: "Agente neste navegador",
+        ask: "Perguntar agora",
+        remove: "Remover",
+        edge: "Forwarder · implantado, compartilhado por todo visitante",
+        visitorsTitle: "outros visitantes",
+        visitorsBox: "Agentes de outros visitantes",
+        visitorsNone: "nenhum agora",
+        visitors: "Todos os outros que usam esta borda",
+        producer: "Produtor · implantado",
+        producerBody:
+          "O servidor MCP de demonstração, atrás da borda. Ele assina todo resultado com a sua chave; esta página confere a assinatura de toda resposta, venha de onde vier.",
+      },
+      feed: {
+        intro:
+          "As chamadas de todo visitante chegam a esta mesma borda. Uma chamada respondida pelo cache dela ou juntada a um Interest pendente diz de quem foi a chamada que a preencheu: quando é de outro visitante, essa resposta foi compartilhada.",
+        empty: "Nenhuma chamada na borda nos últimos dez minutos.",
+        you: "você",
+        visitor: (who: string) => `visitante ${who}`,
+        outcome: {
+          hit: "acerto no cache",
+          aggregate: "juntou-se a um Interest pendente",
+          miss: "buscada no produtor",
+          bypass: "passou direto",
+          error: "erro",
+        },
+        filledOther: "preenchido por outro visitante",
+        filledSelf: "preenchido pelo mesmo visitante",
+        othersSeen: (n: number) => `${n} ${n === 1 ? "outro visitante" : "outros visitantes"} na borda`,
+        instance: (id: string) =>
+          `Como visto pela instância ${id} da borda. O Content Store da borda vive na memória de uma instância serverless: uma instância fria começa vazia, e outra instância tem o seu próprio.`,
+        otherInstance: (calls: string, feed: string) =>
+          `Sua última chamada foi respondida pela instância ${calls}, esta lista pela ${feed}: os caches delas são separados.`,
+      },
       attacks: "Ataques",
       attackHint: "Cada ataque precisa ser rejeitado à vista. O veredicto aparece na janela Segurança.",
       attack: {
@@ -489,6 +553,7 @@ export const sandbox = defineMessages(
         edgeCs: (age: string) => `CS da borda · idade ${age}`,
         edgePit: "PIT da borda (agregado)",
         retried: " → nova tentativa direta",
+        byOther: " · preenchido por outro visitante",
         network: "erro de rede",
       },
       log: {
@@ -497,7 +562,7 @@ export const sandbox = defineMessages(
         servedBy: "servido por",
         latency: "latência",
         verify: "verificação",
-        empty: "Nenhuma chamada ainda. Aperte Espaço para uma rajada, ou clique num agente.",
+        empty: "Nenhuma chamada ainda. Aperte Espaço para uma rajada, ou abra um agente e pergunte.",
         count: (n: number) => `${n} chamadas · mais recentes primeiro`,
       },
       tables: {
@@ -506,7 +571,7 @@ export const sandbox = defineMessages(
           "Chamadas esperando resposta, agrupadas por nome: vários agentes no mesmo nome se encontram numa só entrada da PIT.",
         cache: "O Content Store da borda, como esta página o viu",
         cacheNote:
-          "Montado a partir dos cabeçalhos idem-trace das chamadas desta página. Outros visitantes e outras instâncias não aparecem daqui.",
+          "Montado a partir dos cabeçalhos idem-trace das chamadas desta página. As chamadas de outros visitantes estão no cartão da borda.",
         noPending: "Nada em trânsito.",
         noCache: "Nenhuma entrada vista ainda.",
         name: "nome",
