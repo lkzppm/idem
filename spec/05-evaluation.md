@@ -15,6 +15,10 @@ One CLI writes that layout (ADR-023): `pnpm sim -- --config experiments/configs/
   `packages/*/src/**` without tests, sorted by path, so a run names its code even without git.
 - `env.json` also records the load average at the start and end of the run (other work shares the
   machine) and the command line.
+- A virtual-clock run (E2) is bit-reproducible for a seed on the same platform, not across
+  platforms: `Math.log` differs in its last bits between macOS and Linux, and a Data's byte count
+  follows the digits of its `producedAt` (ADR-027). Reproduce a committed sweep on the platform in
+  its `env.json`; on another one expect close, not identical, numbers.
 - A sweep adds `summary.csv` (mean, sd, 95% CI half-width, min, max per mode, value and metric) and
   `latency_cdf.csv` (percentiles 0..100 of every call, pooled over seeds); E5 adds `trials.csv` (one
   line per trial).
