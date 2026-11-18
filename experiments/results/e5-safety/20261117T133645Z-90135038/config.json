@@ -1,0 +1,8 @@
+{
+  "experiment": "e5-safety",
+  "title": "E5 — safety: adversarial runs against the core engine",
+  "description": "Every attack variant of the suite, 250 trials each, against the real @idem/core Forwarder, Producer, TrustStore and verifyData on a virtual clock. Each trial builds a fresh world from its seed and is judged on ground truth: what the victim accepted and what the Content Stores hold.",
+  "kind": "safety",
+  "seed": 1,
+  "trials": 250
+}

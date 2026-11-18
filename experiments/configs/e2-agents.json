@@ -1,0 +1,50 @@
+{
+  "experiment": "e2-agents",
+  "kind": "sweep",
+  "title": "E2 \u2014 upstream reduction vs. number of agents (W-syn)",
+  "description": "Sweep of the swarm size at the base workload. W-syn: every agent makes callsPerAgent calls to fetch_page with an exponential think time between them; a fraction `overlap` of the calls is drawn from a shared catalog by Zipf(alpha), the rest ask for documents no other call asks for. Same seeds at every point; reductions are paired by seed against B0 (and B1).",
+  "seeds": {
+    "first": 1,
+    "count": 30
+  },
+  "modes": ["B0", "B1", "B2", "B3", "B4"],
+  "sweep": {
+    "param": "agents",
+    "values": [1, 2, 4, 8, 16, 32]
+  },
+  "base": {
+    "workload": {
+      "agents": 8,
+      "callsPerAgent": 20,
+      "catalogSize": 50,
+      "zipfAlpha": 0.8,
+      "overlap": 0.5,
+      "thinkTimeMs": 2000,
+      "surfaceVariation": 0.3,
+      "privateFraction": 0,
+      "sideEffectFraction": 0
+    },
+    "topology": {
+      "agentLinkMs": 5,
+      "producerLinkMs": 40,
+      "lossPct": 0,
+      "tree": {
+        "edges": 2,
+        "coreLinkMs": 10,
+        "producerLinkMs": 30
+      }
+    },
+    "producer": {
+      "serviceMedianMs": 150,
+      "serviceSigma": 0.5,
+      "ttlMs": 60000,
+      "pageBytesMedian": 6144
+    },
+    "cs": {
+      "maxBytes": 8388608,
+      "policy": "lru"
+    },
+    "interestLifetimeMs": 10000
+  },
+  "processing": "processing.json"
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@idem/core",
+  "version": "0.0.0",
+  "description": "IDEM v1 core: names, canonicalization, signed Data, manifests and the forwarder engine (PIT, CS, FIB). Web APIs only.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

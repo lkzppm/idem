@@ -1,0 +1,786 @@
+@import "tailwindcss";
+/* Per-area styles, so each part of the site keeps its own file. */
+@import "./styles/chrome.css";
+@import "./styles/landing.css";
+@import "./styles/sandbox.css";
+@import "./styles/docs.css";
+@import "./styles/results.css";
+
+/*
+ * Design tokens. Dark is the default; `data-theme="light"` on <html> switches to the light set.
+ * Keep `lib/theme-colors.ts` in sync: the WebGPU / Canvas2D renderers read the same values.
+ *
+ * Exactly two accents, used everywhere with one meaning each:
+ *   --interest  requests (Interests, plain calls)   calm blue
+ *   --data      answers  (signed Data, results)     amber
+ * Blue/amber stays distinguishable under the common color-vision deficiencies.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-elev: #0a0a0a;
+  --bg-subtle: #111111;
+  --fg: #ededed;
+  --fg-muted: #a1a1a1;
+  --fg-subtle: #6e6e6e;
+  --line: rgb(255 255 255 / 0.1);
+  --line-strong: rgb(255 255 255 / 0.18);
+  --grid: rgb(255 255 255 / 0.035);
+  --interest: #5aa9ff;
+  --interest-soft: rgb(90 169 255 / 0.14);
+  --data: #f5b841;
+  --data-soft: rgb(245 184 65 / 0.14);
+  /* A yellow surface (button fill) under dark text. */
+  --data-fill: #f5b841;
+  /* Yellow as a color (display words, the mark, the globe): saturated, never darkened. */
+  --data-bright: #f5b841;
+  --material: rgb(0 0 0 / 0.62);
+  --shadow-lg: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 24px 48px -24px rgb(0 0 0 / 0.9);
+
+  /*
+   * Motion. Springs expressed as CSS `linear()` curves sampled from the closed-form solution.
+   *   --spring:        damping 1.0, response 0.35 s (critically damped, no overshoot). UI default.
+   *   --spring-bounce: damping 0.8, response 0.40 s. Reserved for momentum (never used on fades).
+   */
+  --spring: linear(
+    0,
+    0.0528,
+    0.1674,
+    0.3008,
+    0.4308,
+    0.5468,
+    0.6452,
+    0.7259,
+    0.7905,
+    0.8412,
+    0.8806,
+    0.9107,
+    0.9336,
+    0.9509,
+    0.9638,
+    0.9734,
+    0.9805,
+    0.9858,
+    0.9896,
+    0.9925,
+    0.9945,
+    0.996,
+    0.9971,
+    0.9979,
+    1
+  );
+  --spring-duration: 490ms;
+  --spring-bounce: linear(
+    0,
+    0.0351,
+    0.1203,
+    0.2315,
+    0.3521,
+    0.4706,
+    0.5801,
+    0.6768,
+    0.7591,
+    0.8268,
+    0.881,
+    0.923,
+    0.9546,
+    0.9776,
+    0.9936,
+    1.0041,
+    1.0105,
+    1.0139,
+    1.0151,
+    1.0149,
+    1.0138,
+    1.0122,
+    1.0104,
+    1.0086,
+    1.0068,
+    1.0053,
+    1.004,
+    1.0029,
+    1
+  );
+  --spring-bounce-duration: 510ms;
+  --press-duration: 100ms;
+
+  /* One easing for page motion (reveals, swaps, hovers); a spring for small pops. */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* A section on a plain ground, and the veil that keeps words legible over a canvas. */
+  --ground: color-mix(in srgb, var(--fg) 2.5%, var(--bg));
+  --veil: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-elev: #fafafa;
+  --bg-subtle: #f4f4f5;
+  --fg: #0a0a0a;
+  --fg-muted: #5c5c5c;
+  --fg-subtle: #8f8f8f;
+  --line: rgb(0 0 0 / 0.08);
+  --line-strong: rgb(0 0 0 / 0.14);
+  --grid: rgb(0 0 0 / 0.04);
+  --interest: #0b63ce;
+  --interest-soft: rgb(11 99 206 / 0.1);
+  /* A golden yellow, not orange: 3.2:1 on white, for large text, lines and marks. */
+  --data: #b58900;
+  --data-soft: rgb(181 137 0 / 0.1);
+  --data-fill: #ffc21a;
+  /* Darkening a yellow turns it mustard, so where yellow is the color itself it stays fully
+     saturated (2:1 on white: display sizes and marks only; small text keeps --data). */
+  --data-bright: #f2ac00;
+  --material: rgb(255 255 255 / 0.72);
+  --shadow-lg: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 24px 48px -24px rgb(0 0 0 / 0.18);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-elev: var(--bg-elev);
+  --color-subtle: var(--bg-subtle);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-faint: var(--fg-subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-interest: var(--interest);
+  --color-interest-soft: var(--interest-soft);
+  --color-data: var(--data);
+  --color-data-soft: var(--data-soft);
+  --color-data-bright: var(--data-bright);
+  --font-sans: var(--font-sans-face), ui-sans-serif, system-ui, sans-serif;
+  /* Headlines and the wordmark: the same geometric face, kept as its own token. */
+  --font-display: var(--font-sans-face), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
+  /* No scroll anchoring: WebKit anchors to elements mid reveal animation and creeps the page a few
+     pixels after every scroll (and off the section navigator's landing). Nothing above the reader
+     resizes on these pages, so there is nothing for anchoring to protect. */
+  overflow-anchor: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* Ease theme changes instead of an abrupt brightness jump. */
+  transition:
+    background-color 280ms ease,
+    color 280ms ease;
+}
+
+::selection {
+  background: var(--interest-soft);
+}
+
+/* Typography: tracking and leading are size-specific. */
+.t-display {
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 6.4vw, 5.2rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  font-weight: 600;
+}
+.t-h2 {
+  font-size: clamp(1.75rem, 3.4vw, 2.6rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+}
+.t-h3 {
+  font-size: 1.125rem;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  font-weight: 560;
+}
+/*
+ * A label above a title: the IDEM mark in small (the blue request harpoon over the yellow answer
+ * harpoon, drawn here with two masked pseudo-elements so any page gets it from the class alone),
+ * then a few words in Outfit, sentence case. The home page's `.eyebrow` (components/landing/
+ * section-label.tsx) is the same label, larger, with the mark as SVG so it can animate in.
+ * For small field labels inside panels, without the mark, use `.t-label`.
+ */
+.t-eyebrow {
+  position: relative;
+  padding-left: 1.6em;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.003em;
+  text-transform: none;
+  color: var(--fg-muted);
+}
+.t-eyebrow::before,
+.t-eyebrow::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.08em;
+  width: 1.2em;
+  height: 1.2em;
+  background: var(--interest);
+  -webkit-mask: var(--mark-i) center / contain no-repeat;
+  mask: var(--mark-i) center / contain no-repeat;
+}
+.t-eyebrow::after {
+  background: var(--data-bright);
+  -webkit-mask-image: var(--mark-d);
+  mask-image: var(--mark-d);
+}
+:root {
+  --mark-i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='4 4 24 24'%3E%3Cpath d='M7 12.5H25L19.5 7' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='square'/%3E%3C/svg%3E");
+  --mark-d: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='4 4 24 24'%3E%3Cpath d='M25 19.5H7L12.5 25' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+/* A small label for a field inside a panel: the eyebrow's type, without the mark. */
+.t-label {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--fg-subtle);
+}
+.t-mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  font-feature-settings: "zero" 1;
+}
+
+/* A crisp hairline grid, used behind sections and canvases. */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Translucent material for floating chrome (content scrolls underneath). */
+.material {
+  background: var(--material);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+}
+
+/* Scroll-edge effect instead of a hard divider under floating chrome. */
+.edge-fade {
+  mask-image: linear-gradient(to bottom, black 70%, transparent);
+}
+
+/*
+ * Pointer affordance. Tailwind v4's preflight gives buttons the default arrow; anything that acts
+ * on click gets the hand. Disabled controls keep the arrow (macOS convention), not "not-allowed".
+ */
+@layer base {
+  button,
+  [role="button"],
+  [role="tab"],
+  select,
+  summary,
+  input[type="checkbox"],
+  input[type="radio"],
+  label:has(> input[type="checkbox"], > input[type="radio"]) {
+    cursor: pointer;
+  }
+  button:disabled,
+  select:disabled,
+  input:disabled {
+    cursor: default;
+  }
+}
+
+/*
+ * Press feedback on pointer-down; release eases back with the spring. Colors are listed too:
+ * this rule is unlayered, so it overrides Tailwind's `transition-colors` and must carry them itself.
+ */
+.pressable {
+  transition-property: transform, color, background-color, border-color, opacity, text-decoration-color;
+  transition-duration: var(--spring-duration), 200ms, 200ms, 200ms, 200ms, 200ms;
+  transition-timing-function: var(--spring), ease, ease, ease, ease, ease;
+}
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: var(--press-duration), 200ms, 200ms, 200ms, 200ms, 200ms;
+  transition-timing-function: ease-out, ease, ease, ease, ease, ease;
+}
+
+/* Theme toggle: the icon for the current theme turns in; the other turns out. */
+.theme-icon {
+  transition:
+    transform var(--spring-duration) var(--spring),
+    opacity 200ms ease;
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.5);
+}
+:root:not([data-theme="light"]) .theme-icon-moon,
+:root[data-theme="light"] .theme-icon-sun {
+  opacity: 1;
+  transform: none;
+}
+
+/* Range inputs: hairline track, solid thumb. */
+input[type="range"].range {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"].range::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--line-strong);
+  border-radius: 2px;
+}
+input[type="range"].range::-moz-range-track {
+  height: 2px;
+  background: var(--line-strong);
+  border-radius: 2px;
+}
+input[type="range"].range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  border-radius: 999px;
+  background: var(--fg);
+  border: 0;
+  box-shadow: 0 0 0 4px var(--bg);
+  transition: transform 160ms var(--spring);
+}
+input[type="range"].range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--fg);
+  border: 0;
+  box-shadow: 0 0 0 4px var(--bg);
+  transition: transform 160ms var(--spring);
+}
+@media (hover: hover) {
+  input[type="range"].range:hover::-webkit-slider-thumb,
+  input[type="range"].range:hover::-moz-range-thumb {
+    transform: scale(1.1);
+  }
+}
+input[type="range"].range:active::-webkit-slider-thumb {
+  transform: scale(1.18);
+}
+input[type="range"].range:focus-visible {
+  outline: none;
+}
+input[type="range"].range:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 4px var(--bg),
+    0 0 0 6px var(--interest);
+}
+
+:focus-visible {
+  outline: 2px solid var(--interest);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ------------------------------------------------------------------
+   Landing vocabulary: hairline, modest radii, one easing.
+   ------------------------------------------------------------------ */
+@layer components {
+  /* Buttons: hairline, a modest radius (never a pill). `primary` is the Interest fill, `secondary`
+     the ghost that turns blue on hover, `icon` the glyph button. All rise a pixel on hover and
+     press in on click. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 18px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    border: 1px solid var(--line-strong);
+    border-radius: 9px;
+    background: var(--veil);
+    color: var(--fg);
+    transform: scale(1);
+    transition:
+      background-color 0.2s var(--ease),
+      color 0.2s var(--ease),
+      border-color 0.2s var(--ease),
+      transform 0.5s var(--ease-spring);
+  }
+  /* Hover only changes size: the button swells with a small springy overshoot and settles back
+     the same way when the pointer leaves; a press squeezes it. No color change. */
+  .btn:hover:not(:disabled) {
+    transform: scale(1.06);
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.95);
+    transition-duration: 0.12s;
+    transition-timing-function: ease-out;
+  }
+  .btn svg {
+    transition: transform 0.25s var(--ease);
+  }
+  .btn:hover:not(:disabled) .btn-arrow {
+    transform: translateX(3px);
+  }
+  .btn-primary {
+    background: var(--interest);
+    border-color: var(--interest);
+    color: var(--bg);
+  }
+  /* The answer's color, the yellow partner of .btn-primary, with dark text in both themes. */
+  .btn-data {
+    background: var(--data-fill);
+    border-color: var(--data-fill);
+    color: #0a0a0a;
+  }
+  .btn-icon {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    color: var(--fg-muted);
+  }
+  .btn:disabled {
+    opacity: 0.45;
+  }
+
+  /* A section's label (components/landing/section-label.tsx): the mark, then words in Outfit. */
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-sans);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    text-transform: none;
+    color: var(--fg);
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 560;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    text-wrap: balance;
+  }
+  .section-lead {
+    margin-top: 16px;
+    max-width: 640px;
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+
+  /* Scroll reveal (components/landing/reveal.tsx): rises into place once, in its turn
+     (`--delay`). Only hidden once scripts run, so the page reads without them. */
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(22px);
+    transition:
+      opacity 0.9s var(--ease),
+      transform 1s var(--ease);
+    transition-delay: var(--delay, 0s);
+  }
+  .js .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nudge {
+  50% {
+    transform: translateY(5px);
+  }
+}
+/* A bar filling from the left (`origin-left`): the time left on a tab. */
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+/* A view coming in, from below. */
+@keyframes swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Figures (components/landing/figures): SVG drawn in the theme's tokens.
+   ------------------------------------------------------------------ */
+.fig {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.fig text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--fg-muted);
+  font-feature-settings: "zero" 1;
+}
+.fig .s {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+/* Fills come after .s so a shape can be both stroked and filled (".f-bg s" is an opaque box). */
+.fig .f-fg {
+  fill: var(--fg);
+}
+.fig .f-faint {
+  fill: var(--fg-subtle);
+}
+.fig .f-i {
+  fill: var(--interest);
+}
+.fig .f-d {
+  fill: var(--data);
+}
+.fig .f-bg {
+  fill: var(--bg);
+}
+.fig .f-soft-i {
+  fill: var(--interest-soft);
+}
+.fig .f-soft-d {
+  fill: var(--data-soft);
+}
+/* Faces of the stack figure's slabs: top a touch above the page, sides a touch darker. */
+.fig .f-top {
+  fill: color-mix(in srgb, var(--fg) 3%, var(--bg));
+}
+.fig .f-side {
+  fill: color-mix(in srgb, var(--fg) 7%, var(--bg));
+}
+.fig .s-fg {
+  stroke: color-mix(in srgb, var(--fg) 55%, transparent);
+}
+.fig .s-i {
+  stroke: var(--interest);
+}
+.fig .s-d {
+  stroke: var(--data);
+}
+.fig .dash {
+  stroke-dasharray: 3 3;
+}
+/* A packet: one short dash travelling a path drawn with pathLength="100", during the first
+   quarter of its cycle (--T), after --d. Phases chain by delay. */
+.fig .hop {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: butt;
+  stroke-dasharray: 7 1000;
+  stroke-dashoffset: 8;
+  animation: fig-hop var(--T, 4.8s) linear var(--d, 0s) infinite both;
+}
+@keyframes fig-hop {
+  0% {
+    stroke-dashoffset: 8;
+  }
+  25% {
+    stroke-dashoffset: -101;
+  }
+  100% {
+    stroke-dashoffset: -101;
+  }
+}
+/* Something that appears in its phase and fades: --d sets when. */
+.fig .blink {
+  animation: fig-blink var(--T, 4.8s) var(--ease) var(--d, 0s) infinite both;
+}
+@keyframes fig-blink {
+  0% {
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  22% {
+    opacity: 1;
+  }
+  30% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Entrance: content rises a few pixels and fades in, once. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 700ms var(--spring) both;
+}
+
+@keyframes flash-in {
+  from {
+    background-color: var(--data-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.row-flash {
+  animation: flash-in 900ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .js .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .fig .hop {
+    animation: none;
+    stroke-dashoffset: -46;
+  }
+  .fig .blink {
+    animation: none;
+    opacity: 1;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+  .pressable,
+  .pressable:active:not(:disabled) {
+    transform: none;
+    transition-property: color, background-color, border-color, opacity, text-decoration-color;
+    transition-duration: 200ms;
+    transition-timing-function: ease;
+  }
+  /* Cross-fade the theme icons instead of spinning them. */
+  .theme-icon {
+    transform: none;
+    transition: opacity 200ms ease;
+  }
+  .rise {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .material {
+    background: var(--bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --line: rgb(255 255 255 / 0.3);
+    --line-strong: rgb(255 255 255 / 0.45);
+    --fg-muted: #c8c8c8;
+  }
+  :root[data-theme="light"] {
+    --line: rgb(0 0 0 / 0.3);
+    --line-strong: rgb(0 0 0 / 0.45);
+    --fg-muted: #333333;
+  }
+}
+
+/* Theme switch (components/site/theme-toggle.tsx): the new theme is revealed by a growing circle,
+   so the snapshots themselves must not cross-fade or blend. The circle is a CSS animation on the new
+   snapshot, so it exists from the very first frame the snapshot does: the new page can never show
+   whole before the circle starts (a script-started animation would only begin once the transition
+   is ready, a frame or more later in some engines). Keep the duration and curve in step with
+   REVEAL_MS and REVEAL_EASING in lib/theme-reveal.ts. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  z-index: 1;
+}
+:root.theme-vt::view-transition-new(root) {
+  clip-path: circle(0px at var(--vt-x) var(--vt-y));
+  animation: theme-reveal 700ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0px at var(--vt-x) var(--vt-y));
+  }
+  to {
+    clip-path: circle(var(--vt-r) at var(--vt-x) var(--vt-y));
+  }
+}
+/* A still snapshot would freeze the hero's canvases (Safari freezes a canvas left in the snapshots),
+   so during the switch the globe and the dots leave the snapshots and stay live above them, painting
+   the circle into their own frames (lib/theme-reveal.ts): old palette outside, new inside. The dots
+   are clear between dots, so the page shows through. Both are kept out of the header's strip, where
+   they would otherwise show unblurred. */
+:root.theme-vt .halftone-canvas {
+  view-transition-name: hero-dots;
+}
+:root.theme-vt .globe-canvas {
+  view-transition-name: hero-globe;
+}
+::view-transition-group(hero-dots),
+::view-transition-group(hero-globe) {
+  animation: none;
+}
+::view-transition-group(hero-dots) {
+  z-index: 2;
+}
+::view-transition-group(hero-globe) {
+  z-index: 3;
+}
+::view-transition-old(hero-dots),
+::view-transition-old(hero-globe) {
+  display: none;
+}
+::view-transition-new(hero-dots),
+::view-transition-new(hero-globe) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(hero-dots) {
+  clip-path: inset(var(--vt-dots-top, 0px) 0 0 0);
+}
+::view-transition-new(hero-globe) {
+  clip-path: inset(var(--vt-globe-top, 0px) 0 0 0);
+}
