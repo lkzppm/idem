@@ -241,7 +241,9 @@ export function verifyNdnData(d: NdnData, trust: TrustStore, opts?: { now?: numb
 // Endpoints
 export function serveNdn(opts: { producer: Producer; key: IdemKeyPair; fw?: Forwarder; concurrency?: number }): Promise<NdnProducer>;
 export class NdnConsumer {
-  constructor(opts: { producer: string; fw?: Forwarder; trust?: TrustStore; lifetimeMs?: number });
+  constructor(opts: { producer: string; fw?: Forwarder; trust?: TrustStore; lifetimeMs?: number;
+                      interestLifetimeMs?: number; retransmissions?: number });   // retx: fresh Nonce, same name
+  // call() → NdnCallOutcome also carries `attempts` (Interests sent) and `verifyMs` (both signatures)
   init(): Promise<{ manifest: Manifest; tools: ToolInfo[] }>;   // _manifest / _tools over NDN
   prepare(tool: string, args: unknown): Promise<Interest | undefined>;
   call(tool: string, args: unknown): Promise<NdnCallOutcome>;
