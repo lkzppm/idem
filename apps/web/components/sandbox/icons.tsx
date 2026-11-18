@@ -165,3 +165,58 @@ export function WindowIcon({ id }: { id: WindowId }) {
       );
   }
 }
+
+/** Save: a floppy disk. */
+export function SaveIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M3.5 2.5h7l2.5 2.5v7.5a1 1 0 01-1 1h-8.5a1 1 0 01-1-1v-9a1 1 0 011-1z" />
+      <path d="M5.5 2.5v3h4v-3M5 13.5v-4h6v4" />
+    </Glyph>
+  );
+}
+
+/** Delete: a bin. */
+export function TrashIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M2.8 4.5h10.4M6 4.5V3a.8.8 0 01.8-.8h2.4a.8.8 0 01.8.8v1.5M4 4.5l.6 8a1 1 0 001 .9h4.8a1 1 0 001-.9l.6-8M6.6 7v4M9.4 7v4" />
+    </Glyph>
+  );
+}
+
+/** Export: an arrow leaving a tray. */
+export function ExportIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M8 10V2.8M5.2 5.4L8 2.6l2.8 2.8M3 9.5v3a1 1 0 001 1h8a1 1 0 001-1v-3" />
+    </Glyph>
+  );
+}
+
+/** Import: an arrow entering a tray. */
+export function ImportIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M8 2.8V10M5.2 7.4L8 10.2l2.8-2.8M3 9.5v3a1 1 0 001 1h8a1 1 0 001-1v-3" />
+    </Glyph>
+  );
+}
+
+/** Rename: a pencil. */
+export function PencilIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M10.6 2.9l2.5 2.5-7.4 7.4-3.1.6.6-3.1zM9.2 4.3l2.5 2.5" />
+    </Glyph>
+  );
+}
+
+/** Confirm (a tick). */
+export function CheckIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Glyph size={size}>
+      <path d="M3.5 8.5l3 3 6-7" />
+    </Glyph>
+  );
+}
