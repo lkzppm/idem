@@ -197,8 +197,6 @@ export function NdnEngine({
               scene,
               now: () => performance.now(),
               nodes,
-              title: tn.title,
-              note: `${tn.note} · ${tn.realTime}`,
               agentLabels: true,
               badges: Object.fromEntries(
                 Object.entries(s?.forwarders ?? {})
