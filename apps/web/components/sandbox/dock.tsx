@@ -1,7 +1,7 @@
 "use client";
 
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
-import { DOCK_DEFAULT, WINDOW_IDS, type WindowId } from "@/lib/sandbox/layout";
+import { DOCK_DEFAULT, type WindowId } from "@/lib/sandbox/layout";
 import { CloseIcon, WindowIcon } from "./icons";
 import type { SlotName } from "./workspace";
 
@@ -23,6 +23,7 @@ const CLOSE_MS = 240;
  * click restores the default). Each panel's body and title hint are slots the running mode fills.
  */
 export function Dock({
+  ids,
   isOpen,
   names,
   blurbs,
@@ -36,6 +37,8 @@ export function Dock({
   labels,
   end,
 }: {
+  /** The panels the mode fills, in tab order (their keys are 1, 2, …). */
+  ids: readonly WindowId[];
   isOpen: (id: WindowId) => boolean;
   names: Record<WindowId, string>;
   blurbs: Record<WindowId, string>;
@@ -53,7 +56,7 @@ export function Dock({
   /** Buttons at the right end of the tab bar. */
   end?: ReactNode;
 }) {
-  const open = WINDOW_IDS.filter(isOpen);
+  const open = ids.filter(isOpen);
   const key = open.join();
   // The panels drawn: the open ones, or the last ones while the drawer slides down.
   const [shown, setShown] = useState<WindowId[]>(open);
@@ -61,7 +64,7 @@ export function Dock({
   const tabs = useRef(new Map<WindowId, HTMLButtonElement>());
 
   useEffect(() => {
-    const now = WINDOW_IDS.filter(isOpen);
+    const now = ids.filter(isOpen);
     if (now.length > 0) {
       setShown(now);
       setClosing(false);
@@ -130,7 +133,7 @@ export function Dock({
       )}
       <nav className="obs-tabbar" aria-label={labels.panels}>
         <ul className="obs-tabs">
-          {WINDOW_IDS.map((id, i) => {
+          {ids.map((id, i) => {
             const on = isOpen(id);
             return (
               <li key={id}>

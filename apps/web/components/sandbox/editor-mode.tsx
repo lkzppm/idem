@@ -60,7 +60,7 @@ import {
   shortName,
 } from "./ui";
 import { useDragToStage } from "./window/drag-to-stage";
-import { isTyping, Slot, useWorkspace } from "./workspace";
+import { isTyping, Slot, usePanels, useWorkspace } from "./workspace";
 
 type Strings = (typeof sandbox)["en"];
 type SwarmStrings = Strings["swarm"];
@@ -505,6 +505,20 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
     : 0;
   const now = views[0]?.now ?? 0;
   const modes = views.map((v) => v.mode);
+  // The routers fill the log and the metrics; the simulation adds its tables and inspector, the
+  // comparison when more than one protocol runs, and safety when an attack can be (or was) sent.
+  usePanels(
+    ndn
+      ? ["log", "metrics"]
+      : [
+          "log",
+          "tables",
+          "inspector",
+          "metrics",
+          ...(net.run.compare.length > 1 ? (["compare"] as const) : []),
+          ...(canAttack || attacks.length > 0 ? (["safety"] as const) : []),
+        ],
+  );
 
   // Event log rows (bounded).
   const logRun = runs.current.find((r) => r.mode === logSource) ?? runs.current[0];

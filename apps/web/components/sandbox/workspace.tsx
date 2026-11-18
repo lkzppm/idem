@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, type ReactNode, useContext } from "react";
+import { createContext, type ReactNode, useContext, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Rect, SandboxMode, WindowId } from "@/lib/sandbox/layout";
 
@@ -24,6 +24,8 @@ export interface WorkspaceApi {
   isOpen(id: WindowId): boolean;
   /** Open a panel (or show its tab on a phone). */
   reveal(id: WindowId): void;
+  /** The panels this mode fills; the dock shows a tab for these only. */
+  setPanels(ids: readonly WindowId[]): void;
 }
 
 const Ctx = createContext<WorkspaceApi | null>(null);
@@ -38,6 +40,17 @@ export function useWorkspace(): WorkspaceApi {
   const ws = useContext(Ctx);
   if (!ws) throw new Error("useWorkspace outside the observatory");
   return ws;
+}
+
+/**
+ * Declare the panels the running mode has something to show in (by engine, network, attacks…). The
+ * dock and the keys follow this list; the others' tabs are not drawn.
+ */
+export function usePanels(ids: readonly WindowId[]): void {
+  const { setPanels } = useWorkspace();
+  const key = ids.join();
+  // `key` stands for the list, so a new array with the same panels does not set it again.
+  useEffect(() => setPanels(ids), [key, setPanels]);
 }
 
 /** True when a key event comes from a text field, where shortcut keys must type instead. */

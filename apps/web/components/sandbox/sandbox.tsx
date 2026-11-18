@@ -228,8 +228,15 @@ export function Sandbox() {
     return fn;
   }, []);
 
+  // The panels the mode fills (`usePanels`); only these have a tab, a key and an open drawer.
+  const [panels, setPanels] = useState<readonly WindowId[]>(WINDOW_IDS);
+  const isOpenHere = useCallback((id: WindowId) => panels.includes(id) && L.isOpen(id), [panels, L]);
+  // A phone tab whose panel the mode no longer fills goes back to the controls.
+  useEffect(() => {
+    if (tab !== "controls" && !panels.includes(tab)) setTab("controls");
+  }, [tab, panels]);
   // The dock: its drawer is open while any panel is, and the network gets the stage above it.
-  const anyOpen = WINDOW_IDS.some((id) => L.isOpen(id));
+  const anyOpen = panels.some((id) => L.isOpen(id));
   const drawer = dockHeight(L.layout.dock, stage.h);
   const drawerMax = dockHeight(Number.POSITIVE_INFINITY, stage.h);
   const area = useMemo(
@@ -247,15 +254,25 @@ export function Sandbox() {
 
   const reveal = useCallback(
     (id: WindowId) => {
+      if (!panels.includes(id)) return;
       if (phone) setTab(id);
       else L.open(id);
     },
-    [phone, L],
+    [phone, L, panels],
   );
 
   const api = useMemo<WorkspaceApi>(
-    () => ({ mode, phone, stage, area, slots, isOpen: (id) => (phone ? tab === id : L.isOpen(id)), reveal }),
-    [mode, phone, stage, area, slots, tab, L, reveal],
+    () => ({
+      mode,
+      phone,
+      stage,
+      area,
+      slots,
+      isOpen: (id) => (phone ? tab === id : isOpenHere(id)),
+      reveal,
+      setPanels,
+    }),
+    [mode, phone, stage, area, slots, tab, isOpenHere, reveal],
   );
 
   // Keys: 1–6 toggle panels, ? the cheat sheet, Esc closes it.
@@ -264,8 +281,8 @@ export function Sandbox() {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e)) return;
       const n = Number(e.key);
-      if (Number.isInteger(n) && n >= 1 && n <= WINDOW_IDS.length) {
-        const id = WINDOW_IDS[n - 1] as WindowId;
+      if (Number.isInteger(n) && n >= 1 && n <= panels.length) {
+        const id = panels[n - 1] as WindowId;
         if (phone) setTab(id);
         else L.toggle(id);
         e.preventDefault();
@@ -276,7 +293,7 @@ export function Sandbox() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [L, phone, help, choosing]);
+  }, [L, phone, help, choosing, panels]);
 
   useEffect(() => {
     if (!help) return;
@@ -591,7 +608,8 @@ export function Sandbox() {
           <Legend labels={s.legend} />
           {!phone && (
             <Dock
-              isOpen={L.isOpen}
+              ids={panels}
+              isOpen={isOpenHere}
               names={s.windowNames}
               blurbs={s.windowBlurb}
               height={drawer}
@@ -628,7 +646,7 @@ export function Sandbox() {
           <div className="obs-dock" inert={busy}>
             <div className="obs-dock-head">{netHead}</div>
             <nav className="obs-dock-tabs" aria-label={s.sections}>
-              {(["controls", ...WINDOW_IDS] as const).map((id) => (
+              {(["controls", ...panels] as const).map((id) => (
                 <button
                   key={id}
                   type="button"
