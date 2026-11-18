@@ -25,7 +25,7 @@ type Edit = (next: Network, coalesce?: string) => void;
 type T = (typeof editor)["en"];
 
 /**
- * The selected node's or link's settings, every field with its info tip. Changes apply at once
+ * The selected node's or link's settings (the body of the selection card), every field with its info tip. Changes apply at once
  * (the run restarts, debounced); a slider drag is one undo step.
  */
 export function Properties({
@@ -45,7 +45,7 @@ export function Properties({
 }) {
   const t = useMessages(editor);
   const p = t.props;
-  if (!sel) return <p className="obs-note">{p.none}</p>;
+  if (!sel) return null;
   if (sel.kind === "link") {
     const l = net.links.find((x) => x.id === sel.id);
     return l ? <LinkProps l={l} net={net} edit={edit} t={t} onDelete={onDelete} /> : null;
@@ -54,12 +54,6 @@ export function Properties({
   if (!n) return null;
   return (
     <div className="obs-props">
-      <div className="obs-props-head">
-        <span className="obs-props-kind" data-kind={n.kind}>
-          {p.kinds[n.kind]}
-        </span>
-        <span className="t-mono obs-props-id">{n.id}</span>
-      </div>
       {n.kind === "agent" && <AgentProps n={n} net={net} edit={edit} t={t} />}
       {n.kind === "forwarder" && (
         <Slider
@@ -383,12 +377,6 @@ function LinkProps({
   const p = t.props;
   return (
     <div className="obs-props">
-      <div className="obs-props-head">
-        <span className="obs-props-kind" data-kind="link">
-          {p.kinds.link}
-        </span>
-        <span className="t-mono obs-props-id">{p.ends(l.a, l.b)}</span>
-      </div>
       <Slider
         label={p.latency}
         tip={p.tips.latency}

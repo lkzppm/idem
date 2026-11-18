@@ -217,7 +217,7 @@ through `lib/i18n/messages/landing.ts`, so a Portuguese string that runs longer 
 narrow drawing. Panels elsewhere that used `.t-eyebrow` for field labels now show the small mark;
 they can switch to `.t-label`.
 
-## ADR-021 — The sandbox is an observatory: sidebar, stage, floating windows (amended by ADR-028)
+## ADR-021 — The sandbox is an observatory: sidebar, stage, floating windows (amended by ADR-028; windows replaced by ADR-029)
 **Context.** The sandbox was a long scrolling page of panels (header, mode tabs, canvas, attacks,
 tables). The author asked for "something like the observatory I got in GraphMan, with a sidebar,
 draggable windows", in this project's flat cartoon style. GraphMan's observatory has the full-height
@@ -515,7 +515,7 @@ after this change carries a new run id; the committed E1, E2 and E5 results are 
 numbers would come out identical (the fingerprints show it for E2; E1 and E5 do not run the
 `Simulation`), so no rerun is required for correctness, only to name the current code.
 
-## ADR-028 — The sandbox is a network editor; NDN routers in the page are YaNFD on WebAssembly
+## ADR-028 — The sandbox is a network editor; NDN routers in the page are YaNFD on WebAssembly (chrome amended by ADR-029)
 **Context.** The author asked for the sandbox to let visitors build agent networks (several edges and
 producers, every node draggable and configurable, a tool list per agent), to open on a screen that
 picks what to load (examples or a blank canvas) rather than on a network, to drop the Live / Swarm
@@ -561,6 +561,40 @@ end to end, so they are shown as live counters only and never quoted as results.
 the NDNts keychain failed in WebKit (its Ed25519 ponyfill cannot use a native `CryptoKey`), so
 `@idem/ndn` now signs and verifies with WebCrypto directly. Comparison panes are clipped to their
 frames (scissor rectangles), since a shared camera can carry a network past its pane.
+
+## ADR-029 — Sandbox chrome: start screen, back button, player bar, selection card, bottom dock
+**Context.** After using the editor, the author asked for: a better start screen (a simple plus for a
+blank canvas, the examples in their own column); no loading of another network while one is open
+(a way back to the start screen instead of the in-session picker); a smoother change between the two
+screens; a cleaner sidebar (play and restart out of it, as a media player over the canvas; no
+"Selected" section, but a card named after the clicked component on the right; no renderer and seed
+footnote); and the windows as tabs fixed along the bottom that open upward.
+**Decision.** (1) *Start screen*: a heading, then two columns: on the left a large plus tile (blank
+canvas) and, when this browser saved a network, "continue where you left off"; on the right the
+examples, one row each (drawing, name, blurb), Live last. (2) *One network per visit to the editor*:
+networks load only from the start screen (each with an empty history); the sidebar head has a back
+button ("Networks") that saves the network if it was edited and returns to the start screen. The
+in-session picker is gone. (3) *Transitions*: picking plays the start screen out (fade, slight
+scale up, 0.28 s) while the workspace comes in (sidebar from the left, player from the top, tab bar
+and drawer from the bottom, nodes popping in); back plays the workspace out, then the start screen
+in. Reduced motion: short fades only. (4) *Player bar* (top centre of the stage, in its own band
+the network never enters): restart, play or pause, virtual time, a progress bar of calls answered,
+the speed menu; when the network cannot run, the first reason (all of them on a click) instead.
+The NDN engine shows restart, its status and progress; Live shows its burst and single-call actions
+and the edge status. (5) *Selection card*: selecting a node or a link pops a card in at the right of
+the stage, titled with its name (a producer's host name, a node's id, a link's ends) and kind, with
+its settings; Escape, a click on empty canvas or its close button dismiss it. (6) *Bottom dock*: the
+six windows become panels: a tab bar always along the bottom of the stage (`1`–`6`), and above it a
+drawer that rises when a panel opens and sinks when the last one closes, the open panels side by
+side, its height set by dragging its top edge (arrow keys; double click resets). The network gets
+the stage between the player band and the dock. Floating windows (drag, throw, collapse, z-order,
+drag-in from the sidebar) are removed. (7) The sidebar keeps the network head, the engine (with the
+compared protocols and the seed), Add and Attacks.
+**Consequences.** Amends ADR-021 (no floating windows; the layout saves open panels per mode, the
+sidebar width and the drawer height; v1 layouts keep their open windows and sidebar width) and
+ADR-028 (no in-session picker; the Selected section becomes the card). The zoom buttons move to the
+bottom right of the network's area, the help button to the tab bar. Fewer controls compete for the
+sidebar, and the run's transport sits where the run is.
 
 ## Open questions
 
