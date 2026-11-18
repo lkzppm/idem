@@ -546,6 +546,7 @@ export function Sandbox() {
         data-phone={phone || undefined}
         data-choosing={choosing || undefined}
         data-entering={entering || undefined}
+        data-entered={(!entering && !choosing) || undefined}
         data-exiting={exiting || undefined}
         style={{ "--obs-sidebar": `${L.layout.sidebar}px` } as CSSProperties}
       >
