@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { b64uEncode, sha256, utf8 } from "@idem/core";
-import type { SimConfig } from "./config";
+import { buildTopology, defaultConfig, type SimConfig } from "./config";
 import { repoRoot } from "./experiments/node-io";
 import {
   applyParam,
@@ -14,10 +14,13 @@ import { Simulation } from "./simulation";
 
 /**
  * Fingerprints of simulator runs, to check that a refactor leaves every run of a committed
- * configuration unchanged (ADR-027). A fingerprint hashes what a run reports: the metrics, the
- * workload statistics, every latency, call record, transmission and forwarder event (minus the
- * wall-clock `us` of verify events). Only the fields that existed when the fingerprints were first
- * recorded are hashed, so adding a field to a record does not change a fingerprint.
+ * configuration unchanged (ADR-027). A fingerprint hashes what a run reports, floats at full
+ * precision: the metrics, the workload statistics, every latency, call record, transmission and
+ * forwarder event (minus the wall-clock `us` of verify events). Only the fields that existed when
+ * the fingerprints were first recorded are hashed, so adding a field to a record does not change a
+ * fingerprint.
+ *
+ * A fingerprint is reproducible on one platform, not across platforms: see `legacy.test.ts`.
  */
 
 const METRIC_KEYS = [
@@ -131,5 +134,61 @@ export function sweepCases(opts: { seeds?: number; only?: string } = {}): Finger
       }
     }
   }
+  return out;
+}
+
+/** Runs outside the sweeps: the default config in every mode, a lossy tree, attacks, a trace. */
+export function extraCases(): FingerprintCase[] {
+  const out: FingerprintCase[] = [];
+  for (const mode of ["mcp-direct", "mcp-local-cache", "idem", "idem-noverify"] as const) {
+    out.push({ id: `default/${mode}`, cfg: defaultConfig({ mode }), seed: 42 });
+  }
+  out.push({
+    id: "tree-loss/idem",
+    cfg: defaultConfig({
+      topology: buildTopology({
+        kind: "tree",
+        agents: 8,
+        agentLinkMs: 5,
+        coreLinkMs: 10,
+        producerLinkMs: 40,
+        lossPct: 3,
+        bandwidthMbps: 50,
+        edges: 3,
+      }),
+    }),
+    seed: 5,
+  });
+  out.push({ id: "attacks/idem", cfg: defaultConfig(), seed: 11, attacks: true });
+  const trace: SimConfig = defaultConfig({
+    topology: buildTopology({ kind: "star", agents: 3, agentLinkMs: 5, producerLinkMs: 40 }),
+    workload: {
+      kind: "trace",
+      records: [
+        { t: 0, agent: 0, tool: "fetch_page", args: { url: "https://corpus.idem.dev/doc/1?v=1&lang=en" } },
+        { t: 5, agent: 1, tool: "fetch_page", args: { url: "https://CORPUS.idem.dev/doc/1?lang=en&v=1" } },
+        { t: 9, agent: 2, tool: "my_notes", args: {} },
+        { t: 20, agent: 0, tool: "send_email", args: { to: "a@example.com", body: "hi" } },
+        { t: 400, agent: 2, tool: "fetch_page", args: { url: "https://corpus.idem.dev/doc/1#x" } },
+        { t: 410, agent: 1, tool: "fetch_page", args: { url: 42 } },
+        { t: 500, agent: 0, tool: "no_such_tool", args: {} },
+      ],
+    },
+  });
+  for (const mode of ["mcp-local-cache", "idem"] as const) {
+    out.push({ id: `trace/${mode}`, cfg: { ...trace, mode }, seed: 3 });
+  }
+  return out;
+}
+
+/** The cases pinned by `legacy.test.ts`: the first seed of every sweep point, then the extras. */
+export function pinnedCases(): FingerprintCase[] {
+  return [...sweepCases({ seeds: 1 }), ...extraCases()];
+}
+
+/** Fingerprint every pinned case, keyed by case id. */
+export async function pinnedFingerprints(): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const c of pinnedCases()) out[c.id] = await fingerprint(c);
   return out;
 }

@@ -1,68 +1,45 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildTopology, defaultConfig, type SimConfig } from "./config";
-import { type FingerprintCase, fingerprint, sweepCases } from "./fingerprint.test-helpers";
+import { pinnedFingerprints } from "./fingerprint.test-helpers";
 
 /**
  * Regression guard (ADR-027): configurations without `producers` must run exactly as they did
- * before the simulator learned arbitrary graphs and several producers. The snapshot was recorded
- * on the code before that change; `pnpm --filter @idem/sim run fingerprint` checks every seed.
+ * before the simulator learned arbitrary graphs and several producers. Each pinned case (first
+ * seed of every E2 sweep point, plus the default, tree-with-loss, attack and trace runs) is
+ * hashed at full precision and compared with the hash the *pre-change* code produced.
+ *
+ * Why one set of hashes per platform. A run is deterministic on one platform but not bit-identical
+ * across platforms: V8's `Math.log` returns different last bits on macOS and on Linux for the same
+ * input (the result is not correctly rounded; Node 24 and 26 on darwin-arm64 agree with each
+ * other, Linux arm64 and amd64 agree with each other, the two families do not). `Rng.exp` and
+ * `Rng.normal` use `Math.log`, so think and service times differ by an ulp, and that is not
+ * confined to the last digit of a time: a Data packet carries its signed `producedAt` as JSON, so
+ * its byte count follows the number of decimal digits of a virtual timestamp (8083 bytes on one
+ * platform, 8082 on the other), and with it the transmission and charged CPU time. Rounding the
+ * hash or comparing with a tolerance would therefore either hide real differences or still flip.
+ * So the strict hashes are pinned per `process.platform`, each recorded on that platform from the
+ * code before the change (`pnpm --filter @idem/sim run fingerprint --pinned`); the full 30-seed
+ * before/after comparison runs on one machine with the same script.
  */
 
-function extraCases(): FingerprintCase[] {
-  const out: FingerprintCase[] = [];
-  for (const mode of ["mcp-direct", "mcp-local-cache", "idem", "idem-noverify"] as const) {
-    out.push({ id: `default/${mode}`, cfg: defaultConfig({ mode }), seed: 42 });
-  }
-  out.push({
-    id: "tree-loss/idem",
-    cfg: defaultConfig({
-      topology: buildTopology({
-        kind: "tree",
-        agents: 8,
-        agentLinkMs: 5,
-        coreLinkMs: 10,
-        producerLinkMs: 40,
-        lossPct: 3,
-        bandwidthMbps: 50,
-        edges: 3,
-      }),
-    }),
-    seed: 5,
-  });
-  out.push({ id: "attacks/idem", cfg: defaultConfig(), seed: 11, attacks: true });
-  const trace: SimConfig = defaultConfig({
-    topology: buildTopology({ kind: "star", agents: 3, agentLinkMs: 5, producerLinkMs: 40 }),
-    workload: {
-      kind: "trace",
-      records: [
-        { t: 0, agent: 0, tool: "fetch_page", args: { url: "https://corpus.idem.dev/doc/1?v=1&lang=en" } },
-        { t: 5, agent: 1, tool: "fetch_page", args: { url: "https://CORPUS.idem.dev/doc/1?lang=en&v=1" } },
-        { t: 9, agent: 2, tool: "my_notes", args: {} },
-        { t: 20, agent: 0, tool: "send_email", args: { to: "a@example.com", body: "hi" } },
-        { t: 400, agent: 2, tool: "fetch_page", args: { url: "https://corpus.idem.dev/doc/1#x" } },
-        { t: 410, agent: 1, tool: "fetch_page", args: { url: 42 } },
-        { t: 500, agent: 0, tool: "no_such_tool", args: {} },
-      ],
-    },
-  });
-  for (const mode of ["mcp-local-cache", "idem"] as const) {
-    out.push({ id: `trace/${mode}`, cfg: { ...trace, mode }, seed: 3 });
-  }
-  return out;
-}
+const PINNED = JSON.parse(
+  readFileSync(join(import.meta.dirname, "__snapshots__", "legacy.fingerprints.json"), "utf8"),
+) as Record<string, Record<string, string>>;
 
-async function fingerprints(cases: FingerprintCase[]): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  for (const c of cases) out[c.id] = await fingerprint(c);
-  return out;
-}
+const expected = PINNED[process.platform];
 
 describe("legacy configurations run unchanged (ADR-027)", () => {
-  it("every E2 sweep point in experiments/configs, first seed, every mode", async () => {
-    expect(await fingerprints(sweepCases({ seeds: 1 }))).toMatchSnapshot();
-  }, 120_000);
+  it.skipIf(expected === undefined)(
+    `every pinned case matches the pre-change run on ${process.platform}`,
+    async () => {
+      expect(await pinnedFingerprints()).toEqual(expected);
+    },
+    180_000,
+  );
 
-  it("default config, tree with loss, attacks and trace replay", async () => {
-    expect(await fingerprints(extraCases())).toMatchSnapshot();
-  }, 60_000);
+  it("pins every platform the project runs on (macOS for the author, Linux for CI)", () => {
+    expect(Object.keys(PINNED).sort()).toEqual(["darwin", "linux"]);
+    expect(Object.keys(PINNED.darwin ?? {})).toEqual(Object.keys(PINNED.linux ?? {}));
+  });
 });
