@@ -53,6 +53,8 @@ interface MetricSpec {
   tick: (v: number) => string;
   /** Start the y axis at zero; ratios that sit near one do not. */
   zero: boolean;
+  /** The highest value the metric can take (a share stops at 1). */
+  max?: number;
 }
 
 function LossChart({
@@ -75,8 +77,9 @@ function LossChart({
             {
               x: i,
               y: s.mean,
-              lo: s.mean - s.ci95,
-              hi: s.mean + s.ci95,
+              // A whisker stops at what the metric can reach (no share above 100%, nothing below 0).
+              lo: Math.max(0, s.mean - s.ci95),
+              hi: Math.min(spec.max ?? Number.POSITIVE_INFINITY, s.mean + s.ci95),
               text: `${spec.value(s.mean)} ± ${spec.ci(s.ci95)}`,
             },
           ]
@@ -98,7 +101,10 @@ function LossChart({
   const bottom = spec.zero ? 0 : low;
   const ticks = niceTicks(bottom, high, 5);
   const yMin = Math.min(bottom, ticks[0] ?? bottom);
-  const yMax = Math.max(high, ticks[ticks.length - 1] ?? high);
+  const yMax = Math.min(
+    spec.max ?? Number.POSITIVE_INFINITY,
+    Math.max(high, ticks[ticks.length - 1] ?? high),
+  );
   const pad = (yMax - yMin || 1) * 0.05;
   return (
     <LineChart
@@ -165,6 +171,7 @@ function E4Figures({ t, f, e4 }: { t: ResultsMessages; f: Format; e4: EmulationD
       ci: (v) => f.points(v),
       tick: (v) => f.pct(v, 0),
       zero: false,
+      max: 1,
     },
     {
       id: "p50",

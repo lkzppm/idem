@@ -115,6 +115,15 @@ the run folder. Output: W-trace files for E2 and E4. This experiment is the only
   consumers; compare with the overlay.
 Plots: producer-link bytes and completion time vs loss; per-hop hit distribution. Supports H4.
 
+Run as a Docker bench instead of Mini-NDN (`experiments/ndn/bench`, `pnpm exp:e4`; NFD 24.07 and the
+overlay share each node's namespace, so both cross the same `tc netem` links). First full run:
+`experiments/results/e4/20261118T141957Z-de2bcf73` (5 modes × loss 0/1/5% × 3 seeds, at 1fe5a88).
+Read with H4: native NDN cuts producer-link bytes by 23% against B0 (the overlay by 9.5%) and every
+IDEM mode reaches the oracle's upstream reduction at every loss; recovery time is not shorter: with a
+1 s Interest lifetime before each retransmission, the native p95 is 0.7–2.5 s at 1–5% loss against at
+most 0.7 s over TCP. 4 of 2,880 native calls failed (N3, 5% loss). H4 is therefore supported for
+bytes and not for recovery time at these settings; an RTT-based retransmission timer is the open item.
+
 Before E4, a functional check of the native binding against a real NFD (not a measurement):
 `pnpm exp:ndn` starts three NFD forwarders in Docker (`experiments/ndn/nfd/`, edge1 and edge2 →
 regional, image `ghcr.io/named-data/nfd:20261105` pinned by digest), runs nine scenarios over NDNts

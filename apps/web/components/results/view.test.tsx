@@ -74,12 +74,17 @@ describe("the benchmarks page", () => {
       expect(count(out, 'class="r-ask"')).toBe(8);
     });
 
-    it(`says E4 has not run, and shows no E4 chart, while there is no E4 data (${locale})`, () => {
+    it(`shows E4 when its run is exported, and says it has not run otherwise (${locale})`, () => {
       const out = render(locale);
-      expect(RESULTS.e4).toBeNull();
-      expect(out).toContain("r-pending");
-      expect(out).toContain("data-pending");
-      expect(out).not.toContain("r-tablist");
+      if (RESULTS.e4 === null) {
+        expect(out).toContain("r-pending");
+        expect(out).toContain("data-pending");
+        expect(out).not.toContain("r-tablist");
+      } else {
+        expect(out).not.toContain("r-pending");
+        expect(out).toContain("r-tablist");
+        expect(out).toContain(RESULTS.e4.run.id);
+      }
     });
 
     it(`gives every chart a readout, a legend of toggles and a hint (${locale})`, () => {

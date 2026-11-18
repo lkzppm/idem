@@ -32,10 +32,12 @@ export const results = defineMessages(
           b2ok: string;
           n2p50: string;
           b2p50: string;
+          n2p95: string;
+          b2p95: string;
           n2bytes: string;
           b2bytes: string;
         }) =>
-          `At ${o.loss}% loss on every link, the native star (N2) answered ${o.n2ok} of its calls and the overlay star (B2) ${o.b2ok}; median latency ${o.n2p50} against ${o.b2p50}; bytes over the producer link ${o.n2bytes} against ${o.b2bytes}.`,
+          `At ${o.loss}% loss on every link, the native star (N2) answered ${o.n2ok} of its calls and the overlay star (B2) ${o.b2ok}; median latency ${o.n2p50} against ${o.b2p50}, 95th percentile ${o.n2p95} against ${o.b2p95}; bytes over the producer link ${o.n2bytes} against ${o.b2bytes}.`,
         e4Partial:
           "E4 has a run, but it does not include both the native and the overlay star at its highest loss, so no comparison is stated.",
         e4Pending: "E4, the overlay against native NDN under loss, has not run: there is no result to state.",
@@ -621,10 +623,12 @@ export const results = defineMessages(
           b2ok: string;
           n2p50: string;
           b2p50: string;
+          n2p95: string;
+          b2p95: string;
           n2bytes: string;
           b2bytes: string;
         }) =>
-          `Com ${o.loss}% de perda em cada enlace, a estrela nativa (N2) respondeu ${o.n2ok} das suas chamadas e a estrela do overlay (B2) ${o.b2ok}; latência mediana de ${o.n2p50} contra ${o.b2p50}; bytes no enlace do produtor: ${o.n2bytes} contra ${o.b2bytes}.`,
+          `Com ${o.loss}% de perda em cada enlace, a estrela nativa (N2) respondeu ${o.n2ok} das suas chamadas e a estrela do overlay (B2) ${o.b2ok}; latência mediana de ${o.n2p50} contra ${o.b2p50}, percentil 95 de ${o.n2p95} contra ${o.b2p95}; bytes no enlace do produtor: ${o.n2bytes} contra ${o.b2bytes}.`,
         e4Partial:
           "O E4 tem uma execução, mas ela não inclui as estrelas nativa e do overlay na maior perda, então nenhuma comparação é afirmada.",
         e4Pending:

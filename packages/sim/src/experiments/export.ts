@@ -215,7 +215,11 @@ function numbers(v: unknown): number[] {
 
 /** The provenance line of a run. */
 export function runRef(r: LoadedRun): RunRef {
-  const e = r.env;
+  // The emulation's env.json nests the host under `host` (E4); the simulator's is flat.
+  const e = {
+    ...r.env,
+    ...(typeof r.env.host === "object" && r.env.host !== null ? r.env.host : {}),
+  } as Record<string, unknown>;
   return {
     experiment: r.experiment,
     id: r.id,

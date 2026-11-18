@@ -224,6 +224,8 @@ export function ResultsView({
         b2ok: f.pct(e4Read.b2.success?.mean ?? Number.NaN, 1),
         n2p50: e4Read.n2.p50 ? f.ms(e4Read.n2.p50.mean) : "–",
         b2p50: e4Read.b2.p50 ? f.ms(e4Read.b2.p50.mean) : "–",
+        n2p95: e4Read.n2.p95 ? f.ms(e4Read.n2.p95.mean) : "–",
+        b2p95: e4Read.b2.p95 ? f.ms(e4Read.b2.p95.mean) : "–",
         n2bytes: e4Read.n2.bytes ? f.bytes(e4Read.n2.bytes.mean) : "–",
         b2bytes: e4Read.b2.bytes ? f.bytes(e4Read.b2.bytes.mean) : "–",
       })
