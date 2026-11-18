@@ -451,6 +451,16 @@ behaviour; that is E4's job in Mini-NDN (still open). A native-only consumer can
 plain-call retry of [P-5.5] and fails closed instead. A native forwarder that is not NFD (none in
 v1) would have to apply [P-7.1]; NFD does not verify Data signatures, so on the native binding
 cache poisoning is stopped at the consumer [P-9.3], not at the forwarder.
+*Checked against NFD 24.07 (2026-11-18, `pnpm exp:ndn`, `experiments/results/ndn-nfd/`):* nine
+scenarios pass over TCP, UDP and WebSocket faces, including aggregation of 8 concurrent calls into
+one tool run, CS hits and MustBeFresh past the TTL, and a two-forwarder chain. What the check showed:
+(a) an altered Data stays in NFD's CS and every consumer of that name rejects it until the entry goes
+stale or is evicted, so tampering costs availability, never integrity; (b) NFD likewise caches a
+`private` Data a non-conforming producer sends and serves it to the next user of the name, which is
+why [P-9.4] has a consumer-side check; (c) `NdnConsumer` reported every verification failure as
+`BAD_SIGNATURE`; it now reports `UNTRUSTED_KEY` and `NOT_CACHEABLE` as [P-9.3] and [P-9.4] say
+(test in `e2e.test.ts`). The §9.2 text on nonces and MustBeFresh records NFD behaviour the binding
+already relied on; no rule changed.
 
 ## Open questions
 

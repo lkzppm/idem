@@ -21,7 +21,8 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "nfd:check": "node --import ./scripts/ts-resolve.mjs scripts/nfd-check.ts"
   },
   "dependencies": {
     "@idem/core": "workspace:*",
@@ -30,5 +31,11 @@
     "@ndn/keychain": "0.0.20260427",
     "@ndn/packet": "0.0.20260427",
     "@ndn/tlv": "0.0.20260427"
+  },
+  "devDependencies": {
+    "@ndn/l3face": "0.0.20260427",
+    "@ndn/nfdmgmt": "0.0.20260427",
+    "@ndn/node-transport": "0.0.20260427",
+    "@ndn/ws-transport": "0.0.20260427"
   }
 }
