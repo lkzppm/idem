@@ -291,8 +291,8 @@ export function Sandbox() {
         ) : (
           <>
             {t.swarm.intro}{" "}
-            <Link href="/results" className="obs-link">
-              /results
+            <Link href="/benchmarks" className="obs-link">
+              /benchmarks
             </Link>
             .
           </>

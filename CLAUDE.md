@@ -78,7 +78,7 @@ idem/
 │   ├── ndn/                  @idem/ndn: native binding via NDNts
 │   └── sim/                  @idem/sim: discrete-event simulator (Node + browser)
 ├── apps/
-│   └── web/                  Next.js: landing, /sandbox, /docs (in-house renderer), /results, demo MCP routes
+│   └── web/                  Next.js: landing, /sandbox, /docs (in-house renderer), /benchmarks, demo MCP routes
 └── experiments/
     ├── traces/               tool-call traces (JSONL)
     ├── configs/              experiment configs (JSON)

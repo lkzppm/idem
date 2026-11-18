@@ -19,7 +19,7 @@ One CLI writes that layout (ADR-023): `pnpm sim -- --config experiments/configs/
   `latency_cdf.csv` (percentiles 0..100 of every call, pooled over seeds); E5 adds `trials.csv` (one
   line per trial).
 - `pnpm sim -- export-web` turns the run folders into `apps/web/lib/results/data.json`, the only
-  source of the `/results` page; a test fails if that file drifts from the folders.
+  source of the `/benchmarks` page; a test fails if that file drifts from the folders.
 
 ## 1. Modes compared
 
@@ -129,7 +129,7 @@ by a consumer that puts the victim's `authContext` in its own Interest (ADR-023,
 ## 5. Reporting rules
 
 - Every figure is produced by `experiments/plots/*.py` from committed results; the script name and run
-  ids go in the figure caption. The `/results` page draws its own charts from the same run folders
+  ids go in the figure caption. The `/benchmarks` page draws its own charts from the same run folders
   (through `data.json`) and names the runs under each figure.
 - A refuted hypothesis is reported as refuted, with the data.
 - Simulation results are labeled "simulation"; emulation results "emulation". They are not mixed in one
