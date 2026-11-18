@@ -4,7 +4,7 @@ One rule makes it trustworthy: the sandbox runs the **same** `Forwarder` class a
 
 ## What you can run {#modes}
 
-The sandbox opens on a choice: a **blank canvas** (the big plus), an **example** network (a swarm on one edge, two producers, a regional tree), **Live**, or the network you were editing last time. Every network but Live can be edited. To open another one, go back with *Networks* at the top of the sidebar: an edited network is kept, and *Continue where you left off* brings it back.
+The sandbox opens on a choice: a **blank canvas** (the big plus), an **example** network (a swarm on one edge, two producers, a regional tree), **Live**, a network you **saved** earlier, or the one you were editing last time. Every network but Live can be edited. To open another one, go back with *Networks* at the top of the sidebar: an edited network is kept, and *Continue where you left off* brings it back. Saved networks are listed under *Your networks* (see [Saving your networks](#library)).
 
 | | A network in the editor | Live |
 |---|---|---|
@@ -51,11 +51,20 @@ Agents connect only to forwarders, never straight to a producer or to each other
 | remove | select, then `Delete` |
 | look around | drag empty space to pan; scroll, pinch or use the buttons to zoom; `F` fits the network |
 | undo | `⌘Z` (`⇧⌘Z` to redo) |
+| save | *Save* (the disk icon, beside the network's name) keeps it in this browser; *Export* downloads it as a file; *Delete* removes the saved copy |
 | share | *Share* copies a link that carries the whole network |
 
 The player bar over the network plays, pauses and restarts the run, and shows how many calls were answered (and, for the simulation, its virtual time and speed). A network you open starts paused: press play. When something stops the network from running (no agent, an agent with no tools, a tool whose producer it cannot reach), the player bar says so; click it for the whole list.
 
 The engine is chosen at the top of the sidebar: **IDEM**, on NDN routers (the default), or **Simulation**.
+
+### Saving your networks {#library}
+
+The disk icon beside the network's name saves it in this browser. The first time it asks for a name (the example's name is suggested); after that it updates the same entry, and a dot on the icon says there are changes not yet saved. The bin icon deletes the saved copy, after a confirmation, and takes you back to the start screen. The Live example is not a network, so it has none of these buttons.
+
+On the start screen, *Your networks* lists what you saved, newest first, each with its drawing, name, date and node count. Open it with a click; the pencil renames it, the arrow exports it as a file, the bin deletes it (after a confirmation). *Import a file* adds a network from a `.json` file, and so does dropping one anywhere on the screen. An exported file can be shared with anyone, and imported in another browser.
+
+Everything lives in this browser's storage: nothing is sent to the site, and clearing the site's data (or a private window) clears the library, so export what you want to keep. The library holds up to 40 networks, each up to about 200 KB. An imported file is checked like a shared link: what is not a valid network is rejected, and what can be repaired (a link to a node that does not exist, a number out of range) is.
 
 ### IDEM on NDN routers {#ndn-engine}
 
