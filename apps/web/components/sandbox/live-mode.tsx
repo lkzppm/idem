@@ -48,7 +48,10 @@ interface LiveAgent {
 
 /** The node that stands for every other visitor of the edge (ADR-030). */
 const VISITORS = "visitors";
-const POLL_MS = 3000;
+/** How often the page asks the edge what other visitors sent (while the tab is visible). */
+const POLL_MS = 1000;
+/** The most of other visitors' calls replayed from one poll (a burst is at most 16). */
+const REPLAY_MAX = 16;
 
 /** The argument a new agent starts with for each tool. */
 const DEFAULT_ARG: Record<Tool, string> = {
@@ -195,6 +198,8 @@ export function LiveMode() {
   const nextN = useRef(4);
   const [picked, setPicked] = useState<string>();
   const [remote, setRemote] = useState<EdgeCall[]>([]);
+  /** Bumped when other visitors' calls arrive: the box on the canvas answers with a small pop. */
+  const [pulse, setPulse] = useState(0);
   const [instances, setInstances] = useState<{ calls?: string; feed?: string }>({});
   const visitor = useRef("");
   const filled = useRef(new Map<string, "self" | "other" | "none">());
@@ -482,8 +487,10 @@ export function LiveMode() {
   useEffect(() => {
     visitor.current = visitorId();
     if (!origin) return;
-    let after = 0;
-    let first = true;
+    // Each edge instance numbers its calls itself, and any of them may answer a poll: the page keeps
+    // where it is in each instance's list, and the first answer from an instance only fills the feed.
+    const afterBy = new Map<string, number>();
+    let last = "";
     let stopped = false;
     const replay = (e: EdgeCall, delay: number) => {
       const go = (from: string, to: string, kind: PacketKind, at: number) =>
@@ -506,7 +513,7 @@ export function LiveMode() {
     const poll = async () => {
       if (stopped || document.visibilityState !== "visible") return;
       try {
-        const res = await fetch(`${origin}/api/edge/activity?after=${after}`, {
+        const res = await fetch(`${origin}/api/edge/activity?after=${afterBy.get(last) ?? 0}`, {
           headers: { "idem-visitor": visitor.current },
           cache: "no-store",
         });
@@ -516,12 +523,16 @@ export function LiveMode() {
         // Another instance answered (or this one restarted): its sequence is its own.
         const now = performance.now();
         setInstances((x) => (x.feed === body.instance ? x : { ...x, feed: body.instance }));
-        const fresh = body.entries.filter((e) => e.seq > after);
-        after = body.seq;
+        const known = afterBy.get(body.instance);
+        const fresh = body.entries.filter((e) => e.seq > (known ?? 0));
+        afterBy.set(body.instance, body.seq);
+        last = body.instance;
         if (fresh.length === 0) return;
         const others = fresh.filter((e) => !e.mine);
-        if (!first) others.slice(-8).forEach((e, i) => replay({ ...e, at: now }, i * 180));
-        first = false;
+        if (known !== undefined && others.length > 0) {
+          others.slice(-REPLAY_MAX).forEach((e, i) => replay({ ...e, at: now }, i * 120));
+          setPulse((n) => n + 1);
+        }
         setRemote((l) => [...fresh.map((e) => ({ ...e, at: now - e.ago })).reverse(), ...l].slice(0, 60));
       } catch {
         // The feed is best effort: the calls themselves are unaffected.
@@ -757,10 +768,10 @@ export function LiveMode() {
               nodes,
               boxes: {
                 [VISITORS]: (
-                  <>
+                  <span key={pulse} className="obs-node-box" data-pulse={pulse > 0 || undefined}>
                     <span className="obs-node-box-title">{tl.card.visitorsBox}</span>
                     <span className="obs-node-box-sub">· {others > 0 ? others : tl.card.visitorsNone}</span>
-                  </>
+                  </span>
                 ),
               },
               badges: {
