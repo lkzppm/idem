@@ -365,8 +365,10 @@ Code in `apps/web/components/site/*`, styles in `app/styles/chrome.css`, strings
 - Project `idem-ufrj` (production: `https://idem-ufrj.vercel.app`), created 2026-11-18 at the
   author's request; root directory `apps/web`, Node 24. `IDEM_PRODUCER_KEY` (a fresh Ed25519 JWK) and
   `IDEM_EDGE_SECRET` are set as sensitive variables for production and preview.
-- The project is connected to `lkzppm/idem` (Vercel GitHub app): a push to `main` deploys
-  production, every other branch and PR gets a preview. `.vercelignore` keeps worktrees,
+- The project is connected to `lkzppm/idem` (Vercel GitHub app). Every commit that reaches `main`
+  (a merged PR included) deploys production; other branches are skipped by the project's ignored
+  build step (`VERCEL_GIT_COMMIT_REF` must be `main`), and the deploy is reported to GitHub as a
+  deployment on the commit. `.vercelignore` keeps worktrees,
   `node_modules` and build output out of a manual CLI upload (`vercel deploy` from the root).
 - Before production: rate limit on `/api/**`, cache headers on static results, Lighthouse check on
   `/` and `/docs`.
