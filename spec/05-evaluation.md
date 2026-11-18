@@ -115,6 +115,15 @@ the run folder. Output: W-trace files for E2 and E4. This experiment is the only
   consumers; compare with the overlay.
 Plots: producer-link bytes and completion time vs loss; per-hop hit distribution. Supports H4.
 
+Run as a Docker bench instead of Mini-NDN (`experiments/ndn/bench`, `pnpm exp:e4`; NFD 24.07 and the
+overlay share each node's namespace, so both cross the same `tc netem` links). First full run:
+`experiments/results/e4/20261118T141957Z-de2bcf73` (5 modes × loss 0/1/5% × 3 seeds, at 1fe5a88).
+Read with H4: native NDN cuts producer-link bytes by 23% against B0 (the overlay by 9.5%) and every
+IDEM mode reaches the oracle's upstream reduction at every loss; recovery time is not shorter: with a
+1 s Interest lifetime before each retransmission, the native p95 is 0.7–2.5 s at 1–5% loss against at
+most 0.7 s over TCP. 4 of 2,880 native calls failed (N3, 5% loss). H4 is therefore supported for
+bytes and not for recovery time at these settings; an RTT-based retransmission timer is the open item.
+
 Before E4, a functional check of the native binding against a real NFD (not a measurement):
 `pnpm exp:ndn` starts three NFD forwarders in Docker (`experiments/ndn/nfd/`, edge1 and edge2 →
 regional, image `ghcr.io/named-data/nfd:20261105` pinned by digest), runs nine scenarios over NDNts
@@ -123,8 +132,9 @@ TCP, UDP and WebSocket faces (round trip, PIT aggregation, CS and freshness, equ
 `experiments/results/ndn-nfd/<run-id>/` with the usual files plus `summary.json` (every check with its
 expected and actual value), `metrics.csv` (one row per check) and the NFD logs; `env.json` adds the
 NFD version, image digest and NDNts versions. Its config is `experiments/ndn/nfd/config.json`
-(`kind: "nfd-check"`, which `export-web` ignores). It is wall-clock and reports PASS/FAIL, not
-numbers for the report. The same scenarios run as `packages/ndn/src/nfd.test.ts` with
+(`kind: "nfd-check"`). `export-web` reads each run's `summary.json` into `nfd` of `data.json` (the last
+five runs) and `/benchmarks` shows the latest. It is wall-clock and reports PASS/FAIL, not numbers
+for the report. The same scenarios run as `packages/ndn/src/nfd.test.ts` with
 `IDEM_NFD=1` against running forwarders; without it they are skipped.
 
 As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/configs/e4.json`):
@@ -165,7 +175,11 @@ As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/
 - Seeds 1..3 × loss {0, 1, 5} % × 5 modes = 45 runs of about a minute each. Three seeds keep the
   run under the 45-minute target; the CIs are wide accordingly.
 - **Status.** Harness built and smoke-tested; the full run has not been executed (see roadmap M6).
-  No E4 number exists yet.
+  No E4 number exists yet. `export-web` reads `experiments/results/e4/<run-id>/` (`kind: "emulation"`:
+  `summary.csv` by mode and loss, `latency_cdf.csv`, `config.json`, `env.json`) into `e4` of
+  `data.json`, which is `null` until a run folder with a summary exists; `/benchmarks` then shows E4
+  as its lead section (spec 04 §1.1, ADR-032). Tested with an in-memory fixture, never a committed
+  result.
 
 ### E5 — Safety
 Adversarial runs: tamper with Data in flight, forge names (digest mismatch), replay stale Data,

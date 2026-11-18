@@ -12,11 +12,53 @@ Vercel Functions.
 | `/sandbox` | Start screen, then the network editor (ADR-028, ADR-029): examples or a blank canvas, run by the simulator (IDEM engine) or by YaNFD routers in WebAssembly (NDN engine) | `@idem/sim` + `@idem/core` (real code, virtual clock); `apps/web/public/ndn/yanfd.wasm` + `@idem/ndn` |
 | `/sandbox` (Live example) | Browser agents over real HTTP through the deployed edge to the deployed producer (ADR-016) | `/api/edge/*`, `/api/producer/*`, `@idem/gateway` `IdemClient` |
 | `/docs`, `/docs/<slug>` | Docs: the single tab for the protocol and the library docs (§4, ADR-022). `/docs` is the introduction; `/spec` permanently redirects to `/docs/protocol` | Markdown read at render time: `apps/web/content/docs/<locale>/<slug>.md`, and `spec/01-protocol.md`, `spec/07-decisions.md`, `spec/08-references.md` rendered as they are |
-| `/benchmarks` | Charts of experiments E1–E5 (the tab was "Results"; `/results` redirects here) | JSON exported from `experiments/results` at build time |
+| `/benchmarks` | One story about IDEM on real NDN, then the evidence behind it (§1.1). The tab was "Results"; `/results` redirects here | `apps/web/lib/results/data.json`, exported from `experiments/results` by `pnpm sim -- export-web` |
 | `/api/producer/*` | Demo producer: IDEM HTTP endpoints + `/api/producer/mcp` (MCP) | static corpus `apps/web/corpus/` |
 | `/api/edge/*` | Edge gateway (IDEM HTTP: interest, call, manifest, tools) | `@idem/gateway` |
 | `/api/mcp` | Edge gateway as a plain MCP endpoint (any MCP client) | `@idem/mcp` |
 | `/api/producer/.well-known/idem.json` | Demo producer manifest | `Producer` |
+
+### 1.1 Benchmarks (`/benchmarks`, ADR-032)
+
+The page tells one story, about IDEM over native NDN, and every number on it is read from
+`apps/web/lib/results/data.json` (golden rule 5). A test in `@idem/sim` fails when that file drifts from
+the committed run folders; no figure is typed in.
+
+- **Order.** Hero (what kind of result each experiment is: NFD check, E4, E2 and E5, E1), four headline
+  tiles, then the sections, each a stop of the mini navbar: **Native NDN** (E4, then the NFD
+  conformance check), **Verdicts** (H1 to H4), **Redundancy** and **Latency** (E2), **Sensitivity**
+  (E2 sweeps), **Cost** (E1), **Safety** (E5), **Method**. The headline is IDEM over real NDN; the
+  simulation and the microbenchmarks are shown as the evidence behind it.
+- **Question and verdict.** Every section opens with the question it answers and, when its data allows
+  one, a one-line verdict *computed* from that data (`computeVerdicts`, `lib/results/native.ts`, the
+  sentence templates in `lib/i18n/messages/results.ts`). A verdict states what was measured, never
+  more: it compares numbers and does not call a mode "better".
+- **E4 pending state.** While `data.e4` is `null` (no `experiments/results/e4/<run>/` with a
+  `summary.csv`), the Native NDN section shows a dashed "has not run yet" frame with the five modes
+  and the command, the headline tile reads "Pending", and the hero says so; no chart, no number, no
+  placeholder values. When the run folder is committed and exported, the section shows by itself: four
+  metrics against loss in tabs (calls answered, median and 95th-percentile latency, bytes over the
+  producer link) with 95% intervals over seeds, the latency distribution at each loss level in tabs,
+  and a table of every value.
+- **NFD check.** Every run of `experiments/results/ndn-nfd/` (the last five) is exported from its
+  `summary.json`. The page shows the latest run, one row per scenario (pass or fail, the rules it
+  exercises, the number of checks, or the error that stopped it before any check ran) and the pass
+  count of the run before it. It is a conformance result, not a measurement.
+- **Interactive charts.** Charts stay server-computed SVG; the line chart is a client component
+  (`components/results/interactive-chart.tsx`) that adds: a crosshair and a readout card with the exact
+  value and its 95% interval (or run range) at the nearest x, or for the nearest point on curves that
+  have their own x (the latency distributions); one tab stop with arrow keys, Home, End and Escape and
+  a live region that says the same; a legend whose entries highlight a series on hover or focus and
+  hide or show it on press (never leaving the chart empty); a table twin under every chart; on touch,
+  the readout follows the finger while vertical scroll still works. The per-miss CPU bar and its list
+  light each other on hover and focus. With reduced motion nothing animates except what the
+  platform does.
+- **No C-shaped edges.** A coloured accent never rides a rounded corner: tiles carry a small solid
+  square inside their padding, not a thick coloured border on one side (a test checks
+  `results.css`).
+- **Mini navbar.** The same `SectionNav` as the home page (§5.1): `/` and `/benchmarks` are the routes
+  that mount it, and the page only marks its sections with `id`, `data-nav-section` and
+  `data-nav-label`.
 
 ## 2. Sandbox (`/sandbox`)
 
@@ -299,7 +341,7 @@ Code in `apps/web/components/site/*`, styles in `app/styles/chrome.css`, strings
   options are named by their visible code and in their own language (`EN, English`,
   `PT, Português`: the visible label is part of the name, WCAG 2.5.3) with a `lang` attribute; the group
   is labelled "Language" / "Idioma". Choosing saves the cookie and re-renders on the server (ADR-018).
-- **Section nav (home only).** Mounted by the root layout on `/`, never by the page. A floating bar of
+- **Section nav (home and benchmarks).** Mounted by the root layout on `/` and `/benchmarks` (`SECTION_NAV_PATHS`), never by the page. A floating bar of
   glass (blur, translucent, a solid offset sliver for a shadow, no glow), centred under the header; on
   a phone it spans the width and scrolls sideways, keeping the current section in view. It appears
   once the hero has mostly scrolled away (the first section below the fold reaches the middle of the

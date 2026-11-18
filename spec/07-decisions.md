@@ -653,6 +653,30 @@ the right column gains a section). The library lives and dies with the site's st
 window or cleared data loses it), which the docs say, with Export as the way to keep one. No server
 state and no new dependency. The names a visitor types are stored as text and shown as text.
 
+## ADR-032 — Benchmarks tells one story about IDEM over native NDN; charts are interactive; no C-shaped edges
+**Context.** The author found the Benchmarks tab weak: no mini navbar like the home page, charts that
+could only be looked at, and stat tiles whose thick coloured top border bends into a C on the rounded
+corners. He then asked for the whole benchmark to make sense around the protocol itself, "the real
+NDN version". E4 (overlay against native NDN under loss) was running and had no result yet; the NFD
+conformance check already had committed runs that the page ignored.
+**Decision.** (1) *Story.* `/benchmarks` leads with IDEM on real NDN (E4, then the NFD check), then
+the hypotheses' verdicts, then the evidence: E2 sweeps, E1 costs, E5 safety, method. Each section
+opens with its question and a verdict computed from its data (spec 04 §1.1). (2) *Data.* `export-web`
+exports `e4` (a run of `kind: "emulation"` in `experiments/results/e4/`, `null` until one exists) and
+`nfd` (the last five runs of `ndn-nfd`, from `summary.json`); the page has an honest pending state for
+E4 and never shows a placeholder number. The E4 fixture lives only in tests. (3) *Navbar.* The home
+page's `SectionNav` also mounts on `/benchmarks`; sections are marked, not duplicated. (4) *Charts.*
+The line chart becomes a client component with a readout (crosshair, card, keyboard, live region),
+legend toggles and highlight; it stays SVG and React, no chart library. Everything it shows is passed
+in from the server. (5) *Edges.* A coloured accent never follows a rounded corner: tiles use an
+inset solid square. The thick left bars on the docs' rule and quote plates stay: their corners on
+that side are square.
+**Consequences.** `ResultsData` gains `e4` and `nfd`. The page is no longer a pure server render:
+charts hydrate, so the readout works, and the marks' entrance animation is unchanged. The NFD run of
+2026-11-18 05:25 stopped on scenario S8 (`nfdc route add` rejected, an environment error, no check
+ran) and is shown as it is, beside the run before it that passed 9 of 9. When E4 is committed,
+nothing in the page changes; only its verdict wording may need a second look.
+
 ## Open questions
 
 - **Q2 — Encrypted `private` content.** Name-based access control would allow shared caching of

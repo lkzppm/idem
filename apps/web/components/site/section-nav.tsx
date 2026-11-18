@@ -31,14 +31,19 @@ function readSections(): Section[] {
 }
 
 /**
- * The home page's section nav: a floating bar of glass under the header, shown once the hero has
- * scrolled away. Mounted by the root layout on `/` only; renders nothing elsewhere.
+ * The section nav: a floating bar of glass under the header, shown once the hero has scrolled away.
+ * Mounted by the root layout on the pages that opt in (`SECTION_NAV_PATHS`: the home page and
+ * `/benchmarks`); renders nothing elsewhere. Each page only marks its sections.
  */
 export function SectionNav() {
   const path = usePathname();
-  if (path !== "/") return null;
-  return <SectionNavBar />;
+  if (!SECTION_NAV_PATHS.includes(path)) return null;
+  // Keyed by route: a client navigation between two pages that both have the nav starts it afresh.
+  return <SectionNavBar key={path} />;
 }
+
+/** The routes whose sections the nav follows. */
+export const SECTION_NAV_PATHS: readonly string[] = ["/", "/benchmarks"];
 
 /**
  * The bar itself. It finds the page's sections (re-reading on DOM changes), tracks the one being

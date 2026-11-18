@@ -1,5 +1,3 @@
-import type { CSSProperties, ReactNode } from "react";
-
 /**
  * Charts of the results page: plain SVG drawn on the server from the committed data, in the
  * project's flat cartoon style (solid ink marks cut out of the page by an outline in the page's
@@ -9,6 +7,9 @@ import type { CSSProperties, ReactNode } from "react";
  * send requests, `data` (yellow) for answers served from the network, greys for the rest.
  * Identity never rests on colour alone: every series also has its own dash and marker shape, a
  * direct label at its end, a legend entry, and a table under the chart with the same numbers.
+ *
+ * This file holds what the server draws and the types; the interactive line chart (hover and
+ * keyboard readout, legend toggles) is `interactive-chart.tsx`.
  */
 
 export type Tone = "interest" | "data" | "ink" | "muted";
@@ -20,8 +21,10 @@ export interface ChartPoint {
   /** Ends of the 95% interval (or of the spread), in data units. */
   lo?: number;
   hi?: number;
-  /** What the point says, in words: shown on hover and read by assistive technology. */
-  tip?: string;
+  /** The value as the readout prints it, already formatted: `29.2% ± 1.6`. */
+  text: string;
+  /** In `nearest` charts, the readout heading of the point (`p95`). */
+  head?: string;
 }
 
 export interface ChartSeries {
@@ -40,6 +43,22 @@ export interface ChartSeries {
 export interface Tick {
   at: number;
   label: string;
+}
+
+/** The chart's own words, already in the visitor's language (the component is a client one and takes no functions). */
+export interface ChartLabels {
+  /** One line on how to read exact values: hover, touch or arrow keys. */
+  hint: string;
+  /** Accessible name of the legend. */
+  legend: string;
+  /** Prefix of a legend button's name while the series is on: "Hide". */
+  hide: string;
+  /** … and while it is off: "Show". */
+  show: string;
+  /** Button that turns every series back on. */
+  showAll: string;
+  /** What the readout's numbers are: "Mean ± 95% CI over 30 seeds". */
+  note?: string;
 }
 
 export interface LineChartProps {
@@ -63,11 +82,20 @@ export interface LineChartProps {
   height?: number;
   /** Room on the right for the direct labels. */
   labelRoom?: number;
+  /**
+   * `x`: the readout follows the nearest x and lists every series there (series that share their x
+   * values). `nearest`: it follows the nearest point of any series (curves with their own x values).
+   */
+  readout?: "x" | "nearest";
+  labels: ChartLabels;
 }
 
-const M = { top: 30, bottom: 46, left: 58 };
+export const r2 = (n: number) => Math.round(n * 100) / 100;
 
-function scale(domain: [number, number], range: [number, number], log = false): (v: number) => number {
+export const M = { top: 30, bottom: 46, left: 58 };
+
+/** A linear or logarithmic scale from a data domain to a pixel range. */
+export function scale(domain: [number, number], range: [number, number], log = false): (v: number) => number {
   const [d0, d1] = log ? [Math.log10(domain[0]), Math.log10(domain[1])] : domain;
   const span = d1 - d0 || 1;
   return (v) => {
@@ -76,9 +104,7 @@ function scale(domain: [number, number], range: [number, number], log = false): 
   };
 }
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
-
-function MarkerShape({ kind, x, y, size = 5 }: { kind: Marker; x: number; y: number; size?: number }) {
+export function MarkerShape({ kind, x, y, size = 5 }: { kind: Marker; x: number; y: number; size?: number }) {
   if (kind === "none") return null;
   if (kind === "square") {
     return (
@@ -119,26 +145,6 @@ export function SeriesKey({
   );
 }
 
-/** The legend of a chart: every series, in drawing order. */
-export function Legend({ series, children }: { series: ChartSeries[]; children?: ReactNode }) {
-  return (
-    <ul className="r-legend">
-      {series.map((s) => (
-        <li key={s.id}>
-          <SeriesKey
-            tone={s.tone}
-            {...(s.dash !== undefined && { dash: s.dash })}
-            {...(s.marker !== undefined && { marker: s.marker })}
-            {...(s.reference !== undefined && { reference: s.reference })}
-          />
-          {s.label}
-        </li>
-      ))}
-      {children}
-    </ul>
-  );
-}
-
 /** Spread end labels that would collide: keep order, at least `gap` apart, inside [min, max]. */
 export function spreadLabels(ys: number[], gap: number, min: number, max: number): number[] {
   const order = ys.map((y, i) => ({ y, i })).sort((a, b) => a.y - b.y);
@@ -157,196 +163,6 @@ export function spreadLabels(ys: number[], gap: number, min: number, max: number
     out[item.i] = placed[k] as number;
   });
   return out;
-}
-
-/**
- * A line chart with one y axis. Marks enter once the chart scrolls into view (`InView` adds
- * `is-in`): solid lines draw from the left, dashed ones follow, markers pop in their order.
- */
-export function LineChart({
-  title,
-  desc,
-  series,
-  xDomain,
-  yDomain,
-  yScale = "linear",
-  xTicks,
-  yTicks,
-  xLabel,
-  yLabel,
-  fill,
-  rule,
-  width = 640,
-  height = 360,
-  labelRoom = 96,
-}: LineChartProps) {
-  const x0 = M.left;
-  const x1 = width - labelRoom;
-  const y0 = height - M.bottom;
-  const y1 = M.top;
-  const sx = scale(xDomain, [x0, x1]);
-  const sy = scale(yDomain, [y0, y1], yScale === "log");
-  const path = (pts: ChartPoint[]) =>
-    pts.map((p, i) => `${i === 0 ? "M" : "L"}${r2(sx(p.x))} ${r2(sy(p.y))}`).join("");
-  const byId = new Map(series.map((s) => [s.id, s]));
-
-  // The halftone area between two series, clipped to the x range they share.
-  let area: string | undefined;
-  if (fill) {
-    const a = byId.get(fill.from)?.points ?? [];
-    const b = byId.get(fill.to)?.points ?? [];
-    if (a.length > 1 && b.length > 1) {
-      area = `${path(a)}${[...b]
-        .reverse()
-        .map((p) => `L${r2(sx(p.x))} ${r2(sy(p.y))}`)
-        .join("")}Z`;
-    }
-  }
-
-  // Direct labels at the right end of each series; series that end together share one label.
-  const ends = series
-    .filter((s) => s.points.length > 0)
-    .map((s) => ({
-      s,
-      y: sy((s.points[s.points.length - 1] as ChartPoint).y),
-      x: sx((s.points[s.points.length - 1] as ChartPoint).x),
-    }));
-  const groups: { ids: string[]; label: string; y: number; x: number }[] = [];
-  // Drawn series first; a reference line that ends on one of them needs no label of its own.
-  for (const e of [...ends.filter((x) => !x.s.reference), ...ends.filter((x) => x.s.reference)]) {
-    const text = e.s.short ?? e.s.label;
-    const same = groups.find((g) => Math.abs(g.y - e.y) < 1.5 && Math.abs(g.x - e.x) < 1.5);
-    if (same) {
-      same.ids.push(e.s.id);
-      if (!e.s.reference) same.label = `${same.label} · ${text}`;
-    } else groups.push({ ids: [e.s.id], label: text, y: e.y, x: e.x });
-  }
-  const labelYs = spreadLabels(
-    groups.map((g) => g.y),
-    15,
-    y1 + 4,
-    y0 - 2,
-  );
-  const patternId = `r-halftone-${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
-  const span = xDomain[1] - xDomain[0] || 1;
-
-  return (
-    // Narrow screens scroll the drawing sideways instead of shrinking its text below reading size.
-    <div className="r-chart-wrap">
-      <svg
-        className="r-chart"
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={title}
-        style={{ "--r-w": `${width / 16}rem` } as CSSProperties}
-      >
-        <title>{title}</title>
-        <desc>{desc}</desc>
-        {fill && (
-          <defs>
-            <pattern
-              id={patternId}
-              width="7"
-              height="7"
-              patternUnits="userSpaceOnUse"
-              patternTransform="rotate(45)"
-            >
-              <circle cx="3.5" cy="3.5" r="1.45" className={`r-dot t-${fill.tone}`} />
-            </pattern>
-          </defs>
-        )}
-
-        {/* Grid and axes: hairlines, solid, a step off the page. */}
-        <g className="r-grid">
-          {yTicks.map((t) => (
-            <path key={t.at} d={`M${x0} ${r2(sy(t.at))}H${x1}`} />
-          ))}
-        </g>
-        <path className="r-axis" d={`M${x0} ${y1}V${y0}H${x1}`} />
-        {rule !== undefined && <path className="r-rule" d={`M${x0} ${r2(sy(rule))}H${x1}`} />}
-        <g className="r-ticks">
-          {yTicks.map((t) => (
-            <text key={t.at} x={x0 - 9} y={r2(sy(t.at) + 3.5)} textAnchor="end">
-              {t.label}
-            </text>
-          ))}
-          {xTicks.map((t) => (
-            <g key={t.at}>
-              <path d={`M${r2(sx(t.at))} ${y0}v5`} />
-              <text x={r2(sx(t.at))} y={y0 + 18} textAnchor="middle">
-                {t.label}
-              </text>
-            </g>
-          ))}
-        </g>
-        <text className="r-axis-label" x={(x0 + x1) / 2} y={height - 6} textAnchor="middle">
-          {xLabel}
-        </text>
-        <text className="r-axis-label" x={x0 - 44} y={12} textAnchor="start">
-          {yLabel}
-        </text>
-
-        {area && <path className="r-area" d={area} fill={`url(#${patternId})`} />}
-
-        {series.map((s) => (
-          <g key={s.id} className={`r-series t-${s.tone}`}>
-            {!s.reference &&
-              s.points
-                .filter((p) => p.lo !== undefined && p.hi !== undefined && Math.abs(sy(p.lo) - sy(p.hi)) > 3)
-                .map((p) => {
-                  const px = r2(sx(p.x));
-                  const a = r2(sy(p.hi as number));
-                  const b = r2(sy(p.lo as number));
-                  return (
-                    <path
-                      key={p.x}
-                      className="r-whisker"
-                      d={`M${px - 4} ${a}h8M${px} ${a}V${b}M${px - 4} ${b}h8`}
-                    />
-                  );
-                })}
-            <path
-              className={`r-line${s.reference ? " r-ref" : s.dash ? " r-dash" : " r-draw"}`}
-              d={path(s.points)}
-              {...(!s.reference && !s.dash && { pathLength: 1 })}
-            />
-            {!s.reference &&
-              (s.marker ?? "circle") !== "none" &&
-              s.points.map((p) => (
-                <g
-                  key={p.x}
-                  className="r-mark"
-                  style={{ "--r-at": r2((p.x - xDomain[0]) / span) } as CSSProperties}
-                >
-                  <MarkerShape kind={s.marker ?? "circle"} x={sx(p.x)} y={sy(p.y)} />
-                  {/* A larger, invisible target carries the hover text. */}
-                  <circle className="r-hit" cx={r2(sx(p.x))} cy={r2(sy(p.y))} r={13}>
-                    {p.tip && <title>{p.tip}</title>}
-                  </circle>
-                </g>
-              ))}
-          </g>
-        ))}
-
-        <g className="r-end-labels">
-          {groups.map((g, i) => {
-            const ly = labelYs[i] as number;
-            const moved = Math.abs(ly - g.y) > 4;
-            return (
-              <g key={g.ids.join("+")}>
-                {moved && (
-                  <path className="r-leader" d={`M${r2(g.x + 9)} ${r2(g.y)}L${r2(g.x + 16)} ${r2(ly)}`} />
-                )}
-                <text x={r2(g.x + (moved ? 19 : 12))} y={r2(ly + 3.5)}>
-                  {g.label}
-                </text>
-              </g>
-            );
-          })}
-        </g>
-      </svg>
-    </div>
-  );
 }
 
 /** Round tick values covering [min, max]: about `count` steps of 1, 2 or 5 × 10ⁿ. */

@@ -29,6 +29,8 @@ export interface LoadedRun {
   metrics: Record<string, string>[];
   summary?: Record<string, string>[];
   cdf?: Record<string, string>[];
+  /** `summary.json`, for the runs that write one (the NFD conformance check). */
+  summaryJson?: unknown;
 }
 
 /** Where a number on the page comes from. */
@@ -131,6 +133,70 @@ export interface SafetyData {
   }[];
 }
 
+/** The modes of E4: B0, B2 and B3 over the HTTP overlay, N2 and N3 (B2's and B3's topologies) on native NDN. */
+export type EmulationModeId = "B0" | "B2" | "B3" | "N2" | "N3";
+
+/**
+ * E4: the HTTP overlay against native NDN on emulated links (Docker, `tc netem`), read from
+ * `experiments/results/e4/<run-id>/` (`summary.csv`, `latency_cdf.csv`, `config.json`, `env.json`).
+ * Wall-clock results of one host. Absent from the page until a run folder exists.
+ */
+export interface EmulationData {
+  run: RunRef;
+  title: string;
+  seeds: number;
+  /** Loss on every link, each direction, in percent: the x axis. */
+  lossPct: number[];
+  modes: { id: EmulationModeId; binding: "overlay" | "native" }[];
+  workload: {
+    agents: number;
+    callsPerAgent: number;
+    catalogSize: number;
+    overlap: number;
+    thinkTimeMs: number;
+  };
+  links: { agentMs: number; starProducerMs: number; treeCoreMs: number; treeProducerMs: number };
+  producer: { serviceMedianMs: number; ttlMs: number; pageBytesMedian: number };
+  native: { interestLifetimeMs: number; retransmissions: number };
+  /** Runs discarded and repeated by the validity guard (a frozen host). */
+  discardedRuns: number;
+  /** `metrics[metric][mode][i]` is the statistic at `lossPct[i]`. */
+  metrics: Record<string, Partial<Record<EmulationModeId, Stat[]>>>;
+  /** Latency percentiles 0..100 (ms) of the answered calls pooled over seeds: `cdf[mode][i][q]`, `i` indexing `lossPct`. */
+  cdf: Partial<Record<EmulationModeId, number[][]>>;
+}
+
+/** One scenario of the NFD conformance check. */
+export interface NfdScenario {
+  id: string;
+  title: string;
+  /** Protocol rules the scenario exercises, e.g. `P-9.1`. */
+  rules: string[];
+  pass: boolean;
+  checks: number;
+  failed: number;
+  /** Why the scenario stopped before finishing its checks, if it did. */
+  error?: string;
+  durationMs: number;
+}
+
+/** One run of `pnpm exp:ndn`: the native binding against real NFD forwarders. Pass or fail, not a measurement. */
+export interface NfdRunData {
+  run: RunRef;
+  nfd: string;
+  ndnts: string;
+  image: string;
+  pass: boolean;
+  passed: number;
+  total: number;
+  scenarios: NfdScenario[];
+}
+
+export interface NfdData {
+  /** Oldest first; at most the last five. */
+  runs: NfdRunData[];
+}
+
 export interface ResultsData {
   schema: 1;
   /** Digest of `packages/*\/src` when this file was generated. */
@@ -138,6 +204,8 @@ export interface ResultsData {
   e1: MicrobenchData | null;
   missOverhead: MissOverhead | null;
   sweeps: Record<string, SweepData>;
+  e4: EmulationData | null;
+  nfd: NfdData | null;
   e5: SafetyData | null;
 }
 
@@ -147,7 +215,11 @@ function numbers(v: unknown): number[] {
 
 /** The provenance line of a run. */
 export function runRef(r: LoadedRun): RunRef {
-  const e = r.env;
+  // The emulation's env.json nests the host under `host` (E4); the simulator's is flat.
+  const e = {
+    ...r.env,
+    ...(typeof r.env.host === "object" && r.env.host !== null ? r.env.host : {}),
+  } as Record<string, unknown>;
   return {
     experiment: r.experiment,
     id: r.id,
@@ -318,6 +390,120 @@ function safetyData(r: LoadedRun): SafetyData {
   };
 }
 
+/** Reshape one E4 run (`summary.csv`, `latency_cdf.csv`); `undefined` while the folder has no summary. */
+export function emulationData(r: LoadedRun): EmulationData | undefined {
+  if (!r.summary || r.summary.length === 0) return undefined;
+  const cfg = r.config as {
+    title?: string;
+    seeds: { count: number };
+    modes: EmulationModeId[];
+    lossPct: number[];
+    workload: EmulationData["workload"];
+    links: EmulationData["links"];
+    producer: EmulationData["producer"];
+    native: EmulationData["native"];
+  };
+  const index = new Map(cfg.lossPct.map((v, i) => [v, i]));
+  const metrics: EmulationData["metrics"] = {};
+  for (const row of r.summary) {
+    const i = index.get(Number(row.loss_pct));
+    if (i === undefined || !row.metric) continue;
+    const byMode = (metrics[row.metric] ??= {});
+    const series = (byMode[row.mode as EmulationModeId] ??= []);
+    series[i] = {
+      mean: Number(row.mean),
+      ci95: Number(row.ci95),
+      min: Number(row.min),
+      max: Number(row.max),
+      n: Number(row.n),
+    };
+  }
+  const cdf: EmulationData["cdf"] = {};
+  for (const row of r.cdf ?? []) {
+    const i = index.get(Number(row.loss_pct));
+    if (i === undefined) continue;
+    const perLoss = (cdf[row.mode as EmulationModeId] ??= []);
+    const series = (perLoss[i] ??= []);
+    series[Number(row.percentile)] = Math.round(Number(row.latency_ms) * 1000) / 1000;
+  }
+  const discarded = (r.env as { discardedRuns?: unknown }).discardedRuns;
+  return {
+    run: runRef(r),
+    title: cfg.title ?? "E4",
+    seeds: cfg.seeds.count,
+    lossPct: cfg.lossPct,
+    modes: cfg.modes.map((id) => ({ id, binding: id.startsWith("N") ? "native" : "overlay" })),
+    workload: {
+      agents: cfg.workload.agents,
+      callsPerAgent: cfg.workload.callsPerAgent,
+      catalogSize: cfg.workload.catalogSize,
+      overlap: cfg.workload.overlap,
+      thinkTimeMs: cfg.workload.thinkTimeMs,
+    },
+    links: {
+      agentMs: cfg.links.agentMs,
+      starProducerMs: cfg.links.starProducerMs,
+      treeCoreMs: cfg.links.treeCoreMs,
+      treeProducerMs: cfg.links.treeProducerMs,
+    },
+    producer: {
+      serviceMedianMs: cfg.producer.serviceMedianMs,
+      ttlMs: cfg.producer.ttlMs,
+      pageBytesMedian: cfg.producer.pageBytesMedian,
+    },
+    native: {
+      interestLifetimeMs: cfg.native.interestLifetimeMs,
+      retransmissions: cfg.native.retransmissions,
+    },
+    discardedRuns: Array.isArray(discarded) ? discarded.length : 0,
+    metrics,
+    cdf,
+  };
+}
+
+/** Reshape one run of the NFD conformance check from its `summary.json`; `undefined` if it has none. */
+export function nfdRunData(r: LoadedRun): NfdRunData | undefined {
+  const s = r.summaryJson as
+    | {
+        pass?: boolean;
+        passed?: number;
+        total?: number;
+        nfd?: string;
+        ndnts?: string;
+        image?: { tag?: string };
+        scenarios?: {
+          id: string;
+          title: string;
+          rules?: string[];
+          pass: boolean;
+          checks?: { pass: boolean }[];
+          error?: string;
+          durationMs?: number;
+        }[];
+      }
+    | undefined;
+  if (!s || !Array.isArray(s.scenarios)) return undefined;
+  return {
+    run: runRef(r),
+    nfd: String(s.nfd ?? ""),
+    ndnts: String(s.ndnts ?? ""),
+    image: String(s.image?.tag ?? ""),
+    pass: s.pass === true,
+    passed: Number(s.passed ?? 0),
+    total: Number(s.total ?? s.scenarios.length),
+    scenarios: s.scenarios.map((c) => ({
+      id: c.id,
+      title: c.title,
+      rules: c.rules ?? [],
+      pass: c.pass,
+      checks: (c.checks ?? []).length,
+      failed: (c.checks ?? []).filter((x) => !x.pass).length,
+      ...(c.error ? { error: c.error.split("\n")[0] ?? c.error } : {}),
+      durationMs: Number(c.durationMs ?? 0),
+    })),
+  };
+}
+
 function kindOf(r: LoadedRun): string {
   return String((r.config as { kind?: unknown }).kind ?? "");
 }
@@ -334,14 +520,27 @@ export function buildResultsData(runs: readonly LoadedRun[], sourceDigest: strin
     if (list) list.push(r);
     else byExperiment.set(r.experiment, [r]);
   }
-  const data: ResultsData = { schema: 1, sourceDigest, e1: null, missOverhead: null, sweeps: {}, e5: null };
+  const data: ResultsData = {
+    schema: 1,
+    sourceDigest,
+    e1: null,
+    missOverhead: null,
+    sweeps: {},
+    e4: null,
+    nfd: null,
+    e5: null,
+  };
   let e1Runs: LoadedRun[] = [];
   for (const [experiment, list] of [...byExperiment.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const latest = list[list.length - 1] as LoadedRun;
     const kind = kindOf(latest);
     if (kind === "sweep") data.sweeps[experiment] = sweepData(latest);
     else if (kind === "safety") data.e5 = safetyData(latest);
-    else if (kind === "microbench" && data.e1 === null) {
+    else if (kind === "emulation") data.e4 = emulationData(latest) ?? null;
+    else if (kind === "nfd-check") {
+      const nfdRuns = list.map(nfdRunData).filter((x): x is NfdRunData => x !== undefined);
+      if (nfdRuns.length > 0) data.nfd = { runs: nfdRuns.slice(-5) };
+    } else if (kind === "microbench" && data.e1 === null) {
       const same = JSON.stringify(latest.config);
       e1Runs = list.filter((r) => JSON.stringify(r.config) === same);
       data.e1 = microbenchData(e1Runs);
