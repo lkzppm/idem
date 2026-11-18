@@ -4,7 +4,7 @@ Uma regra o torna confiável: o sandbox executa a **mesma** classe `Forwarder` d
 
 ## O que dá para rodar {#modes}
 
-O sandbox abre numa escolha: uma **tela em branco** (o sinal de mais grande), uma rede de **exemplo** (um enxame numa borda, dois produtores, uma árvore regional), o modo **Ao vivo**, ou a rede que você editava da última vez. Toda rede, exceto a Ao vivo, pode ser editada. Para abrir outra, volte com *Redes* no topo da barra lateral: uma rede editada fica guardada, e *Continuar de onde parou* a traz de volta.
+O sandbox abre numa escolha: uma **tela em branco** (o sinal de mais grande), uma rede de **exemplo** (um enxame numa borda, dois produtores, uma árvore regional), o modo **Ao vivo**, uma rede que você **salvou** antes, ou a que você editava da última vez. Toda rede, exceto a Ao vivo, pode ser editada. Para abrir outra, volte com *Redes* no topo da barra lateral: uma rede editada fica guardada, e *Continuar de onde parou* a traz de volta. As redes salvas aparecem em *Suas redes* (veja [Salvando suas redes](#library)).
 
 | | Uma rede no editor | Ao vivo |
 |---|---|---|
@@ -51,11 +51,20 @@ Agentes se ligam só a forwarders, nunca direto a um produtor nem entre si: o fo
 | remover | selecione e aperte `Delete` |
 | olhar em volta | arraste o fundo para deslocar; role, faça pinça ou use os botões para zoom; `F` enquadra a rede |
 | desfazer | `⌘Z` (`⇧⌘Z` para refazer) |
+| salvar | *Salvar* (o ícone de disquete, ao lado do nome da rede) a guarda neste navegador; *Exportar* a baixa como arquivo; *Excluir* remove a cópia salva |
 | compartilhar | *Compartilhar* copia um link que carrega a rede inteira |
 
 A barra do player, sobre a rede, executa, pausa e reinicia a execução, e mostra quantas chamadas foram respondidas (e, na simulação, o tempo virtual e a velocidade). Uma rede que você abre começa pausada: aperte executar. Quando algo impede a rede de rodar (nenhum agente, um agente sem ferramentas, uma ferramenta cujo produtor ele não alcança), a barra do player avisa; clique nela para ver a lista inteira.
 
 O motor é escolhido no topo da barra lateral: **IDEM**, em roteadores NDN (o padrão), ou **Simulação**.
+
+### Salvando suas redes {#library}
+
+O ícone de disquete ao lado do nome da rede a salva neste navegador. Na primeira vez ele pede um nome (o do exemplo vem sugerido); depois atualiza a mesma entrada, e um ponto no ícone avisa que há alterações ainda não salvas. O ícone de lixeira exclui a cópia salva, depois de uma confirmação, e leva você de volta à tela inicial. O exemplo Ao vivo não é uma rede, então não tem esses botões.
+
+Na tela inicial, *Suas redes* lista o que você salvou, da mais recente para a mais antiga, cada uma com seu desenho, nome, data e número de nós. Abra com um clique; o lápis renomeia, a seta exporta como arquivo, a lixeira exclui (depois de uma confirmação). *Importar arquivo* adiciona uma rede de um arquivo `.json`, e soltar um arquivo em qualquer ponto da tela faz o mesmo. Um arquivo exportado pode ser enviado a qualquer pessoa e importado em outro navegador.
+
+Tudo fica no armazenamento deste navegador: nada é enviado ao site, e limpar os dados do site (ou usar uma janela privada) limpa a biblioteca, então exporte o que quiser guardar. A biblioteca guarda até 40 redes, cada uma com até cerca de 200 KB. Um arquivo importado é verificado como um link compartilhado: o que não é uma rede válida é rejeitado, e o que dá para reparar (um enlace para um nó que não existe, um número fora da faixa) é reparado.
 
 ### IDEM em roteadores NDN {#ndn-engine}
 

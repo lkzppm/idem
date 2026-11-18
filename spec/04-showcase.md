@@ -23,11 +23,12 @@ Vercel Functions.
 Goal: in under a minute, a visitor *sees* aggregation and caching happen and how the numbers change,
 on a network they can build.
 
-**Start screen and the editor (ADR-028, ADR-029)**
+**Start screen and the editor (ADR-028, ADR-029, ADR-031)**
 
 - `/sandbox` opens on a start screen with nothing loaded: on the left a large plus tile (blank
-  canvas) and "continue where you left off" when this browser saved a network; on the right the
-  examples in a column, one row each with its drawing (Swarm: 8 agents, one edge, one producer; Two
+  canvas) and "continue where you left off" when this browser autosaved edits that are not a saved
+  network; on the right "Your networks" (ADR-031) above the examples in a column, one row each with
+  its drawing (Swarm: 8 agents, one edge, one producer; Two
   producers: docs and weather, a tool list per agent; Regional tree: three edges under a regional
   forwarder; Live: real HTTP, a fixed network). A shared link (`#n=…`, `?example=<id>`, or the old
   `?mode=swarm` / `?mode=live`) skips the screen.
@@ -35,7 +36,18 @@ on a network they can build.
   the top, dock from the bottom, nodes popping in). Only the start screen loads networks: the
   sidebar head's back button ("Networks") saves an edited network and returns to it.
 - The sidebar head: back, undo / redo (⌘Z, ⇧⌘Z), Share (copies a `#n=` link), then the network's name
-  (the example it came from; "edited" once changed).
+  (the saved name, or the example it came from; "edited" once changed) with Save, Export and Delete
+  at the end of that row (not on Live, which is not a network).
+- **Your networks (ADR-031):** the networks the visitor saved in this browser, newest first, in a
+  two-column grid of cards (one column on a phone): drawing, name, date, node count; a click opens
+  it; rename (inline), export (a `.idem.json` file) and delete (inline confirm, the card leaves with
+  a spring) per card; four shown, "Show all" for the rest (at most 40). An "Import a file" button,
+  and a `.json` dropped anywhere on the screen, add a network from a file; what fails is said in an
+  inline notice. With none saved, a dashed empty state says how to save one. Save asks for a name
+  inline in the head (no browser dialog) the first time and updates the same entry after; a dot on
+  the icon marks unsaved changes; Delete is disabled until the network is saved, asks to confirm,
+  and returns to the start screen. Storage is `localStorage` only; every read goes through
+  `sanitizeNetwork`.
 - **Engine (ADR-030):** "IDEM" (the default: NDN routers in WebAssembly) or "Simulation" (seeded,
   compares protocols); each option has its own info bubble. For the simulation, the protocols
   compared (MCP direct, MCP + local cache, IDEM) and the seed.
