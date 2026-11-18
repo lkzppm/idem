@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   useCallback,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -56,7 +57,7 @@ export function LineChart({
   yLabel,
   fill,
   rule,
-  width = 640,
+  width: baseWidth = 640,
   height = 360,
   labelRoom = 96,
   readout = "x",
@@ -67,6 +68,20 @@ export function LineChart({
   const [cursor, setCursor] = useState<Cursor | null>(null);
   const [byKeys, setByKeys] = useState(false);
   const svg = useRef<SVGSVGElement>(null);
+  // The drawing takes the width of its card, one unit per CSS pixel, so the plot fills the space
+  // and the text keeps its size. Below 85% of the base width the card scrolls sideways instead.
+  const wrap = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const measure = () => setFit(Math.round(el.clientWidth));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const width = Math.max(Math.round(baseWidth * 0.85), fit ?? baseWidth);
 
   const shown = useMemo(() => series.filter((s) => !off.has(s.id)), [series, off]);
   const drawn = shown.filter((s) => !s.reference);
@@ -267,6 +282,7 @@ export function LineChart({
   return (
     <div className="r-chart-block" data-hl={litId ?? undefined}>
       <div
+        ref={wrap}
         className="r-chart-wrap"
         role="group"
         aria-label={`${title}. ${labels.hint}`}
@@ -277,7 +293,7 @@ export function LineChart({
           setCursor(null);
         }}
       >
-        <div className="r-chart-stage" style={{ "--r-w": `${width / 16}rem` } as CSSProperties}>
+        <div className="r-chart-stage" style={{ "--r-w": `${baseWidth / 16}rem` } as CSSProperties}>
           <svg
             ref={svg}
             className="r-chart"

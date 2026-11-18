@@ -435,9 +435,8 @@
 }
 .r-chart-stage {
   position: relative;
-  /* Never smaller than 85% of its drawing size, never larger than 115%: the labels stay readable. */
+  /* As wide as the card (the drawing is measured to it), never below 85% of its base size. */
   min-width: calc(var(--r-w) * 0.85);
-  max-width: calc(var(--r-w) * 1.15);
 }
 .r-chart {
   display: block;
