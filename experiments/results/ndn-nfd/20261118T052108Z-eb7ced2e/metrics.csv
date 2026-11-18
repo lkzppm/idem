@@ -1,0 +1,83 @@
+scenario,check,pass,expected,actual
+S1,manifest fetched over NFD = the producer's manifest,true,"{""producer"":""demo.idem.dev"",""version"":1,""keys"":[{""keyId"":""--6IM5l0OosLj9yW"",""publicKeyJwk"":{""kty"":""OKP"",""crv"":""Ed25519"",""x"":""6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw""}}],""tools"":[{""tool"":""fetch_page"",""schemaDigest"":""U0cnv1s5IWQ9Pw_GAh2Uur"",""cacheable"":true,""ttlMs"":60000,""scope"":""public"",""normalizers"":{""/url"":[""url:sortQuery""]},""policyVersion"":1},{""tool"":""quick"",""schemaDigest"":""Bh1BB4mQ1txV9jrJ6EpldF"",""cacheable"":true,""ttlMs"":4000,""scope"":""public"",""normalizers"":{},""policyVersion"":1},{""tool"":""blob"",""schemaDigest"":""m0eGEmhg8uRC3GQoIJyrCh"",""cacheable"":true,""ttlMs"":60000,""scope"":""public"",""normalizers"":{},""policyVersion"":1},{""tool"":""my_notes"",""schemaDigest"":""eRpmUNaQRz9BOkcadDddhA"",""cacheable"":true,""ttlMs"":60000,""scope"":""private"",""normalizers"":{},""policyVersion"":1}],""signature"":{""alg"":""Ed25519"",""keyId"":""--6IM5l0OosLj9yW"",""value"":""fwlyBupK6KUWY6pNUa9svJoZEKm8ZSArh1IjrvnunWYffjm_25jqKsUVSrI9_uF8cS3KCph4gpyA4MoagRhYDQ""}}","{""keys"":[{""keyId"":""--6IM5l0OosLj9yW"",""publicKeyJwk"":{""crv"":""Ed25519"",""kty"":""OKP"",""x"":""6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw""}}],""producer"":""demo.idem.dev"",""signature"":{""alg"":""Ed25519"",""keyId"":""--6IM5l0OosLj9yW"",""value"":""fwlyBupK6KUWY6pNUa9svJoZEKm8ZSArh1IjrvnunWYffjm_25jqKsUVSrI9_uF8cS3KCph4gpyA4MoagRhYDQ""},""tools"":[{""cacheable"":true,""normalizers"":{""/url"":[""url:sortQuery""]},""policyVersion"":1,""schemaDigest"":""U0cnv1s5IWQ9Pw_GAh2Uur"",""scope"":""public"",""tool"":""fetch_page"",""ttlMs"":60000},{""cacheable"":true,""normalizers"":{},""policyVersion"":1,""schemaDigest"":""Bh1BB4mQ1txV9jrJ6EpldF"",""scope"":""public"",""tool"":""quick"",""ttlMs"":4000},{""cacheable"":true,""normalizers"":{},""policyVersion"":1,""schemaDigest"":""m0eGEmhg8uRC3GQoIJyrCh"",""scope"":""public"",""tool"":""blob"",""ttlMs"":60000},{""cacheable"":true,""normalizers"":{},""policyVersion"":1,""schemaDigest"":""eRpmUNaQRz9BOkcadDddhA"",""scope"":""private"",""tool"":""my_notes"",""ttlMs"":60000}],""version"":1}"
+S1,tool list fetched over NFD,true,"[""fetch_page"",""quick"",""blob"",""my_notes""]","[""fetch_page"",""quick"",""blob"",""my_notes""]"
+S1,no error,true,,
+S1,NDN (outer) signature verifies,true,true,true
+S1,IDEM (inner) signature and contentDigest verify,true,true,true
+S1,content,true,"[{""type"":""text"",""text"":""page https://corpus.idem.dev/doc/1""}]","[{""text"":""page https://corpus.idem.dev/doc/1"",""type"":""text""}]"
+S1,IDEM name = core's overlay name,true,/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ,/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ
+S1,Data name = Interest name,true,/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ,/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ
+S1,NDN name = IDEM name + hand-computed ParametersSha256DigestComponent,true,/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ/params-sha256=7d004e29191c553b37fdc141981f75d45bab03df14d961a3524cf3e8c386a862,/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/QGGgqeFZqwkwMg75S5g9OMWvQ3Jma09TKl4Z3ldTajQ/params-sha256=7d004e29191c553b37fdc141981f75d45bab03df14d961a3524cf3e8c386a862
+S1,outer KeyLocator = IDEM key locator,true,/idem/v1/demo.idem.dev/_key/--6IM5l0OosLj9yW,/idem/v1/demo.idem.dev/_key/--6IM5l0OosLj9yW
+S1,tool ran once,true,1,1
+S1,NFD sent 1 Interest to the producer face,true,1,1
+S1,FreshnessPeriod = manifest TTL,true,60000,60000
+S1,ContentType BLOB,true,0,0
+S1,packet within MAX_PACKET_SIZE,true,true,705
+S2,consumer faces at NFD,true,8,8
+S2,every consumer got verified Data,true,8,8
+S2,one NDN name,true,1,1
+S2,NFD received N Interests from the consumer faces,true,8,8
+S2,NFD returned N Data to the consumer faces,true,8,8
+S2,NFD forwarded 1 Interest to the producer,true,1,1
+S2,tool ran once,true,1,1
+S3,first call: verified,true,true,true
+S3,"first call: tool ran, 1 Interest upstream",true,"[1,1]","[1,1]"
+S3,repeat: verified,true,true,true
+S3,"repeat: CS hit, no tool run, nothing upstream",true,"[1,0,0]","[1,0,0]"
+S3,repeat: the very same signed Data,true,7vX9qujBeidEVn_3XhBkWlpvm9qpITuEkLXanV61rQsN4kpYz3zoEIHFU-qZd33MXuVWeyd1fi15435fFqOLBA,7vX9qujBeidEVn_3XhBkWlpvm9qpITuEkLXanV61rQsN4kpYz3zoEIHFU-qZd33MXuVWeyd1fi15435fFqOLBA
+S3,after TTL: verified,true,true,true
+S3,"after TTL: stale CS entry not used, tool ran again",true,"[0,1,1]","[0,1,1]"
+S3,after TTL: newer producedAt,true,true,true
+S3,"without MustBeFresh: stale Data from CS, no tool run",true,"[1,0,0]","[1,0,0]"
+S3,without MustBeFresh: the Data is older than its TTL,true,true,6855
+S3,isError: FreshnessPeriod 0,true,0,0
+S3,"isError repeat: not served from CS, tool ran again",true,"[0,1,1]","[0,1,1]"
+S4,all verified,true,4,4
+S4,one NDN name for every spelling,true,1,1
+S4,concurrent spellings: tool ran once,true,1,1
+S4,concurrent spellings: 1 Interest upstream,true,1,1
+S4,later spelling: same name,true,/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/J4QUlyXCJz11HCpZkSqLvEh3dCUDmpK9l3oL8bU3tbw/params-sha256=ce6b29394815884fb43b84dff6514c088a345132a72c3351051e104f69cfbb9f,/idem/v1/demo.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/J4QUlyXCJz11HCpZkSqLvEh3dCUDmpK9l3oL8bU3tbw/params-sha256=ce6b29394815884fb43b84dff6514c088a345132a72c3351051e104f69cfbb9f
+S4,"later spelling: CS hit, tool not run",true,"[1,0]","[1,0]"
+S5,consumer: NOT_CACHEABLE without sending,true,NOT_CACHEABLE,NOT_CACHEABLE
+S5,consumer: no Interest reached NFD from its face,true,0,0
+S5,consumer: no content,true,,
+S5,producer: NOT_CACHEABLE Nack,true,NOT_CACHEABLE,NOT_CACHEABLE
+S5,producer: Interest did reach it,true,1,1
+S5,producer: private tool never ran,true,0,0
+S5,crafted Data is signed private,true,private,private
+S5,bob: both signatures are valid,true,"[true,true]","[true,true]"
+S5,bob: rejected as private (NOT_CACHEABLE),true,"[false,""NOT_CACHEABLE""]","[false,""NOT_CACHEABLE""]"
+S5,carol: NFD served alice's private Data from its CS,true,1,1
+S5,carol: rejected as private (NOT_CACHEABLE),true,"[false,""NOT_CACHEABLE""]","[false,""NOT_CACHEABLE""]"
+S5,private tool still never ran on the real producer,true,0,0
+S6,flipped-byte: call fails closed with BAD_SIGNATURE,true,"[""BAD_SIGNATURE"",""BAD_SIGNATURE""]","[""BAD_SIGNATURE"",""BAD_SIGNATURE""]"
+S6,flipped-byte: no content returned,true,,
+S6,flipped-byte: second consumer is served the same altered Data from CS and rejects it,true,"[1,""BAD_SIGNATURE""]","[1,""BAD_SIGNATURE""]"
+S6,flipped-byte: real producer never asked,true,0,0
+S6,"flipped-byte: after the CS entry is gone, the real producer answers",true,"[true,1]","[true,1]"
+S6,re-signed-outer-wrong-key: call fails closed with BAD_SIGNATURE,true,"[""BAD_SIGNATURE"",""BAD_SIGNATURE""]","[""BAD_SIGNATURE"",""BAD_SIGNATURE""]"
+S6,re-signed-outer-wrong-key: no content returned,true,,
+S6,re-signed-outer-wrong-key: second consumer is served the same altered Data from CS and rejects it,true,"[1,""BAD_SIGNATURE""]","[1,""BAD_SIGNATURE""]"
+S6,re-signed-outer-wrong-key: real producer never asked,true,0,0
+S6,"re-signed-outer-wrong-key: after the CS entry is gone, the real producer answers",true,"[true,1]","[true,1]"
+S6,re-signed-both-attacker-key: call fails closed with UNTRUSTED_KEY,true,"[""UNTRUSTED_KEY"",""UNTRUSTED_KEY""]","[""UNTRUSTED_KEY"",""UNTRUSTED_KEY""]"
+S6,re-signed-both-attacker-key: no content returned,true,,
+S6,re-signed-both-attacker-key: second consumer is served the same altered Data from CS and rejects it,true,"[1,""UNTRUSTED_KEY""]","[1,""UNTRUSTED_KEY""]"
+S6,re-signed-both-attacker-key: real producer never asked,true,0,0
+S6,"re-signed-both-attacker-key: after the CS entry is gone, the real producer answers",true,"[true,1]","[true,1]"
+S7,TCP: largest Data verified,true,true,true
+S7,"UDP: largest Data verified (NDNLP fragmentation by NFD, reassembly by NDNts)",true,true,true
+S7,one byte more: UPSTREAM_ERROR Nack,true,UPSTREAM_ERROR,UPSTREAM_ERROR
+S7,20 000 bytes: UPSTREAM_ERROR Nack,true,UPSTREAM_ERROR,UPSTREAM_ERROR
+S8,edge1 consumer: verified,true,true,true
+S8,edge2 consumer: verified,true,true,true
+S8,same name through both edges,true,/idem/v1/chain.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/deZgtmbsvRTvcJv9kVG2YHkvQODHcToUIFyOdoZrouI/params-sha256=c6a9e159f841d4dad247937abdb6e06beee20573aff991c5cab5215cb0ea8d2d,/idem/v1/chain.idem.dev/fetch_page/U0cnv1s5IWQ9Pw_GAh2Uur/deZgtmbsvRTvcJv9kVG2YHkvQODHcToUIFyOdoZrouI/params-sha256=c6a9e159f841d4dad247937abdb6e06beee20573aff991c5cab5215cb0ea8d2d
+S8,"first call: tool ran once, 1 Interest to the producer",true,"[1,1]","[1,1]"
+S8,"second call: no hit at edge2, one hit at regional",true,"[0,1]","[0,1]"
+S8,"second call: tool not run, nothing to the producer",true,"[0,0]","[0,0]"
+S9,WebSocket consumer bootstrapped the manifest over NFD (TOFU),true,true,true
+S9,"ws, tcp, udp: all verified",true,"[true,true,true]","[true,true,true]"
+S9,tool ran once for the three transports,true,1,1
+S9,1 Interest upstream,true,1,1
+S9,NFD lists a WebSocket face,true,true,"[""wsclient://172.22.0.1:65498""]"

@@ -451,6 +451,16 @@ behaviour; that is E4's job in Mini-NDN (still open). A native-only consumer can
 plain-call retry of [P-5.5] and fails closed instead. A native forwarder that is not NFD (none in
 v1) would have to apply [P-7.1]; NFD does not verify Data signatures, so on the native binding
 cache poisoning is stopped at the consumer [P-9.3], not at the forwarder.
+*Checked against NFD 24.07 (2026-11-18, `pnpm exp:ndn`, `experiments/results/ndn-nfd/`):* nine
+scenarios pass over TCP, UDP and WebSocket faces, including aggregation of 8 concurrent calls into
+one tool run, CS hits and MustBeFresh past the TTL, and a two-forwarder chain. What the check showed:
+(a) an altered Data stays in NFD's CS and every consumer of that name rejects it until the entry goes
+stale or is evicted, so tampering costs availability, never integrity; (b) NFD likewise caches a
+`private` Data a non-conforming producer sends and serves it to the next user of the name, which is
+why [P-9.4] has a consumer-side check; (c) `NdnConsumer` reported every verification failure as
+`BAD_SIGNATURE`; it now reports `UNTRUSTED_KEY` and `NOT_CACHEABLE` as [P-9.3] and [P-9.4] say
+(test in `e2e.test.ts`). The §9.2 text on nonces and MustBeFresh records NFD behaviour the binding
+already relied on; no rule changed.
 
 ## ADR-027 — Sim: arbitrary graphs, multiple producers, per-agent workloads
 **Context.** The sandbox is becoming a network editor: any graph of agents, forwarders and
@@ -484,9 +494,19 @@ error is a `SimConfigError` (`code: "BAD_CONFIG"`, with the path of the field). 
 live-mutation API: the editor restarts a run on every edit.
 **Consequences.** Every configuration without `producers` runs exactly as before: a fingerprint of
 every run (metrics, call records, transmissions, forwarder events) of every E2 sweep in
-`experiments/configs/` was recorded on the old code and matches for all 4620 runs (30 seeds), and a
-one-seed subset plus the default, tree-with-loss, attack and trace runs is a test
-(`legacy.test.ts`); `pnpm --filter @idem/sim run fingerprint` reprints the full set. The only
+`experiments/configs/` was recorded on the old code and matches for all 4620 runs (30 seeds) on
+macOS and on Linux, and a one-seed subset plus the default, tree-with-loss, attack and trace runs is
+a test (`legacy.test.ts`); `pnpm --filter @idem/sim run fingerprint` reprints the full set. *Runs are
+reproducible per platform, not across platforms:* V8's `Math.log` is not correctly rounded and
+differs in the last bits between macOS and Linux, think and service times inherit that, and since a
+Data's JSON carries `producedAt`, a packet's byte count (and the CPU time charged for it) follows the
+decimal digits of a virtual timestamp. So the same seed gives slightly different times and byte
+counts on macOS and on Linux (in the one-seed pinned set, 59 of 162 runs are bit-identical across
+the two). The test therefore pins one set of hashes per `process.platform`, each recorded from the
+pre-change code on that platform. The committed results were produced on macOS and reproduce
+exactly there; a rerun on Linux would give close but not identical numbers. Making them portable
+(a pure-JS `log` in `Rng`, timestamps rounded before they are serialized) changes every number and
+needs its own decision and a rerun. The only
 behaviour differences are on graphs no committed config uses: a cyclic topology without `producers`
 now routes by latency rather than hop count, an agent whose producer is unreachable fails its calls
 with `NO_ROUTE` instead of retrying against a Nack, and a producer node not named `producer` is now

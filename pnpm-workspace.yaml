@@ -1,5 +1,7 @@
 packages:
   - packages/*
   - apps/*
+allowBuilds:
+  bufferutil: false
 fetchTimeout: 300000
 networkConcurrency: 8
