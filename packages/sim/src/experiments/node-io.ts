@@ -77,7 +77,7 @@ export async function readRun(dir: string, experiment: string, id: string): Prom
       return undefined;
     }
   };
-  const [config, metrics, seed, git, digest, env, summary, cdf] = await Promise.all(
+  const [config, metrics, seed, git, digest, env, summary, cdf, summaryJson] = await Promise.all(
     [
       "config.json",
       "metrics.csv",
@@ -87,6 +87,7 @@ export async function readRun(dir: string, experiment: string, id: string): Prom
       "env.json",
       "summary.csv",
       "latency_cdf.csv",
+      "summary.json",
     ].map(text),
   );
   // A folder without the files every run has is not a finished run.
@@ -102,6 +103,7 @@ export async function readRun(dir: string, experiment: string, id: string): Prom
     metrics: parseCsv(metrics),
     ...(summary !== undefined && { summary: parseCsv(summary) }),
     ...(cdf !== undefined && { cdf: parseCsv(cdf) }),
+    ...(summaryJson !== undefined && { summaryJson: JSON.parse(summaryJson) as unknown }),
   };
 }
 

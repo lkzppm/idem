@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "sourceDigest": "9013503843c8f9fbd8ecc75dcdc4ebd4f974249145caa3a6b1e7293342814675",
+  "sourceDigest": "665b486c03b504e66cd0b5aa013e701b8a0c9e351e6efe46d7d5d41d14e22b79",
   "e1": {
     "runs": [
       {
@@ -19111,6 +19111,224 @@
         ]
       }
     }
+  },
+  "e4": null,
+  "nfd": {
+    "runs": [
+      {
+        "run": {
+          "experiment": "ndn-nfd",
+          "id": "20261118T052108Z-eb7ced2e",
+          "seed": "7",
+          "gitSha": "a5430b1dec698e97a3a5b191b05535e9634d313f-dirty",
+          "sourceDigest": "eb7ced2e7cc5bc4e8f9cfa9e79458bbe8d9bd4162a4b6e59543223dfbe1fad6f",
+          "node": "v26.7.0",
+          "platform": "darwin arm64",
+          "cpu": "Apple M5",
+          "cores": 10,
+          "loadavgStart": [2.54, 2.243, 2.035],
+          "loadavgEnd": [2.653, 2.277, 2.054],
+          "startedAt": "2026-11-18T05:21:08.208Z",
+          "durationMs": 45240
+        },
+        "nfd": "24.07+git.23c53535",
+        "ndnts": "0.0.20260427",
+        "image": "ghcr.io/named-data/nfd:20261105",
+        "pass": true,
+        "passed": 9,
+        "total": 9,
+        "scenarios": [
+          {
+            "id": "S1",
+            "title": "Round trip: manifest bootstrap, one call, both signatures, name = IDEM name + PSDC",
+            "rules": ["P-9.1", "P-9.3", "P-6.2"],
+            "pass": true,
+            "checks": 15,
+            "failed": 0,
+            "durationMs": 1249
+          },
+          {
+            "id": "S2",
+            "title": "PIT aggregation: N concurrent identical calls on N faces, the tool runs once",
+            "rules": ["P-9.1", "P-9.3"],
+            "pass": true,
+            "checks": 7,
+            "failed": 0,
+            "durationMs": 3419
+          },
+          {
+            "id": "S3",
+            "title": "Content Store and freshness: repeat from CS; MustBeFresh goes upstream after the TTL",
+            "rules": ["P-9.1", "P-5.3"],
+            "pass": true,
+            "checks": 12,
+            "failed": 0,
+            "durationMs": 20560
+          },
+          {
+            "id": "S4",
+            "title": "Equivalent spellings: one name, shared PIT entry and CS entry",
+            "rules": ["P-2.1", "P-9.1"],
+            "pass": true,
+            "checks": 6,
+            "failed": 0,
+            "durationMs": 3416
+          },
+          {
+            "id": "S5",
+            "title": "private never on NDN: not sent, Nacked without running, rejected if it ever arrives",
+            "rules": ["P-9.4", "P-8.3"],
+            "pass": true,
+            "checks": 12,
+            "failed": 0,
+            "durationMs": 4703
+          },
+          {
+            "id": "S6",
+            "title": "Tampering on the path: altered Data is rejected; NFD caches it until it goes stale",
+            "rules": ["P-9.3", "P-5.5"],
+            "pass": true,
+            "checks": 15,
+            "failed": 0,
+            "durationMs": 7258
+          },
+          {
+            "id": "S7",
+            "title": "Size limit: the largest Data under 8800 bytes crosses NFD (TCP and UDP); larger → UPSTREAM_ERROR",
+            "rules": ["§9.2 size"],
+            "pass": true,
+            "checks": 4,
+            "failed": 0,
+            "durationMs": 174
+          },
+          {
+            "id": "S8",
+            "title": "Two-forwarder chain: edge1, edge2 → regional; regional CS serves the second edge",
+            "rules": ["P-9.1", "P-9.3"],
+            "pass": true,
+            "checks": 6,
+            "failed": 0,
+            "durationMs": 3069
+          },
+          {
+            "id": "S9",
+            "title": "Browser transport: WebSocket face to NFD; TCP, UDP and WebSocket consumers aggregate together",
+            "rules": ["P-9.1", "P-9.3"],
+            "pass": true,
+            "checks": 5,
+            "failed": 0,
+            "durationMs": 1253
+          }
+        ]
+      },
+      {
+        "run": {
+          "experiment": "ndn-nfd",
+          "id": "20261118T052519Z-eb7ced2e",
+          "seed": "7",
+          "gitSha": "a5430b1dec698e97a3a5b191b05535e9634d313f-dirty",
+          "sourceDigest": "eb7ced2e7cc5bc4e8f9cfa9e79458bbe8d9bd4162a4b6e59543223dfbe1fad6f",
+          "node": "v26.7.0",
+          "platform": "darwin arm64",
+          "cpu": "Apple M5",
+          "cores": 10,
+          "loadavgStart": [2.619, 2.382, 2.108],
+          "loadavgEnd": [2.895, 2.479, 2.157],
+          "startedAt": "2026-11-18T05:25:19.913Z",
+          "durationMs": 279902
+        },
+        "nfd": "24.07+git.23c53535",
+        "ndnts": "0.0.20260427",
+        "image": "ghcr.io/named-data/nfd:20261105",
+        "pass": false,
+        "passed": 8,
+        "total": 9,
+        "scenarios": [
+          {
+            "id": "S1",
+            "title": "Round trip: manifest bootstrap, one call, both signatures, name = IDEM name + PSDC",
+            "rules": ["P-9.1", "P-9.3", "P-6.2"],
+            "pass": true,
+            "checks": 15,
+            "failed": 0,
+            "durationMs": 1259
+          },
+          {
+            "id": "S2",
+            "title": "PIT aggregation: N concurrent identical calls on N faces, the tool runs once",
+            "rules": ["P-9.1", "P-9.3"],
+            "pass": true,
+            "checks": 7,
+            "failed": 0,
+            "durationMs": 3445
+          },
+          {
+            "id": "S3",
+            "title": "Content Store and freshness: repeat from CS; MustBeFresh goes upstream after the TTL",
+            "rules": ["P-9.1", "P-5.3"],
+            "pass": true,
+            "checks": 12,
+            "failed": 0,
+            "durationMs": 199737
+          },
+          {
+            "id": "S4",
+            "title": "Equivalent spellings: one name, shared PIT entry and CS entry",
+            "rules": ["P-2.1", "P-9.1"],
+            "pass": true,
+            "checks": 6,
+            "failed": 0,
+            "durationMs": 3411
+          },
+          {
+            "id": "S5",
+            "title": "private never on NDN: not sent, Nacked without running, rejected if it ever arrives",
+            "rules": ["P-9.4", "P-8.3"],
+            "pass": true,
+            "checks": 12,
+            "failed": 0,
+            "durationMs": 23790
+          },
+          {
+            "id": "S6",
+            "title": "Tampering on the path: altered Data is rejected; NFD caches it until it goes stale",
+            "rules": ["P-9.3", "P-5.5"],
+            "pass": true,
+            "checks": 15,
+            "failed": 0,
+            "durationMs": 46638
+          },
+          {
+            "id": "S7",
+            "title": "Size limit: the largest Data under 8800 bytes crosses NFD (TCP and UDP); larger → UPSTREAM_ERROR",
+            "rules": ["§9.2 size"],
+            "pass": true,
+            "checks": 4,
+            "failed": 0,
+            "durationMs": 137
+          },
+          {
+            "id": "S8",
+            "title": "Two-forwarder chain: edge1, edge2 → regional; regional CS serves the second edge",
+            "rules": ["P-9.1", "P-9.3"],
+            "pass": false,
+            "checks": 0,
+            "failed": 0,
+            "error": "Error: Command failed: docker exec idem-nfd-edge1 nfdc route add /idem 366",
+            "durationMs": 101
+          },
+          {
+            "id": "S9",
+            "title": "Browser transport: WebSocket face to NFD; TCP, UDP and WebSocket consumers aggregate together",
+            "rules": ["P-9.1", "P-9.3"],
+            "pass": true,
+            "checks": 5,
+            "failed": 0,
+            "durationMs": 1240
+          }
+        ]
+      }
+    ]
   },
   "e5": {
     "run": {
