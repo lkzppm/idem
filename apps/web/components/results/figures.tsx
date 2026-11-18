@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { ResultsMessages } from "@/lib/i18n/messages/results";
 import { type EvalModeId, type ResultsData, type Stat, type SweepData, seriesOf } from "@/lib/results/data";
 import type { Format } from "@/lib/results/format";
+import { InfoTip } from "../sandbox/ui";
 import {
   type ChartLabels,
   type ChartSeries,
@@ -172,6 +173,7 @@ export function ReductionFigure({
   compact = false,
   bound = true,
   modes = ["B1", "B2", "B3"],
+  info,
 }: {
   t: ResultsMessages;
   f: Format;
@@ -182,6 +184,8 @@ export function ReductionFigure({
   compact?: boolean;
   bound?: boolean;
   modes?: EvalModeId[];
+  /** A note behind an info button beside the title. */
+  info?: { label: string; body: ReactNode };
 }) {
   const shown = modes.filter((m) => sweep.modes.some((x) => x.id === m));
   const series: ChartSeries[] = [];
@@ -219,7 +223,10 @@ export function ReductionFigure({
   const n = sweep.values.length;
   return (
     <InView className={compact ? "r-figure-compact" : ""}>
-      <h3 className="r-figure-title">{copy.title}</h3>
+      <h3 className="r-figure-title">
+        {copy.title}
+        {info && <InfoTip label={info.label}>{info.body}</InfoTip>}
+      </h3>
       <LineChart
         title={copy.title}
         desc={copy.desc}
