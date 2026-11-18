@@ -46,7 +46,7 @@ export interface StagePane {
   badges?: Record<string, ReactNode>;
   /** Show agent ids under agents (when they fit). */
   agentLabels?: boolean;
-  /** A boxed caption in place of a node's label (always shown), e.g. the other visitors in Live. */
+  /** A boxed caption in place of a node's label (always shown; `.obs-node-box`), e.g. Live's visitors. */
   boxes?: Record<string, ReactNode>;
 }
 
@@ -754,7 +754,7 @@ export function StageCanvas({
                     data-kind={n.kind}
                     data-box={box !== undefined || undefined}
                   >
-                    {box !== undefined && <span className="obs-node-box">{box}</span>}
+                    {box}
                     {show && <span>{n.kind === "agent" ? n.id.replace("agent-", "a") : n.id}</span>}
                     {badge}
                   </div>

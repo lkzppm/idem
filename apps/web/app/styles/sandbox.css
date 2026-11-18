@@ -87,6 +87,11 @@
     transform: translateY(100%);
   }
 }
+@keyframes obs-box-pop {
+  40% {
+    transform: scale(1.08);
+  }
+}
 @keyframes obs-panel-enter {
   from {
     opacity: 0;
@@ -864,6 +869,10 @@
     background: var(--bg);
     border: 1.5px dashed var(--obs-edge-strong);
     border-radius: 9px;
+  }
+  /* Other visitors' calls just arrived: one expand-contract pop (no colour change). */
+  .obs-node-box[data-pulse] {
+    animation: obs-box-pop 0.5s var(--obs-pop-ease) both;
   }
   .obs-node-box-title {
     font-size: 11.5px;
@@ -2011,6 +2020,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .obs-node-box[data-pulse] {
+    animation: none;
+  }
   .obs-collapse,
   .obs-seg-thumb,
   .obs-chevron,
