@@ -2,8 +2,8 @@
 // @ndn/fw has no Interest aggregation and no Content Store; those are NFD's in Mini-NDN (spec 05 E4).
 import { jcs, keyPairFromSeed, Producer, signData, TrustStore, utf8 } from "@idem/core";
 import { consume, produce } from "@ndn/endpoint";
-import { Forwarder } from "@ndn/fw";
-import { Data as NdnData, Interest as NdnInterest } from "@ndn/packet";
+import { Forwarder, FwPacket } from "@ndn/fw";
+import { Name, Data as NdnData, Interest as NdnInterest } from "@ndn/packet";
 import { afterEach, describe, expect, it } from "vitest";
 import { decodeData, encodeData, encodeInterest } from "./codec";
 import { NdnConsumer } from "./consumer";
@@ -257,5 +257,80 @@ describe("retransmission on the native binding", () => {
     expect(out.attempts).toBe(1);
     expect(out.data).toBeUndefined();
     expect(nonces).toHaveLength(1);
+  });
+});
+
+describe("handshake over a lossy path", () => {
+  /** Two forwarders joined by a link that drops the first `drop` Interests from a to b. */
+  function lossyLink(a: Forwarder, b: Forwarder, drop: number, prefix: string) {
+    const pipe = () => {
+      const q: FwPacket[] = [];
+      let wake: (() => void) | undefined;
+      let open = true;
+      return {
+        push(p: FwPacket) {
+          q.push(p);
+          wake?.();
+        },
+        close() {
+          open = false;
+          wake?.();
+        },
+        async *rx() {
+          while (open) {
+            const p = q.shift();
+            if (p) yield p;
+            else await new Promise<void>((r) => (wake = r));
+          }
+        },
+      };
+    };
+    const toB = pipe();
+    const toA = pipe();
+    let dropped = 0;
+    const fa = a.addFace({
+      rx: toA.rx(),
+      async tx(it) {
+        for await (const p of it) {
+          if (p.l3 instanceof NdnInterest && dropped < drop) {
+            dropped++;
+            continue;
+          }
+          toB.push(FwPacket.create(p.l3));
+        }
+      },
+    });
+    const fb = b.addFace({
+      rx: toB.rx(),
+      async tx(it) {
+        for await (const p of it) toA.push(FwPacket.create(p.l3));
+      },
+    });
+    fa.addRoute(new Name(prefix));
+    return {
+      dropped: () => dropped,
+      close() {
+        toA.close();
+        toB.close();
+        fa.close();
+        fb.close();
+      },
+    };
+  }
+
+  it("retransmits a lost manifest Interest instead of failing init", async () => {
+    const { producer, key } = await setupProducer();
+    const far = Forwarder.create();
+    const served = await serveNdn({ producer, key, fw: far });
+    const near = Forwarder.create();
+    const link = lossyLink(near, far, 1, ndnUri(toNdnName(`/idem/v1/${PRODUCER}`)));
+    close = () => {
+      link.close();
+      served.close();
+    };
+    const lossy = new NdnConsumer({ producer: PRODUCER, fw: near, lifetimeMs: 200, retransmissions: 2 });
+    const r = await lossy.init();
+    expect(r.tools.length).toBeGreaterThan(0);
+    expect(link.dropped()).toBe(1);
   });
 });

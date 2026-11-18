@@ -2125,7 +2125,7 @@
   .obs-toast {
     position: absolute;
     right: 0;
-    top: 38px;
+    top: calc(100% + 6px);
     z-index: 30;
     padding: 4px 9px;
     font-size: 12px;
@@ -2620,6 +2620,352 @@
     }
   }
 
+  /* The visitor's networks (ADR-031): the library column of the start screen. */
+  .obs-start-lists {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    min-width: 0;
+  }
+  .obs-start-subrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 30px;
+    margin-bottom: 10px;
+  }
+  .obs-start-subrow .obs-start-sub {
+    margin: 0 0 0 2px;
+  }
+  .obs-start-count {
+    margin-left: 8px;
+    font-weight: 500;
+    color: var(--fg-subtle);
+  }
+  .obs-chip-btn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 11px;
+    font-size: 12.5px;
+    font-weight: 560;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge-strong);
+    border-radius: 9px;
+    box-shadow: 0 2px 0 0 var(--obs-shadow);
+    transition:
+      transform 0.45s var(--ease-spring),
+      box-shadow 0.2s var(--ease);
+  }
+  @media (hover: hover) {
+    .obs-chip-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 0 0 var(--obs-shadow);
+    }
+  }
+  .obs-chip-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0 0 0 0 var(--obs-shadow);
+    transition-duration: 0.1s;
+  }
+  .obs-chip-btn-solid {
+    color: var(--bg);
+    background: var(--fg);
+    border-color: var(--fg);
+  }
+  .obs-lib-more {
+    margin: 12px 0 0 2px;
+  }
+  .obs-lib-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .obs-lib-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px;
+    background: var(--bg-elev);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 14px;
+    box-shadow: 0 3px 0 0 var(--obs-shadow);
+    transition:
+      transform 0.45s var(--ease-spring),
+      box-shadow 0.25s var(--ease);
+    animation: obs-pop 0.5s var(--obs-pop-ease) backwards;
+    animation-delay: calc(min(var(--i, 0), 8) * 45ms + 100ms);
+  }
+  .obs-lib-card[data-mode="confirm"],
+  .obs-lib-card[data-picked] {
+    border-color: var(--fg);
+  }
+  .obs-lib-card[data-removing] {
+    pointer-events: none;
+    animation: obs-out 0.26s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  @media (hover: hover) {
+    .obs-lib-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 0 0 var(--obs-shadow);
+    }
+  }
+  .obs-lib-card:has(.obs-lib-name:active) {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 0 var(--obs-shadow);
+    transition-duration: 0.1s;
+  }
+  .obs-lib-card .obs-thumb {
+    aspect-ratio: 200 / 96;
+  }
+  .obs-lib-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 2px 2px 4px;
+  }
+  .obs-lib-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 1px;
+    min-width: 0;
+  }
+  /* The name is the card's open button; its ::after stretches over the whole card, under the tools. */
+  .obs-lib-name {
+    max-width: 100%;
+    padding: 0;
+    font-size: 14.5px;
+    font-weight: 620;
+    text-align: left;
+    color: var(--fg);
+  }
+  .obs-lib-name::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+  }
+  .obs-lib-name-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .obs-lib-meta {
+    font-size: 12px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+  .obs-lib-tools {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: none;
+    gap: 2px;
+  }
+  .obs-lib-tool {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    color: var(--fg-muted);
+    border-radius: 8px;
+  }
+  /* Hover moves a button (a spring) and never recolours it. */
+  .obs-lib-tool:hover,
+  .obs-net-tools .obs-icon-btn:hover {
+    color: var(--fg-muted);
+    background: transparent;
+  }
+  @media (hover: hover) {
+    .obs-lib-tool:hover,
+    .obs-net-tools .obs-icon-btn:hover {
+      transform: scale(1.14);
+    }
+  }
+  .obs-lib-tool:active,
+  .obs-net-tools .obs-icon-btn:active {
+    transform: scale(0.88);
+  }
+  .obs-lib-ask {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fg);
+  }
+  .obs-lib-confirm {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+  .obs-lib-confirm-btns {
+    display: flex;
+    gap: 6px;
+  }
+  .obs-lib-empty {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    padding: 10px 14px 10px 10px;
+    border: 1.5px dashed var(--obs-edge-strong);
+    border-radius: 14px;
+    animation: obs-rise 0.5s var(--obs-pop-ease) 0.12s backwards;
+  }
+  .obs-lib-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding: 4px 4px 4px 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--fg);
+    background: var(--bg-elev);
+    border: 1.5px solid var(--obs-edge-strong);
+    border-radius: 10px;
+    box-shadow: 0 2px 0 0 var(--obs-shadow);
+    animation: obs-pop 0.45s var(--obs-pop-ease) both;
+  }
+  .obs-lib-notice[data-kind="error"] {
+    border-color: var(--fg);
+    border-style: dashed;
+  }
+  /* A name being typed: in the sidebar head, or in a card. */
+  .obs-name-form {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .obs-name-input {
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    padding: 0 9px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 620;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1.5px solid var(--fg);
+    border-radius: 9px;
+    box-shadow: 0 2px 0 0 var(--obs-shadow);
+    outline: none;
+    animation: obs-tip-in 0.3s var(--obs-pop-ease) both;
+  }
+  .obs-name-form .obs-lib-tool {
+    width: 30px;
+    height: 30px;
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 9px;
+  }
+  /* Save, Export, Delete: at the end of the network's name row. */
+  .obs-net-tools {
+    display: flex;
+    flex: none;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .obs-net-tools .obs-icon-btn {
+    position: relative;
+    width: 30px;
+    height: 30px;
+    background: var(--bg);
+    border: 1.5px solid var(--obs-edge);
+    border-radius: 9px;
+  }
+  .obs-net-tools .obs-icon-btn[data-dirty]::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    background: var(--fg);
+    border: 1.5px solid var(--bg);
+    border-radius: 50%;
+  }
+  .obs-net-confirm {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    min-height: 30px;
+  }
+  /* A .json file held over the start screen. */
+  .obs-drop {
+    position: fixed;
+    inset: calc(var(--obs-top, 0px) + 12px) 12px 12px;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    background: var(--bg-elev);
+    border: 2px dashed var(--fg);
+    border-radius: 18px;
+    animation: obs-fade 0.2s var(--ease) both;
+  }
+  .obs-drop-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 620;
+    color: var(--fg);
+    animation: obs-pop 0.45s var(--obs-pop-ease) both;
+  }
+  @media (max-width: 760px) {
+    .obs-lib-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .obs-lib-card {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      align-items: center;
+      gap: 12px;
+    }
+    .obs-lib-body {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      padding: 0;
+    }
+    .obs-lib-text {
+      width: 100%;
+    }
+    .obs-lib-tools {
+      margin-left: -6px;
+    }
+    .obs-lib-empty {
+      grid-template-columns: 88px minmax(0, 1fr);
+      gap: 12px;
+    }
+    .obs-start-lists {
+      gap: 22px;
+    }
+  }
+
   .obs-thumb {
     width: 100%;
     height: auto;
@@ -2691,6 +3037,17 @@
   }
   .obs[data-entering] .obs-dock {
     animation: obs-in-up-soft 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  /* Once the entrance is over, the drawer and panels keep the entrance's animation names (same
+     keyframes as their own): going back to their own names would restart them, a second rise. A
+     drawer or panel opened later still plays them once, on mount. */
+  @media (prefers-reduced-motion: no-preference) {
+    .obs[data-entered] .obs-drawer:not([data-closing]) {
+      animation-name: obs-drawer-enter;
+    }
+    .obs[data-entered] .obs-panel {
+      animation-name: obs-panel-enter;
+    }
   }
   .obs[data-exiting] .obs-sidebar {
     animation: obs-out-left 0.3s cubic-bezier(0.4, 0, 1, 1) both;
@@ -2892,6 +3249,11 @@
     .obs-start-sub,
     .obs-new,
     .obs-rows li,
+    .obs-lib-card,
+    .obs-lib-empty,
+    .obs-lib-notice,
+    .obs-name-input,
+    .obs-drop-card,
     .obs-resume {
       animation: none;
     }
@@ -2905,6 +3267,7 @@
     .obs[data-entering] .obs-dock {
       animation: obs-fade 0.15s ease both;
     }
+    .obs-lib-card[data-removing],
     .obs-start[data-leaving],
     .obs-card[data-leaving],
     .obs[data-exiting] .obs-sidebar,
@@ -2917,6 +3280,8 @@
     .obs-new,
     .obs-new-plus,
     .obs-row-go,
+    .obs-lib-card,
+    .obs-chip-btn,
     .obs-back,
     .obs-back svg,
     .obs-icon-btn {

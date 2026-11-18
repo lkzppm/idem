@@ -27,12 +27,22 @@ import {
   WINDOW_IDS,
   type WindowId,
 } from "@/lib/sandbox/layout";
+import { downloadFile, exportFile, MAX_NETWORKS } from "@/lib/sandbox/library";
 import { clamp } from "@/lib/sandbox/motion";
 import { Dock } from "./dock";
 import { StartScreen } from "./editor/picker";
 import { useNetwork } from "./editor/use-network";
 import { EditorMode } from "./editor-mode";
-import { BackIcon, HelpIcon, LayoutIcon } from "./icons";
+import {
+  BackIcon,
+  CheckIcon,
+  CloseIcon,
+  ExportIcon,
+  HelpIcon,
+  LayoutIcon,
+  SaveIcon,
+  TrashIcon,
+} from "./icons";
 import { LiveMode } from "./live-mode";
 import { InfoTip } from "./ui";
 import { useLayout } from "./window/use-layout";
@@ -107,6 +117,19 @@ export function Sandbox() {
     return () => clearTimeout(id);
   }, [toast]);
 
+  // The library (ADR-031): naming a network to save it, and confirming a delete, happen in the head.
+  const [naming, setNaming] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const nameInput = useRef<HTMLInputElement>(null);
+  // A network loaded or left resets both.
+  useEffect(() => {
+    setNaming(false);
+    setConfirming(false);
+  }, [nw.loads, nw.showing.kind]);
+  useEffect(() => {
+    if (naming) nameInput.current?.select();
+  }, [naming]);
+
   const share = async () => {
     const url = nw.shareUrl();
     if (!url) return;
@@ -134,14 +157,18 @@ export function Sandbox() {
   };
   const pick = (id: ExampleId) => open(() => nw.load(id));
   const resume = () => open(nw.resume);
+  const openSaved = (id: string) => open(() => nw.open(id));
 
-  /** Back to the start screen: the workspace goes, then the start screen comes in. */
-  const back = () => {
+  /**
+   * Back to the start screen: the workspace goes, then the start screen comes in. With `remove`,
+   * the library entry of that id is deleted as it goes.
+   */
+  const back = (opts?: { remove?: string }) => {
     if (exiting || entering) return;
     setExiting(true);
     setHelp(false);
     later(reduced ? 0 : EXIT_MS, () => {
-      nw.back();
+      nw.back(opts);
       setExiting(false);
       setTab("controls");
     });
@@ -263,17 +290,43 @@ export function Sandbox() {
   const showing = nw.showing;
   const from = showing.kind === "live" ? "live" : showing.kind === "net" ? showing.net.from : "";
   const fromName = (te.example as Record<string, { name: string }>)[from]?.name ?? from;
+  const lib = te.library;
+  const entry = nw.current;
+  const shownName = entry?.name ?? fromName;
   const edited =
     showing.kind === "net" &&
+    !entry &&
     (from === "blank"
       ? showing.net.nodes.length > 0
       : JSON.stringify(showing.net) !== JSON.stringify(example(from as ExampleId)));
+
+  const saveError = (e: "full" | "too-big" | "storage") =>
+    setToast(e === "full" ? lib.saveErrors.full(MAX_NETWORKS) : lib.saveErrors[e]);
+  const save = () => {
+    if (showing.kind !== "net") return;
+    if (!entry) return setNaming(true);
+    const r = nw.save();
+    if (r.ok) setToast(lib.saved);
+    else saveError(r.error);
+  };
+  const saveNamed = (name: string) => {
+    const r = nw.save(name.trim() || shownName || lib.untitled);
+    if (r.ok) {
+      setNaming(false);
+      setToast(lib.saved);
+    } else saveError(r.error);
+  };
+  const exportCurrent = () => {
+    if (showing.kind !== "net") return;
+    downloadFile(exportFile(shownName || lib.untitled, showing.net));
+    setToast(lib.exported);
+  };
 
   // The network's head: back to the start screen, undo, redo, share, and the network's name.
   const netHead = (
     <div className="obs-net-head">
       <div className="obs-net-row">
-        <button type="button" className="obs-back" title={te.backTitle} onClick={back}>
+        <button type="button" className="obs-back" title={te.backTitle} onClick={() => back()}>
           <BackIcon />
           <span>{te.back}</span>
         </button>
@@ -335,19 +388,119 @@ export function Sandbox() {
           </button>
         </div>
       </div>
-      <div className="obs-net-title">
-        <span className="obs-net-name">{fromName}</span>
-        {edited && <span className="obs-net-edited">{te.edited}</span>}
-        {showing.kind === "live" && (
-          <InfoTip label={s.modeAbout(fromName)}>
-            {t.live.intro}{" "}
-            <Link href="/benchmarks" className="obs-link">
-              /benchmarks
-            </Link>
-            .
-          </InfoTip>
-        )}
-      </div>
+      {naming ? (
+        <form
+          className="obs-name-form obs-net-title"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveNamed(nameInput.current?.value ?? "");
+          }}
+        >
+          <input
+            ref={nameInput}
+            className="obs-name-input"
+            aria-label={lib.nameLabel}
+            placeholder={lib.nameLabel}
+            defaultValue={fromName === te.example.blank.name ? lib.untitled : fromName}
+            maxLength={60}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setNaming(false);
+              }
+            }}
+          />
+          <button
+            type="submit"
+            className="obs-icon-btn obs-lib-tool"
+            aria-label={lib.nameConfirm}
+            title={lib.nameConfirm}
+          >
+            <CheckIcon size={15} />
+          </button>
+          <button
+            type="button"
+            className="obs-icon-btn obs-lib-tool"
+            aria-label={lib.nameCancel}
+            title={lib.nameCancel}
+            onClick={() => setNaming(false)}
+          >
+            <CloseIcon />
+          </button>
+        </form>
+      ) : confirming && entry ? (
+        <div
+          className="obs-net-title obs-net-confirm"
+          role="alertdialog"
+          aria-label={lib.deleteAsk(entry.name)}
+        >
+          <span className="obs-lib-ask">{lib.deleteAsk(entry.name)}</span>
+          <span className="obs-lib-confirm-btns">
+            <button
+              type="button"
+              className="obs-chip-btn obs-chip-btn-solid"
+              onClick={() => {
+                setConfirming(false);
+                back({ remove: entry.id });
+              }}
+            >
+              {lib.deleteYes}
+            </button>
+            <button type="button" className="obs-chip-btn" onClick={() => setConfirming(false)}>
+              {lib.deleteNo}
+            </button>
+          </span>
+        </div>
+      ) : (
+        <div className="obs-net-title">
+          <span className="obs-net-name" title={shownName}>
+            {shownName}
+          </span>
+          {edited && <span className="obs-net-edited">{te.edited}</span>}
+          {showing.kind === "live" && (
+            <InfoTip label={s.modeAbout(fromName)}>
+              {t.live.intro}{" "}
+              <Link href="/benchmarks" className="obs-link">
+                /benchmarks
+              </Link>
+              .
+            </InfoTip>
+          )}
+          {showing.kind === "net" && (
+            <div className="obs-net-tools">
+              <button
+                type="button"
+                className="obs-icon-btn"
+                data-dirty={nw.unsaved || undefined}
+                aria-label={lib.save}
+                title={entry ? lib.saveUpdateTitle : lib.saveTitle}
+                onClick={save}
+              >
+                <SaveIcon size={15} />
+              </button>
+              <button
+                type="button"
+                className="obs-icon-btn"
+                aria-label={lib.export}
+                title={lib.exportTitle}
+                onClick={exportCurrent}
+              >
+                <ExportIcon size={15} />
+              </button>
+              <button
+                type="button"
+                className="obs-icon-btn"
+                aria-label={lib.delete}
+                title={lib.deleteTitle}
+                disabled={!entry}
+                onClick={() => setConfirming(true)}
+              >
+                <TrashIcon size={15} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {toast && (
         <span className="obs-toast" role="status">
           {toast}
@@ -393,11 +546,26 @@ export function Sandbox() {
         data-phone={phone || undefined}
         data-choosing={choosing || undefined}
         data-entering={entering || undefined}
+        data-entered={(!entering && !choosing) || undefined}
         data-exiting={exiting || undefined}
         style={{ "--obs-sidebar": `${L.layout.sidebar}px` } as CSSProperties}
       >
         {(choosing || leavingStart) && nw.loaded && (
-          <StartScreen saved={nw.saved} leaving={!choosing} onPick={pick} onResume={resume} />
+          <StartScreen
+            saved={nw.saved}
+            library={nw.library}
+            leaving={!choosing}
+            onPick={pick}
+            onResume={resume}
+            onOpen={openSaved}
+            onRename={nw.rename}
+            onRemove={nw.remove}
+            onImport={(text, fallback) => {
+              const r = nw.importText(text, fallback);
+              if (!r.ok) return r;
+              return { ok: true, name: r.name };
+            }}
+          />
         )}
         {!phone && (
           <aside className="obs-sidebar" aria-label={s.controls} inert={busy}>

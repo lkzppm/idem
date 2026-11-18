@@ -699,8 +699,9 @@ export function EditorMode({ nw, net }: { nw: NetworkState; net: Network }) {
                   scene: run.scene,
                   now: () => run.now,
                   nodes: v.nodes,
-                  title: views.length > 1 || runnable ? ts.modeLabel[v.mode] : undefined,
-                  note: v.error ? ts.error(v.error) : runnable ? ts.modeNote[v.mode] : undefined,
+                  // A pane is named only beside another one, to tell them apart; an error always shows.
+                  title: views.length > 1 ? ts.modeLabel[v.mode] : undefined,
+                  note: v.error ? ts.error(v.error) : views.length > 1 ? ts.modeNote[v.mode] : undefined,
                   agentLabels: true,
                   badges: Object.fromEntries(
                     Object.entries(v.tables)
