@@ -2648,10 +2648,14 @@
       min-height: 0;
       overflow-y: auto;
       overscroll-behavior: contain;
-      scrollbar-width: thin;
+      /* It scrolls by wheel, touch and keys; no bar, like the rest of the workspace. */
+      scrollbar-width: none;
       /* Room for the cards' hover spring and focus rings inside the scroller. */
       margin: -6px -10px 0;
       padding: 6px 10px 40px;
+    }
+    .obs-start-lists::-webkit-scrollbar {
+      display: none;
     }
   }
   .obs-start-subrow {

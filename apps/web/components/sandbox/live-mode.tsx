@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { HTML_LANG } from "@/lib/i18n/locale";
 import { sandbox } from "@/lib/i18n/messages/sandbox";
+import { WINDOW_IDS } from "@/lib/sandbox/layout";
 import { type PacketKind, type SceneNode, TopologyScene } from "@/lib/sandbox/scene";
 import { AsideCard } from "./aside-card";
 import { NodeGlyph } from "./editor/glyph";
@@ -28,7 +29,7 @@ import {
   Stat,
   shortName,
 } from "./ui";
-import { isTyping, Slot, useWorkspace } from "./workspace";
+import { isTyping, Slot, usePanels, useWorkspace } from "./workspace";
 
 const PRODUCER = "demo.idem.dev";
 const HOP_MS = 300;
@@ -187,6 +188,7 @@ export function LiveMode() {
   const t = useMessages(sandbox);
   const tl = t.live;
   const ws = useWorkspace();
+  usePanels(WINDOW_IDS);
   const [agents, setAgents] = useState<LiveAgent[]>(() => Array.from({ length: 4 }, (_, i) => newAgent(i)));
   const agentsRef = useRef(agents);
   agentsRef.current = agents;
