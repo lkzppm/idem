@@ -8,12 +8,12 @@ import { defineMessages } from "../locale";
 export const results = defineMessages(
   {
     meta: {
-      title: "Results",
+      title: "Benchmarks",
       description:
         "Measured and simulated results of IDEM: the cost of naming, signing and verifying (E1), a simulated agent swarm against direct MCP and per-agent caches (E2), and an adversarial suite against the core engine (E5).",
     },
     hero: {
-      kicker: "Results",
+      kicker: "Benchmarks",
       title: "What the runs say.",
       lead: "Three of the five planned experiments have run: the cost of naming, signing and verifying a call (E1), a simulated agent swarm compared with direct MCP and with per-agent caches (E2), and an adversarial suite against the core engine (E5). Every number below is read from a committed run folder, and each figure names its runs.",
       simulationLabel: "Simulation",
@@ -419,12 +419,12 @@ export const results = defineMessages(
   },
   {
     meta: {
-      title: "Resultados",
+      title: "Benchmarks",
       description:
         "Resultados medidos e simulados do IDEM: o custo de nomear, assinar e verificar (E1), um enxame de agentes simulado contra MCP direto e caches por agente (E2) e uma suíte adversarial contra o motor do núcleo (E5).",
     },
     hero: {
-      kicker: "Resultados",
+      kicker: "Benchmarks",
       title: "O que as execuções dizem.",
       lead: "Três dos cinco experimentos planejados foram executados: o custo de nomear, assinar e verificar uma chamada (E1), um enxame de agentes simulado comparado com MCP direto e com caches por agente (E2) e uma suíte adversarial contra o motor do núcleo (E5). Todo número abaixo é lido de uma pasta de execução versionada, e cada figura cita as suas execuções.",
       simulationLabel: "Simulação",

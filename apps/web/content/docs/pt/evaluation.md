@@ -1,4 +1,4 @@
-Esta página é o método: o que é comparado, com quais cargas de trabalho, com quais métricas, em quais experimentos. Ela **não traz resultados**. Números só são publicados na página de [resultados](/results), e só depois que uma execução versionada os produziu.
+Esta página é o método: o que é comparado, com quais cargas de trabalho, com quais métricas, em quais experimentos. Ela **não traz resultados**. Números só são publicados na página de [benchmarks](/benchmarks), e só depois que uma execução versionada os produziu.
 
 ## A regra sobre números {#rule}
 

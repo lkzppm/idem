@@ -315,7 +315,7 @@ export class Zipf { constructor(n: number, alpha: number); sample(rng: Rng): num
 export function percentile(values: readonly number[], p: number): number;
 ```
 
-Types only, for the `/results` page: `ResultsData`, `SweepData`, `MicrobenchData`, `MicrobenchCell`,
+Types only, for the `/benchmarks` page: `ResultsData`, `SweepData`, `MicrobenchData`, `MicrobenchCell`,
 `MissOverhead`, `SafetyData`, `RunRef`, `Stat` (the export of committed runs), `AttackClass`,
 `Expectation` (E5), `EvalModeId`, `SweepBase` (experiment specs), and the records `CallRecord`,
 `Transmission`, `AttackRecord`, `Metrics`. The experiment pipeline itself (`packages/sim/src/experiments`,

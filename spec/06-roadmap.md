@@ -54,7 +54,7 @@ Each milestone ends with its acceptance criteria met and the checklist ticked.
 ## M5 — Showcase + docs on Vercel
 - [ ] `/sandbox` per `04-showcase.md` §2 (canvas, split comparison, controls, log, attack buttons)
 - [ ] `/docs` IA per §4, protocol page rendered from `spec/01-protocol.md`, API reference checked against `packages/*/src` (ADR-022). Built, typecheck and lint green; the box waits for the in-site checks listed in `tasks/docs.md` (the dev server was down when it was finished)
-- [ ] `/results` from committed results. Built in both languages from `lib/results/data.json`; typecheck, lint and an offline render (both locales, both themes) are green; the box waits for the in-site check listed in `tasks/results.md` (the dev server was down when it was finished)
+- [ ] `/benchmarks` (was `/results`) from committed results. Built in both languages from `lib/results/data.json`; typecheck, lint and an offline render (both locales, both themes) are green; the box waits for the in-site check listed in `tasks/results.md` (the dev server was down when it was finished)
 - [ ] `/sandbox/live` against deployed gateway + producer (LLM swarm still off)
 - [ ] Rate limits, env vars, production deploy
 
@@ -66,6 +66,9 @@ Each milestone ends with its acceptance criteria met and the checklist ticked.
 - [ ] `@idem/ndn` against a real NFD (WebSocket/UDP face) and a runnable native producer/consumer for Mini-NDN
 - [ ] Mini-NDN topologies (star, tree) + netem scripts
 - [ ] E3 real-agent traces (budgeted); E4 overlay vs native under loss
+- [x] YaNFD (ndnd's forwarder) compiled to WebAssembly with a JS face bridge: PIT aggregation, Content Store and a 3-router chain pass on real NDN packets (`experiments/ndn/yanfd-wasm/`, 2026-11-18)
+- [ ] Sandbox as a network editor (examples or a blank canvas; draggable, configurable agents, forwarders and producers); NDN routers in the editor are YaNFD on WebAssembly, one per forwarder node, in the visitor's browser
+- [ ] Docker benchmarks of the native version (E4 and native-only measurements, NFD containers + netem)
 
 **Accept:** same workload runs on overlay and native NDN; E4 figures produced.
 
@@ -76,6 +79,10 @@ Each milestone ends with its acceptance criteria met and the checklist ticked.
 - [ ] Slides / live demo of the sandbox for the class
 
 **Accept:** PDF built by the course template script with the standard file name.
+
+## Future (after the course)
+- [ ] Sandbox: "connect to the NDN testbed". Agents and producers in the editor reach the public NDN testbed (NFD routers over WebSocket, e.g. through NDN-FCH) instead of in-browser routers; producing a prefix needs a testbed certificate (NDNCERT). Kept out of the course scope: it depends on community infrastructure and certificates.
+- [ ] Offer the YaNFD WebAssembly face bridge upstream to named-data/ndnd.
 
 ## Cut lines (if time runs short)
 1. Drop proxy-producer mode (M3).

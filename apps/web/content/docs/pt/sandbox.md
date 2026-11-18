@@ -12,7 +12,7 @@ Uma regra o torna confiável: o sandbox executa a **mesma** classe `Forwarder` d
 | Tempo | real: um período de frescor precisa passar de verdade | virtual: a execução salta de evento em evento, na velocidade que você escolher |
 | Serve para | ver que o protocolo funciona sobre uma rede real, e verificar as assinaturas você mesmo | ver agregação e cache em escala, e comparar modos na mesma carga |
 
-Nenhum dos dois modos produz um resultado do projeto. Os contadores descrevem a execução que está na sua frente. Os números medidos, com suas sementes e configurações, estão na página de [resultados](/results).
+Nenhum dos dois modos produz um resultado do projeto. Os contadores descrevem a execução que está na sua frente. Os números medidos, com suas sementes e configurações, estão na página de [benchmarks](/benchmarks).
 
 ### Ao vivo {#live}
 
