@@ -3038,6 +3038,17 @@
   .obs[data-entering] .obs-dock {
     animation: obs-in-up-soft 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+  /* Once the entrance is over, the drawer and panels keep the entrance's animation names (same
+     keyframes as their own): going back to their own names would restart them, a second rise. A
+     drawer or panel opened later still plays them once, on mount. */
+  @media (prefers-reduced-motion: no-preference) {
+    .obs[data-entered] .obs-drawer:not([data-closing]) {
+      animation-name: obs-drawer-enter;
+    }
+    .obs[data-entered] .obs-panel {
+      animation-name: obs-panel-enter;
+    }
+  }
   .obs[data-exiting] .obs-sidebar {
     animation: obs-out-left 0.3s cubic-bezier(0.4, 0, 1, 1) both;
   }

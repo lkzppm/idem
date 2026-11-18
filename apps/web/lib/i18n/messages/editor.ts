@@ -225,7 +225,6 @@ export const editor = defineMessages(
       paused: "paused: agents hold their next call",
       limits:
         "NDN routers forward and cache, but do not check signatures (agents do) and never see private or side-effect calls: those go straight to the producer.",
-      note: "YaNFD in WebAssembly",
       restart: "Run again",
       logEmpty: "No call has finished yet.",
       notOnNdn: "not on NDN",
@@ -467,7 +466,6 @@ export const editor = defineMessages(
       paused: "pausado: os agentes seguram a próxima chamada",
       limits:
         "Os roteadores NDN encaminham e guardam em cache, mas não verificam assinaturas (os agentes verificam) e nunca veem chamadas privadas ou com efeito colateral: essas vão direto ao produtor.",
-      note: "YaNFD em WebAssembly",
       restart: "Rodar de novo",
       logEmpty: "Nenhuma chamada terminou ainda.",
       notOnNdn: "fora do NDN",

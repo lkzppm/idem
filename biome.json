@@ -11,6 +11,7 @@
       "!**/next-env.d.ts",
       "!spec",
       "!experiments/results",
+      "!experiments/ndn/bench/.work",
       "!apps/web/public/ndn",
       "!.claude",
       "!**/*.md"

@@ -99,10 +99,15 @@ export class NdnConsumer {
     this.trust = opts.trust ?? new TrustStore();
   }
 
-  #fetch(interest: NdnInterest): Promise<NdnData> {
+  /**
+   * One Interest, one wait. `retx` (the handshake only) lets NDNts send it again with a fresh Nonce;
+   * calls count their own attempts instead.
+   */
+  #fetch(interest: NdnInterest, retx = 0): Promise<NdnData> {
     return consume(interest, {
       ...(this.#o.fw && { fw: this.#o.fw }),
       describe: `idem-consumer(${this.producer})`,
+      ...(retx > 0 && { retx }),
     });
   }
 
@@ -114,6 +119,9 @@ export class NdnConsumer {
         NdnInterest.MustBeFresh,
         NdnInterest.Lifetime(this.#o.lifetimeMs ?? 4000),
       ),
+      // The manifest and the tool list retry like calls do, so one lost packet on a lossy path
+      // does not fail the whole consumer.
+      Math.max(0, Math.floor(this.#o.retransmissions ?? 0)),
     );
   }
 
