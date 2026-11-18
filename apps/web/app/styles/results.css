@@ -1,8 +1,9 @@
 /* The results page and its charts. Imported by app/globals.css; owned by that area. */
 
 /*
- * The page reads top to bottom like a report: headline numbers, the hypotheses, then one section
- * per experiment with its figures, and the method last. The look is the project's flat cartoon
+ * The page reads top to bottom like a report: headline numbers, IDEM on native NDN (E4 and the NFD
+ * check), the hypotheses, then the evidence section by section, and the method last; each section
+ * opens with its question and a computed verdict. The look is the project's flat cartoon
  * style: solid ink marks cut out of the page by an outline in the page's own colour, dashed lines,
  * a halftone fill, plain colours; no glow, no gradients, no pills. Two accents, one meaning each:
  * blue is what is asked (requests, and the baselines that only send requests), yellow is what is
@@ -149,27 +150,40 @@
   color: var(--fg-muted);
   text-wrap: pretty;
 }
-/* A plain statement of what kind of numbers these are: a dashed plate, not a badge. */
-.r-stamp {
+/*
+ * What kind of result each experiment is, as a dashed plate with one row per kind. Plain rows,
+ * the name in ink and the explanation beside it: nothing here is a badge.
+ */
+.r-kinds {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.25rem 1rem;
-  align-items: baseline;
-  max-width: 44rem;
+  max-width: 52rem;
   margin-top: 1.75rem;
-  padding: 0.9rem 1.1rem;
+  padding: 0.35rem 1.1rem;
   border: 1.5px dashed var(--line-strong);
   border-radius: 12px;
   font-size: 0.95rem;
   line-height: 1.55;
   color: var(--fg-muted);
 }
-.r-stamp strong {
+.r-kinds > div {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: 0.15rem 1rem;
+  padding: 0.6rem 0;
+}
+.r-kinds > div + div {
+  border-top: 1px dashed var(--line-strong);
+}
+.r-kinds dt {
+  font-weight: 600;
+  color: var(--fg);
+}
+.r-kinds dd strong {
   font-weight: 600;
   color: var(--fg);
 }
 @media (max-width: 40rem) {
-  .r-stamp {
+  .r-kinds > div {
     grid-template-columns: 1fr;
   }
 }
@@ -199,8 +213,26 @@
   padding: 1.15rem 1.2rem 1.25rem;
   border-radius: 14px;
   background: var(--r-plate);
-  /* The accent is a solid bar, the tile's only colour. */
-  border-top: 5px solid var(--tone);
+}
+/*
+ * The accent is a small solid square inside the padding, the tile's only colour. It does not
+ * follow the card's corner: a thick coloured edge on a rounded box bends into a C.
+ */
+.r-tile::before {
+  content: "";
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-bottom: 0.55rem;
+  border-radius: 2px;
+  background: var(--tone);
+}
+/* A tile whose experiment has not run: the same square, left empty and dashed. */
+.r-tile[data-pending]::before {
+  background: none;
+  border: 1.5px dashed var(--fg-subtle);
+}
+.r-tile[data-pending] .r-tile-value {
+  color: var(--fg-muted);
 }
 .r-tile-value {
   font-size: clamp(1.9rem, 3.2vw, 2.5rem);
@@ -392,17 +424,29 @@
   color: var(--fg-muted);
   text-wrap: pretty;
 }
+/* One focusable widget around the drawing: arrow keys move the readout. */
 .r-chart-wrap {
   overflow-x: auto;
+  border-radius: 10px;
+}
+.r-chart-wrap:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
+}
+.r-chart-stage {
+  position: relative;
+  /* Never smaller than 85% of its drawing size, never larger than 115%: the labels stay readable. */
+  min-width: calc(var(--r-w) * 0.85);
+  max-width: calc(var(--r-w) * 1.15);
 }
 .r-chart {
   display: block;
   width: 100%;
-  /* Never smaller than 85% of its drawing size, never larger than 115%: the labels stay readable. */
-  min-width: calc(var(--r-w) * 0.85);
-  max-width: calc(var(--r-w) * 1.15);
   height: auto;
   overflow: visible;
+  /* A finger can read the chart sideways and still scroll the page. */
+  touch-action: pan-y;
+  cursor: crosshair;
 }
 .r-chart text {
   font-family: var(--font-sans);
@@ -460,12 +504,80 @@
   transform-origin: center;
   transition: transform 0.45s var(--r-pop);
 }
-.r-mark:hover > :first-child {
-  transform: scale(1.45);
+/* Series the legend or the readout is not on fade back. */
+.r-series {
+  transition: opacity 0.2s ease;
 }
-.r-hit {
-  fill: transparent;
-  stroke: none;
+.r-series.is-dim {
+  opacity: 0.2;
+}
+/* The crosshair and the rings on the points being read: ink, flat, no glow. */
+.r-cross path {
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+.r-rings circle {
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 1.8;
+}
+/* The readout card: an ink outline and a flat offset shadow, no blur. */
+.r-card {
+  position: absolute;
+  z-index: 2;
+  min-width: 11rem;
+  max-width: min(18rem, 70vw);
+  padding: 0.65rem 0.8rem 0.7rem;
+  border: 1.5px solid var(--fg);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 3px 3px 0 var(--fg);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.r-card-head {
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.r-card li {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.12rem 0;
+}
+.r-card-name {
+  color: var(--fg-muted);
+}
+.r-card-val {
+  text-align: right;
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
+}
+.r-card-note {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--line-strong);
+  font-size: 0.76rem;
+  color: var(--fg-subtle);
+}
+.r-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.r-chart-hint {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--fg-subtle);
 }
 .r-dot {
   fill: var(--tone);
@@ -491,11 +603,56 @@
   color: var(--fg-muted);
 }
 .r-legend li,
+.r-legend button,
 .r-th-mode {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
   white-space: nowrap;
+}
+/* The legend is the series' controls: press to hide or show, hover or focus to single one out. */
+.r-legend button {
+  padding: 0.3rem 0.55rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.r-legend button[aria-pressed="false"] {
+  border-style: dashed;
+  color: var(--fg-subtle);
+  text-decoration: line-through;
+}
+.r-legend button[aria-pressed="false"] .r-key {
+  opacity: 0.45;
+}
+.r-legend button:focus-visible,
+.r-tablist button:focus-visible,
+.r-steps li:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+.r-legend .r-legend-all {
+  border-style: solid;
+  border-color: var(--fg);
+  color: var(--fg);
+}
+/* Buttons never change colour on hover: they expand and contract on a spring, and only for a mouse. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .r-legend button,
+  .r-tablist button {
+    transition: transform 0.45s var(--r-pop);
+  }
+  .r-legend button:hover,
+  .r-tablist button:hover {
+    transform: scale(1.05);
+  }
+  .r-legend button:active,
+  .r-tablist button:active {
+    transform: scale(0.96);
+  }
 }
 .r-key {
   flex: none;
@@ -665,6 +822,7 @@
   margin-top: 0.9rem;
 }
 .r-steps li {
+  transition: opacity 0.2s ease;
   display: grid;
   grid-template-columns: 0.75rem 6.5rem minmax(0, 1fr) auto;
   gap: 0.75rem;
@@ -687,6 +845,24 @@
 .r-step-us {
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+}
+.r-step-share {
+  font-weight: 400;
+  color: var(--fg-subtle);
+}
+.r-steps li.is-dim,
+.r-seg.is-dim {
+  opacity: 0.25;
+}
+.r-seg {
+  transition: opacity 0.2s ease;
+}
+.r-readline {
+  min-height: 1.5em;
+  margin-top: 0.7rem;
+  font-size: 0.9rem;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
 }
 @media (max-width: 40rem) {
   .r-steps li {
@@ -856,6 +1032,132 @@
 .r-mech code {
   font-size: 0.78rem;
   overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ question and verdict */
+
+/* The question a section answers and what its data says, in two rows on an ink-outlined plate. */
+.r-ask {
+  max-width: 52rem;
+  margin-top: 1.6rem;
+  padding: 0.2rem 1.2rem;
+  border: 1.5px solid var(--fg);
+  border-radius: 14px;
+  box-shadow: 4px 4px 0 var(--line-strong);
+}
+.r-ask > div {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: 0.2rem 1.25rem;
+  padding: 0.85rem 0;
+  line-height: 1.55;
+}
+.r-ask > div + div {
+  border-top: 1.5px dashed var(--line-strong);
+}
+.r-ask dt {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.r-ask dd {
+  text-wrap: pretty;
+}
+.r-ask-verdict dd {
+  font-weight: 540;
+}
+@media (max-width: 40rem) {
+  .r-ask > div {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------------ native NDN: tabs, pending, scenarios */
+
+.r-block.r-first {
+  margin-top: 2.5rem;
+}
+.r-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+.r-tablist button {
+  padding: 0.35rem 0.8rem;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.r-tablist button[aria-selected="true"] {
+  border: 1.5px solid var(--fg);
+  background: var(--r-plate);
+  color: var(--fg);
+  font-weight: 560;
+}
+/* Nothing to show yet: a dashed frame, never an empty chart. */
+.r-pending {
+  margin-top: 1.5rem;
+  padding: 1.4rem 1.5rem 1.5rem;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 16px;
+}
+.r-pending > h3 {
+  font-size: 1.2rem;
+  font-weight: 560;
+  letter-spacing: -0.015em;
+}
+.r-pending > p {
+  max-width: 46rem;
+  margin-top: 0.6rem;
+  line-height: 1.62;
+  color: var(--fg-muted);
+}
+.r-pending .r-note {
+  margin-top: 1.1rem;
+}
+.r-scenarios {
+  max-width: 52rem;
+  margin-top: 1.2rem;
+}
+.r-scenarios li {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: 0.3rem 1rem;
+  align-items: start;
+  padding: 0.7rem 0;
+  border-top: 1px dashed var(--line-strong);
+}
+.r-scenarios li:last-child {
+  border-bottom: 1px dashed var(--line-strong);
+}
+.r-scenarios li:not([data-pass]) .r-scn-name {
+  font-weight: 600;
+}
+.r-scn-body {
+  display: grid;
+  gap: 0.15rem;
+}
+.r-scn-name code {
+  margin-right: 0.3rem;
+  font-weight: 600;
+}
+.r-scn-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 40rem) {
+  .r-scenarios li {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ------------------------------------------------------------------ method */

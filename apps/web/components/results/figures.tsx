@@ -3,9 +3,8 @@ import type { ResultsMessages } from "@/lib/i18n/messages/results";
 import { type EvalModeId, type ResultsData, type Stat, type SweepData, seriesOf } from "@/lib/results/data";
 import type { Format } from "@/lib/results/format";
 import {
+  type ChartLabels,
   type ChartSeries,
-  Legend,
-  LineChart,
   type Marker,
   niceTicks,
   SeriesKey,
@@ -13,6 +12,7 @@ import {
   type Tone,
 } from "./chart";
 import { InView } from "./in-view";
+import { LineChart } from "./interactive-chart";
 
 type RunRef = SweepData["run"];
 type Micro = NonNullable<ResultsData["e1"]>;
@@ -25,6 +25,18 @@ export const MODE_STYLE: Record<EvalModeId, { tone: Tone; dash: boolean; marker:
   B3: { tone: "data", dash: true, marker: "diamond" },
   B4: { tone: "muted", dash: true, marker: "square" },
 };
+
+/** The chart's own words (hint, legend, toggles), with a line saying what the readout's numbers are. */
+export function chartLabels(t: ResultsMessages, note?: string): ChartLabels {
+  return {
+    hint: t.chart.hint,
+    legend: t.chart.legend,
+    hide: t.chart.hide,
+    show: t.chart.show,
+    showAll: t.chart.showAll,
+    ...(note !== undefined && { note }),
+  };
+}
 
 /** `B2 IDEM`: the id the tables use, then the name a reader can keep. */
 export function modeLabel(t: ResultsMessages, id: EvalModeId): string {
@@ -39,7 +51,7 @@ export function Provenance({
   seeds,
 }: {
   t: ResultsMessages;
-  kind: "simulation" | "wall-clock";
+  kind: "simulation" | "wall-clock" | "emulation";
   runs: RunRef[];
   seeds?: number;
 }) {
@@ -47,7 +59,13 @@ export function Provenance({
   const last = runs[runs.length - 1];
   return (
     <p className="r-prov">
-      <span className="r-prov-kind">{kind === "simulation" ? t.chart.simulation : t.chart.wallClock}</span>
+      <span className="r-prov-kind">
+        {kind === "simulation"
+          ? t.chart.simulation
+          : kind === "emulation"
+            ? t.chart.emulation
+            : t.chart.wallClock}
+      </span>
       {seeds !== undefined && <span>{t.chart.seeds(seeds)}</span>}
       {first && last && (
         <span>
@@ -173,7 +191,11 @@ export function ReductionFigure({
       label: t.modes.bound,
       tone: "ink",
       reference: true,
-      points: seriesOf(sweep, "oracle_reduction", "B0").map((p) => ({ x: p.index, y: p.stat.mean })),
+      points: seriesOf(sweep, "oracle_reduction", "B0").map((p) => ({
+        x: p.index,
+        y: p.stat.mean,
+        text: f.pct(p.stat.mean),
+      })),
     });
   }
   for (const m of shown) {
@@ -187,12 +209,7 @@ export function ReductionFigure({
         y: p.stat.mean,
         lo: p.stat.mean - p.stat.ci95,
         hi: p.stat.mean + p.stat.ci95,
-        tip: t.chart.tipCi(
-          modeLabel(t, m),
-          `${copy.x} ${xFormat(p.value)}`,
-          f.pct(p.stat.mean),
-          f.points(p.stat.ci95),
-        ),
+        text: pctCi(f, p.stat),
       })),
     });
   }
@@ -217,8 +234,8 @@ export function ReductionFigure({
           shown.includes("B1") &&
           shown.includes("B2") && { fill: { from: "B2", to: "B1", tone: "data" as Tone } })}
         {...(compact && { width: 420, height: 300, labelRoom: 44 })}
+        labels={chartLabels(t, t.chart.noteCi(sweep.seeds))}
       />
-      <Legend series={series} />
       <figcaption>{caption}</figcaption>
       <Provenance t={t} kind="simulation" runs={[sweep.run]} seeds={sweep.seeds} />
       <ValueTable
@@ -260,8 +277,13 @@ export function CdfFigure({
     marker: "none",
     // From the fastest call to the 99th percentile; the curve starts on the axis.
     points: [
-      { x: sweep.cdf[m]?.[0] ?? 0, y: 0 },
-      ...(sweep.cdf[m] ?? []).slice(1, 100).map((latency, i) => ({ x: latency, y: (i + 1) / 100 })),
+      { x: sweep.cdf[m]?.[0] ?? 0, y: 0, head: "p0", text: f.ms(sweep.cdf[m]?.[0] ?? 0) },
+      ...(sweep.cdf[m] ?? []).slice(1, 100).map((latency, i) => ({
+        x: latency,
+        y: (i + 1) / 100,
+        head: `p${i + 1}`,
+        text: f.ms(latency),
+      })),
     ],
   }));
   const qs = [10, 25, 50, 75, 90, 95, 99];
@@ -278,8 +300,9 @@ export function CdfFigure({
         yTicks={[0, 0.25, 0.5, 0.75, 1].map((v): Tick => ({ at: v, label: f.pct(v, 0) }))}
         xLabel={t.latency.cdf.x}
         yLabel={t.latency.cdf.y}
+        readout="nearest"
+        labels={chartLabels(t, t.chart.notePooled(sweep.seeds))}
       />
-      <Legend series={series} />
       <figcaption>{caption}</figcaption>
       <Provenance t={t} kind="simulation" runs={[sweep.run]} seeds={sweep.seeds} />
       <ValueTable
@@ -316,12 +339,7 @@ export function DeltaFigure({
       y: p.stat.mean,
       lo: p.stat.mean - p.stat.ci95,
       hi: p.stat.mean + p.stat.ci95,
-      tip: t.chart.tipCi(
-        modeLabel(t, m),
-        `${t.latency.delta.x} ${xFormat(p.value)}`,
-        f.ms(p.stat.mean, 1, true),
-        f.num(p.stat.ci95),
-      ),
+      text: msCi(f, p.stat, true),
     })),
   }));
   let low = 0;
@@ -350,8 +368,8 @@ export function DeltaFigure({
         xLabel={t.latency.delta.x}
         yLabel={t.latency.delta.y}
         rule={0}
+        labels={chartLabels(t, t.chart.noteCi(sweep.seeds))}
       />
-      <Legend series={series} />
       <figcaption>{t.latency.delta.caption}</figcaption>
       <Provenance t={t} kind="simulation" runs={[sweep.run]} seeds={sweep.seeds} />
       <ValueTable
@@ -386,7 +404,7 @@ export function MicrobenchFigure({ t, f, e1 }: { t: ResultsMessages; f: Format; 
       y: c.p50Us,
       lo: c.p50MinUs,
       hi: c.p50MaxUs,
-      tip: t.chart.tipRange(o.op, f.bytes(c.sizeBytes), f.us(c.p50Us), f.us(c.p50MinUs), f.us(c.p50MaxUs)),
+      text: `${f.us(c.p50Us)} (${f.us(c.p50MinUs)} – ${f.us(c.p50MaxUs)})`,
     })),
   }));
   let low = Number.POSITIVE_INFINITY;
@@ -419,8 +437,8 @@ export function MicrobenchFigure({ t, f, e1 }: { t: ResultsMessages; f: Format; 
         xLabel={t.e1.chart.x}
         yLabel={t.e1.chart.y}
         labelRoom={150}
+        labels={chartLabels(t, t.chart.noteRange(e1.runs.length))}
       />
-      <Legend series={series} />
       <figcaption>
         {t.e1.chart.caption({ runs: e1.runs.length, node: last?.node ?? "", cpu: last?.cpu ?? "" })}
       </figcaption>

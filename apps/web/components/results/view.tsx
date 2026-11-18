@@ -11,7 +11,9 @@ import {
   statAt,
 } from "@/lib/results/data";
 import { type Format, makeFormat } from "@/lib/results/format";
+import { e4Reading, nfdReading } from "@/lib/results/native";
 import { computeVerdicts, type VerdictStatus } from "@/lib/results/verdicts";
+import { Breakdown } from "./breakdown";
 import { SplitBar, type Tone } from "./chart";
 import {
   CdfFigure,
@@ -25,6 +27,7 @@ import {
   ReductionFigure,
   ValueTable,
 } from "./figures";
+import { NativeSection } from "./native";
 
 type RunRef = SweepData["run"];
 
@@ -47,23 +50,50 @@ function Status({ status, t }: { status: VerdictStatus; t: ResultsMessages }) {
   );
 }
 
+/**
+ * One stop of the page and of the mini navbar (`data-nav-*`, read by `components/site/section-nav`).
+ * Each opens with the question it answers and, when the data allows one, a one-line verdict
+ * computed from that data.
+ */
 function Section({
   id,
+  nav,
   title,
   lead,
+  ask,
   children,
 }: {
   id: string;
+  nav: string;
   title: string;
   lead?: string;
+  ask: { label: string; verdictLabel: string; question: string; verdict?: string };
   children: ReactNode;
 }) {
   return (
-    <section className="r-section" id={id} aria-labelledby={`${id}-title`}>
+    <section
+      className="r-section"
+      id={id}
+      data-nav-section=""
+      data-nav-label={nav}
+      aria-labelledby={`${id}-title`}
+    >
       <header className="r-section-head">
         <h2 id={`${id}-title`}>{title}</h2>
         {lead && <p className="r-lead">{lead}</p>}
       </header>
+      <dl className="r-ask">
+        <div>
+          <dt>{ask.label}</dt>
+          <dd>{ask.question}</dd>
+        </div>
+        {ask.verdict && (
+          <div className="r-ask-verdict">
+            <dt>{ask.verdictLabel}</dt>
+            <dd>{ask.verdict}</dd>
+          </div>
+        )}
+      </dl>
       {children}
     </section>
   );
@@ -126,10 +156,14 @@ export function ResultsView({
   const csSize = data.sweeps["e2-cs-size"];
   const think = data.sweeps["e2-think-time"];
   const mixed = data.sweeps["e2-mixed"];
-  const { e1, e5, missOverhead: miss } = data;
+  const { e1, e5, e4, nfd, missOverhead: miss } = data;
+  const e4Read = e4 ? e4Reading(e4) : undefined;
+  const nfdRead = nfdReading(nfd);
   const base = agents?.base;
   const baseAgents = agents ? f.int(agents.baseValue) : "";
   const allRuns: RunRef[] = [
+    ...(e4 ? [e4.run] : []),
+    ...(nfd?.runs.map((r) => r.run) ?? []),
     ...(e1?.runs ?? []),
     ...Object.values(data.sweeps).map((s) => s.run),
     ...(e5 ? [e5.run] : []),
@@ -181,6 +215,37 @@ export function ResultsView({
 
   const whoTone: Record<string, Tone> = { consumer: "interest", edge: "ink", producer: "data" };
 
+  // ---- the question each section answers, and a one-line verdict computed from its data
+  const ask = { label: t.ask.question, verdictLabel: t.ask.verdict };
+  const e4Sentence = e4Read
+    ? t.ask.native.e4({
+        loss: f.num(e4Read.loss, e4Read.loss % 1 ? 1 : 0),
+        n2ok: f.pct(e4Read.n2.success?.mean ?? Number.NaN, 1),
+        b2ok: f.pct(e4Read.b2.success?.mean ?? Number.NaN, 1),
+        n2p50: e4Read.n2.p50 ? f.ms(e4Read.n2.p50.mean) : "–",
+        b2p50: e4Read.b2.p50 ? f.ms(e4Read.b2.p50.mean) : "–",
+        n2bytes: e4Read.n2.bytes ? f.bytes(e4Read.n2.bytes.mean) : "–",
+        b2bytes: e4Read.b2.bytes ? f.bytes(e4Read.b2.bytes.mean) : "–",
+      })
+    : e4
+      ? t.ask.native.e4Partial
+      : t.ask.native.e4Pending;
+  const nfdSentence = nfdRead
+    ? t.ask.native.nfd({
+        passed: f.int(nfdRead.latest.passed),
+        total: f.int(nfdRead.latest.total),
+        stopped: nfdRead.stopped.join(", "),
+        failing: nfdRead.failing.join(", "),
+        previous: nfdRead.previous
+          ? t.ask.native.nfdPrevious(f.int(nfdRead.previous.passed), f.int(nfdRead.previous.total))
+          : "",
+      })
+    : "";
+  const nativeVerdict = `${e4Sentence} ${nfdSentence}`.trim();
+  const hypCount = (status: VerdictStatus) =>
+    [v.h1.status, v.h2.status, v.h3.status, "not-evaluated" as VerdictStatus].filter((x) => x === status)
+      .length;
+
   return (
     <main className="results">
       <div className="r-page">
@@ -188,38 +253,63 @@ export function ResultsView({
           <p className="r-kicker">{t.hero.kicker}</p>
           <h1>{t.hero.title}</h1>
           <p className="r-lead">{t.hero.lead}</p>
-          <p className="r-stamp">
-            <strong>{t.hero.simulationLabel}</strong>
-            <span>{t.hero.simulation}</span>
-          </p>
+          <dl className="r-kinds" aria-label={t.hero.kindsLabel}>
+            {t.hero.kinds.map((k) => (
+              <div key={k.id}>
+                <dt>{k.name}</dt>
+                <dd>
+                  {k.text}
+                  {k.id === "e4" && !e4 && <strong> {t.hero.notRun}</strong>}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </header>
 
         <ul className="r-tiles" aria-label={t.tiles.label}>
+          {nfdRead && (
+            <li className="r-tile t-data">
+              <span className="r-tile-value">
+                {t.tiles.nfd.value(f.int(nfdRead.latest.passed), f.int(nfdRead.latest.total))}
+              </span>
+              <span className="r-tile-label">{t.tiles.nfd.label}</span>
+              <span className="r-tile-sub">
+                <a href="#native">
+                  {t.tiles.nfd.sub({
+                    stopped: nfdRead.stopped.length,
+                    previous: nfdRead.previous
+                      ? t.tiles.nfd.earlier(f.int(nfdRead.previous.passed), f.int(nfdRead.previous.total))
+                      : "",
+                  })}
+                </a>
+              </span>
+            </li>
+          )}
+          {e4Read ? (
+            <li className="r-tile t-data">
+              <span className="r-tile-value">{f.pct(e4Read.n2.success?.mean ?? Number.NaN, 0)}</span>
+              <span className="r-tile-label">
+                {t.tiles.e4.label(f.num(e4Read.loss, e4Read.loss % 1 ? 1 : 0))}
+              </span>
+              <span className="r-tile-sub">
+                <a href="#native">{t.tiles.e4.sub(f.pct(e4Read.b2.success?.mean ?? Number.NaN, 0))}</a>
+              </span>
+            </li>
+          ) : (
+            <li className="r-tile t-muted" data-pending="">
+              <span className="r-tile-value">{t.tiles.e4.pending}</span>
+              <span className="r-tile-label">{t.tiles.e4.pendingLabel}</span>
+              <span className="r-tile-sub">
+                <a href="#native">{t.tiles.e4.pendingSub}</a>
+              </span>
+            </li>
+          )}
           {v.h1.base && (
             <li className="r-tile t-data">
               <span className="r-tile-value">{f.pct(-v.h1.base.vsB0.mean)}</span>
               <span className="r-tile-label">{t.tiles.upstream.label}</span>
               <span className="r-tile-sub">
                 {t.tiles.upstream.sub(baseAgents, f.points(v.h1.base.vsB0.ci95))}
-              </span>
-            </li>
-          )}
-          {v.h2.base && (
-            <li className="r-tile t-data">
-              <span className="r-tile-value">{f.ms(v.h2.base.p50.mean, 1, true)}</span>
-              <span className="r-tile-label">{t.tiles.latency.label}</span>
-              <span className="r-tile-sub">{t.tiles.latency.sub(f.ms(v.h2.base.p50.ci95))}</span>
-            </li>
-          )}
-          {miss && (
-            <li className="r-tile t-interest">
-              <span className="r-tile-value">{f.us(miss.totalUs)}</span>
-              <span className="r-tile-label">{t.tiles.overhead.label}</span>
-              <span className="r-tile-sub">
-                {t.tiles.overhead.sub(
-                  f.pct(miss.totalUs / (miss.roundTripMs * 1000), 2),
-                  f.ms(miss.roundTripMs, 0),
-                )}
               </span>
             </li>
           )}
@@ -236,7 +326,36 @@ export function ResultsView({
           )}
         </ul>
 
-        <Section id="hypotheses" title={t.hyp.title} lead={t.hyp.lead}>
+        <Section
+          id="native"
+          nav={t.nav.native}
+          title={t.native.title}
+          lead={t.native.lead}
+          ask={{
+            ...ask,
+            question: t.native.question,
+            verdict: nativeVerdict,
+          }}
+        >
+          <NativeSection t={t} f={f} e4={e4} nfd={nfd} />
+        </Section>
+
+        <Section
+          id="hypotheses"
+          nav={t.nav.verdicts}
+          title={t.hyp.title}
+          lead={t.hyp.lead}
+          ask={{
+            ...ask,
+            question: t.hyp.question,
+            verdict: t.hyp.verdict({
+              supported: hypCount("supported"),
+              partly: hypCount("partly"),
+              refuted: hypCount("refuted"),
+              pending: hypCount("not-evaluated"),
+            }),
+          }}
+        >
           <ol className="r-hyps">
             <Hypothesis id="H1" status={v.h1.status} claim={t.hyp.h1.claim} t={t}>
               {v.h1.base && (
@@ -321,13 +440,30 @@ export function ResultsView({
               )}
             </Hypothesis>
             <Hypothesis id="H4" status="not-evaluated" claim={t.hyp.h4.claim} t={t}>
-              <p>{t.hyp.h4.evidence}</p>
+              <p>{e4 ? t.hyp.h4.ran : t.hyp.h4.evidence}</p>
             </Hypothesis>
           </ol>
         </Section>
 
         {agents && overlap && (
-          <Section id="redundancy" title={t.redundancy.title} lead={t.redundancy.lead}>
+          <Section
+            id="redundancy"
+            nav={t.nav.redundancy}
+            title={t.redundancy.title}
+            lead={t.redundancy.lead}
+            ask={{
+              ...ask,
+              question: t.redundancy.question,
+              ...(v.h1.base && {
+                verdict: t.redundancy.verdict({
+                  agents: f.int(v.h1.base.agents),
+                  b2: f.pct(v.h1.base.vsB0.mean),
+                  ci: f.points(v.h1.base.vsB0.ci95),
+                  b1: f.pct(v.h1.base.b1.mean),
+                }),
+              }),
+            }}
+          >
             <ReductionFigure
               t={t}
               f={f}
@@ -390,6 +526,20 @@ export function ResultsView({
         {agents && base && (
           <Section
             id="latency"
+            nav={t.nav.latency}
+            ask={{
+              ...ask,
+              question: t.latency.question,
+              ...(v.h2.base && {
+                verdict: t.latency.verdict({
+                  agents: f.int(v.h2.base.agents),
+                  p50: f.ms(abs(v.h2.base.p50.mean)),
+                  ci: f.num(v.h2.base.p50.ci95),
+                  cpu: v.h2.overheadUs !== undefined ? f.us(v.h2.overheadUs) : "–",
+                  share: v.h2.overheadShare !== undefined ? f.pct(v.h2.overheadShare, 2) : "–",
+                }),
+              }),
+            }}
             title={t.latency.title}
             lead={t.latency.lead({
               agent: f.ms(base.topology.agentLinkMs, 0),
@@ -454,25 +604,19 @@ export function ResultsView({
                     result: f.bytes(miss.resultBytes),
                   })}
                 </p>
-                <SplitBar
+                <Breakdown
                   label={t.latency.overhead.bar}
-                  parts={miss.steps.map((s, i) => ({
+                  total={t.latency.overhead.barTotal(f.us(miss.totalUs))}
+                  steps={miss.steps.map((st, i) => ({
                     key: `${i}`,
-                    value: s.us,
-                    tone: whoTone[s.who] ?? "muted",
-                    title: `${t.latency.overhead.who[s.who]}: ${s.what}, ${f.us(s.us)}`,
+                    value: st.us,
+                    tone: whoTone[st.who] ?? "muted",
+                    who: t.latency.overhead.who[st.who] ?? st.who,
+                    what: st.what,
+                    cost: f.us(st.us),
+                    share: f.pct(st.us / miss.totalUs, 0),
                   }))}
                 />
-                <ol className="r-steps">
-                  {miss.steps.map((s, i) => (
-                    <li key={i}>
-                      <span className={`r-swatch t-${whoTone[s.who] ?? "muted"}`} aria-hidden="true" />
-                      <span className="r-step-who">{t.latency.overhead.who[s.who]}</span>
-                      <code>{s.what}</code>
-                      <span className="r-step-us">{f.us(s.us)}</span>
-                    </li>
-                  ))}
-                </ol>
                 <p className="r-note">
                   {t.latency.overhead.total({
                     us: f.us(miss.totalUs),
@@ -490,7 +634,21 @@ export function ResultsView({
         )}
 
         {ttl && csSize && think && (
-          <Section id="sensitivity" title={t.sensitivity.title} lead={t.sensitivity.lead}>
+          <Section
+            id="sensitivity"
+            nav={t.nav.sensitivity}
+            title={t.sensitivity.title}
+            lead={t.sensitivity.lead}
+            ask={{
+              ...ask,
+              question: t.sensitivity.question,
+              verdict: t.sensitivity.verdict({
+                losing: csLosing !== undefined ? f.bytes(csLosing) : "",
+                late: f.num(lateMax, 1),
+                max: f.ms(lateWorst, 1),
+              }),
+            }}
+          >
             <div className="r-trio">
               <ReductionFigure
                 t={t}
@@ -578,7 +736,22 @@ export function ResultsView({
         )}
 
         {e1 && (
-          <Section id="cost" title={t.e1.title} lead={t.e1.lead}>
+          <Section
+            id="cost"
+            nav={t.nav.cost}
+            title={t.e1.title}
+            lead={t.e1.lead}
+            ask={{
+              ...ask,
+              question: t.e1.question,
+              verdict: t.e1.verdict({
+                small: f.bytes(smallSize),
+                verify: f.us(cell("verifyData", smallSize)?.p50Us ?? Number.NaN),
+                big: f.bytes(bigSize),
+                canon: f.us(cell("canonicalizeArgs", bigSize)?.p50Us ?? Number.NaN),
+              }),
+            }}
+          >
             <MicrobenchFigure t={t} f={f} e1={e1} />
             <p className="r-note">
               {t.e1.reading({
@@ -602,6 +775,19 @@ export function ResultsView({
         {e5 && (
           <Section
             id="safety"
+            nav={t.nav.safety}
+            ask={{
+              ...ask,
+              question: t.e5.question,
+              ...(v.e5 && {
+                verdict: t.e5.verdict({
+                  stopped: f.int(v.e5.allRejected),
+                  expected: f.int(v.e5.expectedRejected),
+                  findings: v.e5.findings.length,
+                  limits: v.e5.declared.length,
+                }),
+              }),
+            }}
             title={t.e5.title}
             lead={t.e5.lead({ trials: f.int(e5.trials), variants: e5.rows.length })}
           >
@@ -734,7 +920,13 @@ export function ResultsView({
           </Section>
         )}
 
-        <Section id="method" title={t.method.title} lead={t.method.lead}>
+        <Section
+          id="method"
+          nav={t.nav.method}
+          title={t.method.title}
+          lead={t.method.lead}
+          ask={{ ...ask, question: t.method.question }}
+        >
           <p>
             <Link href="/docs/evaluation" className="r-link">
               {t.method.docs} →

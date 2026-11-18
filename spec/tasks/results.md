@@ -20,3 +20,15 @@ seed and the source revision recorded (spec 05).
 - [ ] Rerun E1 on a quiet machine: half of the kept runs carry a load average far above the core count, which widens the reported spread (the medians barely move the E2 results: a miss costs 272 µs against a 90 ms round trip)
 - [ ] Fix for Q7 (the engine should derive `authContext` itself and ignore one that arrives), then rerun E5: `safety.test.ts` fails on purpose when the finding is fixed
 - [x] Tab and route renamed: "Results" → "Benchmarks", `/results` → `/benchmarks` (permanent redirect in `next.config.mts`), en + pt labels, links in the landing, sandbox, footer, docs and spec (2026-11-18)
+
+## Benchmarks redesign (ADR-032)
+
+- [x] Mini navbar on `/benchmarks`: the home page's `SectionNav` mounts on both routes (`SECTION_NAV_PATHS`); sections marked with `data-nav-section` and a translated `data-nav-label`
+- [x] One story: Native NDN (E4, NFD check) first, then Verdicts, E2 (Redundancy, Latency, Sensitivity), E1 (Cost), E5 (Safety), Method; each section opens with its question and a computed one-line verdict (en and pt)
+- [x] Interactive line charts: crosshair and readout card with exact values and 95% interval, nearest-x and nearest-point modes, one tab stop with arrow keys, live region, legend that highlights and toggles; tabs for the E4 metrics and loss levels; the per-miss CPU bar and list light each other
+- [x] No C-shaped edges: `.r-tile` uses an inset solid square; a test fails on a thick one-sided border in `results.css`
+- [x] `export-web` exports `nfd` (last five `ndn-nfd` runs) and `e4` (`kind: "emulation"`), tested with in-memory fixtures; `data.json` regenerated
+- [x] E4 pending state on the page: no E4 data, no number; the headline tile and the hero say it has not run
+- [ ] E4 full run committed under `experiments/results/e4/`, then `pnpm sim -- export-web` and a look at the lead section with real numbers (wording of the verdict, axis ranges)
+- [ ] Re-run `pnpm exp:ndn` so the latest NFD run is not the one where S8 stopped on a route authorization error
+- [ ] Look at `/benchmarks` in the running site (Safari, 390 px, light and dark): readout card placement, legend toggles, tabs, the navbar over the sections

@@ -123,8 +123,9 @@ TCP, UDP and WebSocket faces (round trip, PIT aggregation, CS and freshness, equ
 `experiments/results/ndn-nfd/<run-id>/` with the usual files plus `summary.json` (every check with its
 expected and actual value), `metrics.csv` (one row per check) and the NFD logs; `env.json` adds the
 NFD version, image digest and NDNts versions. Its config is `experiments/ndn/nfd/config.json`
-(`kind: "nfd-check"`, which `export-web` ignores). It is wall-clock and reports PASS/FAIL, not
-numbers for the report. The same scenarios run as `packages/ndn/src/nfd.test.ts` with
+(`kind: "nfd-check"`). `export-web` reads each run's `summary.json` into `nfd` of `data.json` (the last
+five runs) and `/benchmarks` shows the latest. It is wall-clock and reports PASS/FAIL, not numbers
+for the report. The same scenarios run as `packages/ndn/src/nfd.test.ts` with
 `IDEM_NFD=1` against running forwarders; without it they are skipped.
 
 As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/configs/e4.json`):
@@ -165,7 +166,11 @@ As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/
 - Seeds 1..3 × loss {0, 1, 5} % × 5 modes = 45 runs of about a minute each. Three seeds keep the
   run under the 45-minute target; the CIs are wide accordingly.
 - **Status.** Harness built and smoke-tested; the full run has not been executed (see roadmap M6).
-  No E4 number exists yet.
+  No E4 number exists yet. `export-web` reads `experiments/results/e4/<run-id>/` (`kind: "emulation"`:
+  `summary.csv` by mode and loss, `latency_cdf.csv`, `config.json`, `env.json`) into `e4` of
+  `data.json`, which is `null` until a run folder with a summary exists; `/benchmarks` then shows E4
+  as its lead section (spec 04 §1.1, ADR-032). Tested with an in-memory fixture, never a committed
+  result.
 
 ### E5 — Safety
 Adversarial runs: tamper with Data in flight, forge names (digest mismatch), replay stale Data,
