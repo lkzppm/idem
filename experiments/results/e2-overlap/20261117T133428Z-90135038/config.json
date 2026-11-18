@@ -1,0 +1,121 @@
+{
+  "experiment": "e2-overlap",
+  "title": "E2 — upstream reduction vs. cross-agent overlap (W-syn)",
+  "description": "Sweep of the fraction of calls drawn from the shared catalog, at 8 agents. W-syn: every agent makes callsPerAgent calls to fetch_page with an exponential think time between them; a fraction `overlap` of the calls is drawn from a shared catalog by Zipf(alpha), the rest ask for documents no other call asks for. Same seeds at every point; reductions are paired by seed against B0 (and B1).",
+  "kind": "sweep",
+  "seeds": {
+    "first": 1,
+    "count": 30
+  },
+  "modes": [
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "B4"
+  ],
+  "sweep": {
+    "param": "overlap",
+    "values": [
+      0,
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+      1
+    ]
+  },
+  "base": {
+    "workload": {
+      "agents": 8,
+      "callsPerAgent": 20,
+      "catalogSize": 50,
+      "zipfAlpha": 0.8,
+      "overlap": 0.5,
+      "thinkTimeMs": 2000,
+      "surfaceVariation": 0.3,
+      "privateFraction": 0,
+      "sideEffectFraction": 0
+    },
+    "topology": {
+      "agentLinkMs": 5,
+      "producerLinkMs": 40,
+      "lossPct": 0,
+      "tree": {
+        "edges": 2,
+        "coreLinkMs": 10,
+        "producerLinkMs": 30
+      }
+    },
+    "producer": {
+      "serviceMedianMs": 150,
+      "serviceSigma": 0.5,
+      "ttlMs": 60000,
+      "pageBytesMedian": 6144
+    },
+    "cs": {
+      "maxBytes": 8388608,
+      "policy": "lru"
+    },
+    "interestLifetimeMs": 10000
+  },
+  "processing": {
+    "file": "processing.json",
+    "sizesBytes": [
+      1024,
+      4096,
+      16384,
+      65536,
+      262144,
+      1048576
+    ],
+    "canonicalizeUs": [
+      8.854,
+      25.5,
+      106.625,
+      469.126,
+      1900.396,
+      9971.334
+    ],
+    "nameUs": [
+      16.73,
+      17.292,
+      28.938,
+      47.937,
+      154.625,
+      687.771
+    ],
+    "signUs": [
+      37.625,
+      39.542,
+      98.438,
+      109.229,
+      395.396,
+      1233.459
+    ],
+    "verifyUs": [
+      60.604,
+      70.021,
+      115.355,
+      134.771,
+      495.792,
+      1178.791
+    ],
+    "source": {
+      "experiment": "e1-node",
+      "runs": [
+        "20261117T072542Z-b1fe1c14",
+        "20261117T072557Z-b1fe1c14",
+        "20261117T074111Z-b1fe1c14",
+        "20261117T074126Z-b1fe1c14",
+        "20261117T075642Z-b1fe1c14",
+        "20261117T125444Z-15f0097f",
+        "20261117T125507Z-15f0097f",
+        "20261117T125542Z-15f0097f",
+        "20261117T125628Z-15f0097f",
+        "20261117T125716Z-15f0097f"
+      ],
+      "statistic": "median over runs of the per-run median (p50_us), microseconds"
+    }
+  }
+}
