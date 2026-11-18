@@ -8,9 +8,9 @@ The sandbox opens on a choice: a **blank canvas** (the big plus), an **example**
 
 | | A network in the editor | Live |
 |---|---|---|
-| What runs | a network you build, in your browser: the IDEM engine (a deterministic simulation) or the NDN engine (real NDN routers compiled to WebAssembly) | real HTTP requests from your browser to the site's edge gateway, which forwards to the demo producer |
-| Engine | IDEM: the same `Forwarder`, in the page, on a virtual clock. NDN: YaNFD, one router per forwarder, in real time | the edge's `Forwarder`, on the server, on the wall clock |
-| Agents | as many as you add, each with its own list of tools | a few consumers in the page, each an `IdemClient` with its own credential |
+| What runs | a network you build, in your browser: IDEM on real NDN routers compiled to WebAssembly (the default), or a deterministic simulation | real HTTP requests from your browser to the site's edge gateway, which forwards to the demo producer |
+| Engine | IDEM: YaNFD, one router per forwarder, in real time. Simulation: the same `Forwarder`, in the page, on a virtual clock | the edge's `Forwarder`, on the server, on the wall clock, shared by every visitor |
+| Agents | as many as you add, each with its own list of tools | as many as you add (up to 16), each an `IdemClient` with its own credential, tool and argument |
 | Good for | seeing aggregation and caching on any topology, and comparing protocols on the same workload | seeing that the protocol works over a real network, and verifying signatures yourself |
 
 Nothing here produces a result of the project. The counters describe the run in front of you. Measured numbers, with their seeds and configurations, are on the [benchmarks](/benchmarks) page.
@@ -29,8 +29,12 @@ The demo producer serves five tools over a small corpus committed with the site.
 | `my_notes()` | cacheable, `private` | one name, a different answer per credential, never shared |
 | `send_email(to, body)` | not cacheable | a side effect: always passes through (`bypass`) |
 
+The edge and the producer are the deployed ones, so they stay as they are. Add agents in the sidebar and click one to choose the tool it calls and its argument; *Ask now* sends its call alone, and `Space` sends every agent's call at once. A new agent fetches the shared page, spelling its URL its own way, so a burst shows normalization and aggregation together.
+
+The edge is shared by everyone on the site. The **visitors** node stands for the others: their calls arrive from it as they happen, and the edge's card lists what the edge saw, yours marked *you*. When one of your calls is answered from the cache, or joins a pending Interest, the log and the card say whether another visitor's call filled it: that answer crossed the network once, for someone else. Only the tool, the first characters of the args digest and how the edge answered are shown, never arguments; private calls carry no digest.
+
 > [!NOTE]
-> In the deployment the edge's Content Store lives in the memory of one function instance. If your request lands on a different instance, a call you expected to hit will miss. That is the deployment, not the protocol.
+> In the deployment the edge's Content Store lives in the memory of one function instance. If your request lands on a different instance, a call you expected to hit will miss. That is the deployment, not the protocol. The edge's card names the instance it heard from, and says so when your calls were answered by another one.
 
 ## The network editor {#editor}
 
@@ -49,11 +53,17 @@ Agents connect only to forwarders, never straight to a producer or to each other
 | undo | `⌘Z` (`⇧⌘Z` to redo) |
 | share | *Share* copies a link that carries the whole network |
 
-The player bar over the network plays, pauses and restarts the run, shows its virtual time and how many calls were answered, and sets the speed. When something stops the network from running (no agent, an agent with no tools, a tool whose producer it cannot reach), the player bar says so; click it for the whole list.
+The player bar over the network plays, pauses and restarts the run, and shows how many calls were answered (and, for the simulation, its virtual time and speed). A network you open starts paused: press play. When something stops the network from running (no agent, an agent with no tools, a tool whose producer it cannot reach), the player bar says so; click it for the whole list.
 
-### The IDEM engine {#idem-engine}
+The engine is chosen at the top of the sidebar: **IDEM**, on NDN routers (the default), or **Simulation**.
 
-The IDEM engine runs the network in `@idem/sim`: the agents' calls, over virtual links, with a virtual clock. Everything is derived from one **seed**, so the same network and seed give the same run, event for event. Any change but moving a node restarts it.
+### IDEM on NDN routers {#ndn-engine}
+
+IDEM runs the network on real NDN routers: each forwarder is an instance of YaNFD (the forwarder of the NDN project's ndnd), compiled to WebAssembly and running in this tab. Producers and agents speak the native binding (`@idem/ndn`): Interests and Data are NDN TLV packets, and agents verify both signatures of every answer. It runs in real time, so freshness periods really pass; pausing holds every agent's next call (the calls in flight still finish). The routers forward and cache but check no signature, and calls to `private` or side-effect tools never travel on NDN. The router is downloaded the first time it runs.
+
+### The simulation {#idem-engine}
+
+The simulation runs the network in `@idem/sim`: the agents' calls, over virtual links, with a virtual clock. Everything is derived from one **seed**, so the same network and seed give the same run, event for event. Any change but moving a node restarts it.
 
 Its most useful view is the **comparison**: the same seeded workload runs once per protocol you tick, side by side. The agents ask for exactly the same things at exactly the same times, so whatever differs between the panes is the protocol.
 
@@ -62,10 +72,6 @@ Its most useful view is the **comparison**: the same seeded workload runs once p
 | `mcp-direct` | goes straight to the producer. Nothing is cached |
 | `mcp-local-cache` | each agent remembers its own answers. A repeat by the same agent is local; a repeat by another agent goes to the producer |
 | `idem` | goes through the forwarders: aggregated in a PIT, answered from a CS, or forwarded |
-
-### The NDN engine {#ndn-engine}
-
-The NDN engine runs the same network on real NDN routers: each forwarder is an instance of YaNFD (the forwarder of the NDN project's ndnd), compiled to WebAssembly and running in this tab. Producers and agents speak the native binding (`@idem/ndn`): Interests and Data are NDN TLV packets, and agents verify both signatures of every answer. It runs in real time, so freshness periods really pass. The routers forward and cache but check no signature, and calls to `private` or side-effect tools never travel on NDN. The router is downloaded the first time you choose this engine.
 
 ### What the settings change {#controls}
 

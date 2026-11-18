@@ -596,6 +596,36 @@ ADR-028 (no in-session picker; the Selected section becomes the card). The zoom 
 bottom right of the network's area, the help button to the tab bar. Fewer controls compete for the
 sidebar, and the run's transport sits where the run is.
 
+## ADR-030 — The routers are the main engine; Live edits its agents and shows the shared edge
+**Context.** The author asked for NDN to be the main mode, named "IDEM" (NDN wasm routers) beside
+"Simulation", with a way to pause it (holding the agents' requests), and starting paused when a
+network is loaded; and for Live to configure each agent and add agents while the edge and producer
+stay fixed (no Scenario section), with a way to see at the edge that another user's tool call
+filled the cache, to show it is truly shared.
+**Decision.** (1) *Engines.* The default engine is the routers (`run.engine: "ndn"`, shown as
+"IDEM"); the simulator is "Simulation" (`"idem"`, the value kept so shared links keep working; an
+unknown value reads as the routers). Each option has an info bubble; the selector has no subtitles.
+(2) *Pause on routers.* `NdnNetwork.pause()` holds each agent's next call until `resume()` (calls in
+flight finish; real time goes on, so freshness keeps running); the player's play button and Space
+drive it, and a network just loaded starts paused. (3) *Live's agents.* Each agent is `{n, tool,
+arg}`, with credential `token-agent-<n>`; the sidebar adds agents; an agent's card sets its tool and
+argument, asks once or removes it; the edge and the producer cannot be changed. (4) *The shared
+edge.* The edge route records each Interest and call: an anonymous per-tab id the page sends
+(`idem-visitor`, random, in `sessionStorage`), the tool, the first 8 characters of the args digest
+for public names, and the edge's outcome read from its trace; a name's owner is the visitor whose
+call went upstream (or who asked first while it is pending). A hit or an aggregation answers with
+`idem-filled-by: other|self`, and every response with `idem-edge-instance`. `GET
+/api/edge/activity?after=<seq>` lists the last ten minutes (at most 200 calls) as the asking visitor
+sees them: own calls marked, others as a short salted label, never their ids. Arguments, results
+and credentials are never recorded; private names and plain calls carry no digest and no owner. It
+lives on the same route and in the same memory as the edge's CS, so it is true of the instance that
+answered; when the poll and the calls are answered by different instances, the page says so.
+**Consequences.** The default is real time and not seeded: the sandbox's opening network is no
+longer replayable event for event (Simulation still is). The activity feed costs one function call
+per visitor every 3 s while the page is visible. What other visitors did is shown only as tool,
+digest prefix and outcome; even so, a digest of a low-entropy argument could be guessed, which is
+the price of showing that two visitors asked the same question.
+
 ## Open questions
 
 - **Q2 — Encrypted `private` content.** Name-based access control would allow shared caching of

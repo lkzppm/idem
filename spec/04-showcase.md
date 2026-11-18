@@ -36,11 +36,14 @@ on a network they can build.
   sidebar head's back button ("Networks") saves an edited network and returns to it.
 - The sidebar head: back, undo / redo (⌘Z, ⇧⌘Z), Share (copies a `#n=` link), then the network's name
   (the example it came from; "edited" once changed).
-- **Engine:** IDEM (simulated, seeded) or NDN (real routers); for IDEM the protocols compared (MCP
-  direct, MCP + local cache, IDEM) and the seed.
-- **Player bar** (top centre of the stage): restart (R), play / pause (Space), virtual time, a
-  progress bar of calls answered, the speed menu; when the network cannot run, the first reason (no
-  agent, no producer, an agent without tools, a tool whose producer is unreachable or no longer
+- **Engine (ADR-030):** "IDEM" (the default: NDN routers in WebAssembly) or "Simulation" (seeded,
+  compares protocols); each option has its own info bubble. For the simulation, the protocols
+  compared (MCP direct, MCP + local cache, IDEM) and the seed.
+- **Player bar** (top centre of the stage): restart (R; its icon turns once and the progress bar
+  drains back on an ease), play / pause (Space), time, a progress bar of calls answered, and for the
+  simulation the speed menu. On the routers, pause holds every agent's next call (calls in flight
+  finish), and a network just loaded starts paused. When the network cannot run, the first reason
+  (no agent, no producer, an agent without tools, a tool whose producer is unreachable or no longer
   serves it) and the full list on a click.
 - **Add:** Agent, Forwarder, Producer. A click adds the node next to the selected one and links it
   (an agent next to an agent, or a producer next to a producer, joins the same forwarder); a drag
@@ -57,9 +60,9 @@ on a network they can build.
   blue over a valid target; Delete removes, Escape deselects, arrows move the selected node (Shift:
   further), F fits; zoom buttons and "fit" bottom right of the network's area. Links an agent may not have
   (agent–agent, agent–producer, producer–producer) are refused, and the reason is given.
-- **Engines:** IDEM runs the network in `@idem/sim` once per compared protocol, side by side, each
+- **Engines:** the simulation runs the network in `@idem/sim` once per compared protocol, side by side, each
   pane clipped to its frame and the camera shared; every edit but a move restarts it (debounced).
-  NDN runs one YaNFD WebAssembly router per forwarder in the tab, in real time, with `@idem/ndn`
+  IDEM on routers runs one YaNFD WebAssembly router per forwarder in the tab, in real time, with `@idem/ndn`
   producers and consumers; its panels show its own log (calls, names, latency) and counters (calls
   answered and verified, CS hits and PIT aggregations read from the traffic, Interests to producers,
   calls kept off NDN, mean latency), and say that routers verify nothing and `private` and
@@ -72,7 +75,7 @@ on the GraphMan observatory and drawn in the flat cartoon style (ADR-017 amendme
 
 - **Sidebar** (left, 264–420 px, resizable by a grip on its edge: drag, ←/→, double click resets;
   width remembered): the network head on top, then the controls in collapsible sections (the editor's
-  Engine, Add, Attacks; Live's scenario and attacks).
+  Engine, Add, Attacks; Live's agents and attacks).
 - **Stage** (the rest): the topology canvas fills it, over a halftone of ink dots. Over it: the
   player bar top centre (in a band of its own), the selection card on the right, the legend bottom
   left and the zoom buttons bottom right, both above the dock.
@@ -137,7 +140,18 @@ agent to make it ask).
 
 ## 3. Live mode (`/sandbox/live`)
 
-- Calls the deployed gateway, which forwards to the deployed demo producer.
+- Calls the deployed gateway, which forwards to the deployed demo producer. The edge and the
+  producer are fixed (they are the deployed ones); the visitor adds agents (up to 16, each with its
+  own credential) and sets each agent's tool and argument in its card (a new agent fetches the
+  shared page, spelling the URL its own way). Space bursts every agent at once; an agent's card asks
+  for it alone (ADR-030).
+- **Shared edge (ADR-030):** a "visitors" node stands for everyone else using the edge. The page
+  polls `/api/edge/activity` (every 3 s while visible) and replays other visitors' calls from that
+  node; the edge's card lists the calls the edge saw (you or "visitor <label>", tool, args-digest
+  prefix for public names, how the edge answered). A cache hit or a joined Interest says whether
+  another visitor filled that name (`idem-filled-by`, computed by the instance that served it), in
+  the log and in the card. Only tool names, digest prefixes and outcomes are recorded, never
+  arguments, results or credentials; private names and plain calls carry no digest.
 - **Demo tools** (static corpus committed in `apps/web/corpus/`, no internet fetch):
   - `fetch_page(url)` — returns a page from the corpus. Cacheable, `public`, `url:sortQuery`.
   - `search_corpus(query, limit)` — simple ranking over the corpus. Cacheable, `public`, `trim` + `lowercase`.
