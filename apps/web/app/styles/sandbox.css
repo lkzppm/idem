@@ -2627,6 +2627,33 @@
     gap: 28px;
     min-width: 0;
   }
+  /* Side by side, the screen stays put and only the lists scroll: the title and the new-network
+     column keep their place however many networks are saved. A single column scrolls as a page. */
+  @media (min-width: 761px) {
+    .obs-start {
+      overflow: hidden;
+    }
+    .obs-start-inner {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding-bottom: 0;
+    }
+    .obs-start-grid {
+      flex: 1;
+      min-height: 0;
+      align-items: stretch;
+    }
+    .obs-start-lists {
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      /* Room for the cards' hover spring and focus rings inside the scroller. */
+      margin: -6px -10px 0;
+      padding: 6px 10px 40px;
+    }
+  }
   .obs-start-subrow {
     display: flex;
     align-items: center;
