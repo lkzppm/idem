@@ -1,7 +1,7 @@
 {
   "name": "@idem/mcp",
   "version": "0.0.0",
-  "description": "IDEM for MCP (SDK v2, spec 2026-07-28): serve an IDEM producer as an MCP server, run an IDEM edge as a transparent MCP endpoint, and verify signed tool results on the client.",
+  "description": "IDEM for MCP (SDK v2, spec 2026-07-28): serve an IDEM producer as an MCP server, run an IDEM edge as a transparent MCP endpoint, put a proxy-producer in front of an MCP server that knows nothing about IDEM, and verify signed tool results on the client.",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -26,9 +26,7 @@
   "dependencies": {
     "@idem/core": "workspace:*",
     "@idem/gateway": "workspace:*",
+    "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0"
-  },
-  "devDependencies": {
-    "@modelcontextprotocol/client": "2.4.0"
   }
 }

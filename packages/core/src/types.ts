@@ -52,7 +52,10 @@ export interface Interest {
   /** 64 random bits, base64url. */
   nonce: string;
   hopLimit: number;
-  /** Set by the first forwarder only, never propagated upstream [P-8.4]. */
+  /**
+   * Never set by a sender, and ignored on receipt by every forwarder: the edge derives its own value
+   * from the credential and its secret [P-8.4]. Kept so the wire format of §4 is unchanged.
+   */
   authContext?: string;
 }
 

@@ -43,6 +43,8 @@ STYLE = {
     "B2": dict(color=DATA, linestyle="-", marker="o", label="B2 idem"),
     "B3": dict(color=DATA, linestyle="--", marker="D", label="B3 idem-tree"),
     "B4": dict(color=GREY, linestyle=":", marker="x", label="B4 idem-noverify"),
+    # The third blue baseline: dash-dot and diamonds, so it parts from B0 and B1 without colour.
+    "B5": dict(color=INTEREST, linestyle="-.", marker="D", label="B5 mcp-gateway-cache"),
 }
 
 plt.rcParams.update(
@@ -133,12 +135,21 @@ def percent(ax, axis: str = "y") -> None:
     (ax.yaxis if axis == "y" else ax.xaxis).set_major_formatter(fmt)
 
 
-def reduction_figure(experiment: str, name: str, xlabel: str, caption: str, log2: bool = False) -> None:
+def reduction_figure(
+    experiment: str,
+    name: str,
+    xlabel: str,
+    caption: str,
+    log2: bool = False,
+    modes: tuple[str, ...] = ("B1", "B5", "B2", "B3"),
+    xpercent: bool = False,
+    legend_above: bool = False,
+) -> None:
     s = Sweep(experiment)
     fig, ax = plt.subplots(figsize=(4.6, 3.0))
     xs, oracle, _ = s.stat("oracle_reduction", "B0")
     ax.plot(xs, oracle, color=INK, linewidth=0.8, linestyle=(0, (1, 2)), label="perfect shared cache")
-    for mode in ("B1", "B2", "B3"):
+    for mode in modes:
         if mode not in s.modes:
             continue
         xs, mean, ci = s.stat("upstream_reduction", mode)
@@ -150,7 +161,50 @@ def reduction_figure(experiment: str, name: str, xlabel: str, caption: str, log2
     ax.set_ylabel("upstream reduction vs. B0")
     ax.set_ylim(bottom=0)
     percent(ax)
-    ax.legend(loc="upper left", fontsize=7)
+    if xpercent:
+        percent(ax, "x")
+    if legend_above:
+        ax.legend(loc="lower center", fontsize=7, ncols=2, bbox_to_anchor=(0.5, 1.0))
+    else:
+        ax.legend(loc="upper left", fontsize=7)
+    finish(fig, name, f"{caption} Mean over {s.seeds} seeds; bars are 95% confidence intervals.", [s.ref], True)
+
+
+def code_figure(experiment: str, name: str, xlabel: str, caption: str, xscale: float = 1.0, reverse: bool = False) -> None:
+    """A W-code sweep (H6): upstream reduction of B1, B5 and B2, B2's PIT aggregation and B5's in-flight duplicates."""
+    s = Sweep(experiment)
+    fig, (ax, ax2, ax3) = plt.subplots(1, 3, figsize=(9.6, 2.8))
+    # Evenly spaced points (the swept values span orders of magnitude and include 0), in the
+    # direction the hypothesis reads: growing bursts, or a start window that shrinks.
+    order = s.values[::-1] if reverse else s.values
+    pos = {v: i for i, v in enumerate(order)}
+
+    def scaled(xs: list[float]) -> list[int]:
+        return [pos[x] for x in xs]
+
+    xs, oracle, _ = s.stat("oracle_reduction", "B0")
+    ax.plot(scaled(xs), oracle, color=INK, linewidth=0.8, linestyle=(0, (1, 2)), label="perfect shared cache")
+    for mode in ("B1", "B5", "B2"):
+        xs, mean, ci = s.stat("upstream_reduction", mode)
+        ax.errorbar(scaled(xs), mean, yerr=ci, capsize=2.5, linewidth=1.5, markersize=3.5, **STYLE[mode])
+    ax.set_ylabel("upstream reduction vs. B0")
+    ax.set_ylim(bottom=0)
+    percent(ax)
+    # One legend above the three panels, clear of every line.
+    fig.legend(*ax.get_legend_handles_labels(), fontsize=7, loc="lower center", ncols=4, bbox_to_anchor=(0.5, 0.98))
+    fig.subplots_adjust(wspace=0.38)
+    xs, mean, ci = s.stat("pit_aggregation_ratio", "B2")
+    ax2.errorbar(scaled(xs), mean, yerr=ci, capsize=2.5, linewidth=1.5, markersize=3.5, **STYLE["B2"])
+    ax2.set_ylabel("PIT aggregation ratio (B2)")
+    ax2.set_ylim(bottom=0)
+    percent(ax2)
+    xs, mean, ci = s.stat("gateway_inflight_duplicates", "B5")
+    ax3.errorbar(scaled(xs), mean, yerr=ci, capsize=2.5, linewidth=1.5, markersize=3.5, **STYLE["B5"])
+    ax3.set_ylabel("in-flight duplicates per run (B5)")
+    ax3.set_ylim(bottom=0)
+    for a in (ax, ax2, ax3):
+        a.set_xticks(range(len(order)), [f"{v / xscale:g}" for v in order])
+        a.set_xlabel(xlabel)
     finish(fig, name, f"{caption} Mean over {s.seeds} seeds; bars are 95% confidence intervals.", [s.ref], True)
 
 
@@ -158,7 +212,9 @@ def latency_figure() -> None:
     s = Sweep("e2-agents")
     base = float(s.config["base"]["workload"]["agents"])
     fig, (ax, ax2) = plt.subplots(1, 2, figsize=(7.4, 3.0))
-    for mode in ("B0", "B1", "B2", "B3"):
+    for mode in ("B0", "B1", "B5", "B2", "B3"):
+        if mode not in s.modes:
+            continue
         x, q = s.cdf(mode, base)
         ax.plot(x, q, linewidth=1.6, color=STYLE[mode]["color"], linestyle=STYLE[mode]["linestyle"], label=STYLE[mode]["label"])
     ax.set_xlabel("latency per call (ms)")
@@ -167,7 +223,7 @@ def latency_figure() -> None:
     ax.set_xlim(0, 700)
     ax.legend(loc="lower right", fontsize=7)
     ax.set_title(f"all calls at {base:g} agents, pooled over seeds", fontsize=8)
-    for mode in ("B1", "B2"):
+    for mode in ("B1", "B5", "B2"):
         for metric, alpha in (("latency_p50_vs_b0_ms", 1.0), ("latency_p95_vs_b0_ms", 0.45)):
             xs, mean, ci = s.stat(metric, mode)
             style = {**STYLE[mode], "label": f"{mode} {'p50' if 'p50' in metric else 'p95'}"}
@@ -198,7 +254,9 @@ def sensitivity_figure() -> None:
     for ax, (experiment, xlabel, scale, log) in zip(axes, panels):
         s = Sweep(experiment)
         refs.append(s.ref)
-        for mode in ("B1", "B2", "B3"):
+        for mode in ("B1", "B5", "B2", "B3"):
+            if mode not in s.modes:
+                continue
             xs, mean, ci = s.stat("upstream_reduction", mode)
             ax.errorbar([x / scale for x in xs], mean, yerr=ci, capsize=2.5, linewidth=1.5, markersize=3.5, **STYLE[mode])
         if log:
@@ -223,7 +281,9 @@ def mixed_figure() -> None:
     fig, ax = plt.subplots(figsize=(4.6, 3.0))
     xs, oracle, _ = s.stat("oracle_reduction", "B0")
     ax.plot(xs, oracle, color=INK, linewidth=0.8, linestyle=(0, (1, 2)), label="perfect shared cache")
-    for mode in ("B1", "B2", "B3"):
+    for mode in ("B1", "B5", "B2", "B3"):
+        if mode not in s.modes:
+            continue
         xs, mean, ci = s.stat("upstream_reduction", mode)
         ax.errorbar(xs, mean, yerr=ci, capsize=2.5, linewidth=1.6, markersize=4, **STYLE[mode])
     ax.set_xlabel("fraction of side-effecting calls (never cacheable)")
@@ -301,7 +361,7 @@ def safety_figure() -> None:
     finish(
         fig,
         "e5-safety",
-        f"Outcome of every attack variant over {table[0]['trials']} trials each, against the core engine on a virtual clock. A variant counts as rejected only if no victim accepted forged, foreign or expired content and no cache kept any.",
+        f"Outcome of every attack variant over {table[0]['trials']} trials each, against the core engine on a virtual clock. A variant counts as rejected only if no victim accepted forged, foreign or out-of-lifetime content and no cache kept any. The {sum(1 for r in table if r['expected'] == 'baseline')} baseline/ rows run the attack of the IDEM variant they mirror against B5, the unsigned shared gateway cache: acceptance is their expected outcome, and they are not IDEM claims.",
         [f"e5-safety/{run.name}"],
         True,
     )
@@ -389,6 +449,32 @@ def main() -> None:
     latency_figure()
     sensitivity_figure()
     mixed_figure()
+    w = Sweep("e2-surface").config["base"]["workload"]
+    reduction_figure(
+        "e2-surface",
+        "e2-surface",
+        "URLs written in an equivalent form",
+        f"Calls reaching the producer, relative to direct MCP, as more of the URLs are written in an equivalent form (W-syn, {w['agents']} agents, overlap {w['overlap']:g}). B5 keys on the arguments as sent; IDEM on the producer-declared canonical arguments.",
+        modes=("B1", "B5", "B2"),
+        xpercent=True,
+        legend_above=True,
+    )
+    w = Sweep("e2-code-burst").config["base"]["workload"]
+    code_figure(
+        "e2-code-burst",
+        "e2-code-burst",
+        "calls sent at once per step",
+        f"W-code: {w['agents']} agents x {w['callsPerAgent']} calls, no surface variation, agents start within {w['startSpreadMs'] / 1000:g} s, as the burst grows. Left: upstream reduction against direct MCP; middle: share of cacheable requests B2's PIT aggregated; right: calls per run B5 sent upstream while an identical call was in flight.",
+    )
+    w = Sweep("e2-code-sync").config["base"]["workload"]
+    code_figure(
+        "e2-code-sync",
+        "e2-code-sync",
+        "window in which the agents start (s)",
+        f"W-code: {w['agents']} agents x {w['callsPerAgent']} calls in bursts of {w['burst']['size']}, no surface variation, as the agents' start window shrinks. Panels as in e2-code-burst.",
+        xscale=1000.0,
+        reverse=True,
+    )
     microbench_figure()
     safety_figure()
     e4_figures()

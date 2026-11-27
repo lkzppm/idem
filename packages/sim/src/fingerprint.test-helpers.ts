@@ -103,10 +103,21 @@ export async function fingerprint(c: FingerprintCase): Promise<string> {
 }
 
 /**
+ * The CPU-cost calibration the pinned hashes were recorded with. `experiments/run-all.sh` rewrites
+ * `experiments/configs/processing.json` from fresh E1 medians on every run (wall-clock, so never the
+ * same twice), and the IDEM modes are charged those costs: pinned against the live file, every
+ * rerun of the experiments would change the hashes of B2–B4 without any change to the simulator.
+ * The pinned cases therefore read this frozen copy; the sweeps themselves use the live file.
+ */
+const PINNED_PROCESSING = join(import.meta.dirname, "__snapshots__", "legacy.processing.json");
+
+/**
  * The runs of every E2 sweep in `experiments/configs/`: each value × mode × seed, as the CLI
  * would run them. `seeds` limits the seeds per point (default: all of the config's).
  */
-export function sweepCases(opts: { seeds?: number; only?: string } = {}): FingerprintCase[] {
+export function sweepCases(
+  opts: { seeds?: number; only?: string; processingFile?: string } = {},
+): FingerprintCase[] {
   const dir = join(repoRoot(), "experiments", "configs");
   const out: FingerprintCase[] = [];
   for (const file of readdirSync(dir).sort()) {
@@ -117,7 +128,9 @@ export function sweepCases(opts: { seeds?: number; only?: string } = {}): Finger
     if (cfg.kind !== "sweep") continue;
     const costs =
       typeof cfg.processing === "string"
-        ? parseProcessingCosts(JSON.parse(readFileSync(join(dir, cfg.processing), "utf8")))
+        ? parseProcessingCosts(
+            JSON.parse(readFileSync(opts.processingFile ?? join(dir, cfg.processing), "utf8")),
+          )
         : cfg.processing;
     const count = Math.min(cfg.seeds.count, opts.seeds ?? cfg.seeds.count);
     for (const value of cfg.sweep.values) {
@@ -183,12 +196,16 @@ export function extraCases(): FingerprintCase[] {
 
 /** The cases pinned by `legacy.test.ts`: the first seed of every sweep point, then the extras. */
 export function pinnedCases(): FingerprintCase[] {
-  return [...sweepCases({ seeds: 1 }), ...extraCases()];
+  return [...sweepCases({ seeds: 1, processingFile: PINNED_PROCESSING }), ...extraCases()];
 }
 
-/** Fingerprint every pinned case, keyed by case id. */
-export async function pinnedFingerprints(): Promise<Record<string, string>> {
+/**
+ * Fingerprint every pinned case, keyed by case id; with `only`, just the cases it lists. A case
+ * added after the hashes were recorded (a new mode such as B5, a new sweep) has no hash to compare
+ * with, so `legacy.test.ts` passes the recorded ids: every run that existed must stay identical.
+ */
+export async function pinnedFingerprints(only?: ReadonlySet<string>): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  for (const c of pinnedCases()) out[c.id] = await fingerprint(c);
+  for (const c of pinnedCases()) if (!only || only.has(c.id)) out[c.id] = await fingerprint(c);
   return out;
 }

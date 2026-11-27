@@ -11,6 +11,8 @@ const render = (locale: "en" | "pt", data: ResultsData = RESULTS): string =>
   renderToStaticMarkup(createElement(ResultsView, { locale, t: results[locale], data }));
 
 const count = (s: string, needle: string): number => s.split(needle).length - 1;
+/** A dictionary string as React writes it into the markup. */
+const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/'/g, "&#x27;").replace(/"/g, "&quot;");
 
 /** A synthetic E4 result, in memory only: the page shows E4 only once a real run folder is committed. */
 function fixtureE4(): EmulationData {
@@ -63,6 +65,7 @@ describe("the benchmarks page", () => {
         "native",
         "hypotheses",
         "redundancy",
+        "gateway",
         "latency",
         "sensitivity",
         "cost",
@@ -70,8 +73,8 @@ describe("the benchmarks page", () => {
         "method",
       ]);
       // Every stop has its label and opens with a question.
-      expect(count(out, "data-nav-label=")).toBe(8);
-      expect(count(out, 'class="r-ask"')).toBe(8);
+      expect(count(out, "data-nav-label=")).toBe(9);
+      expect(count(out, 'class="r-ask"')).toBe(9);
     });
 
     it(`shows E4 when its run is exported, and says it has not run otherwise (${locale})`, () => {
@@ -96,6 +99,66 @@ describe("the benchmarks page", () => {
     });
   }
 
+  for (const locale of ["en", "pt"] as const) {
+    const t = results[locale];
+
+    it(`draws B5 apart from B1 and lists it with the other modes (${locale})`, () => {
+      const out = render(locale);
+      expect(out).toContain(`B5 ${t.modes.B5}`);
+      expect(out).toContain(esc(t.modes.desc.B5));
+      // B5's stroke is dash-dot, B1's dashed: they part without colour.
+      expect(out).toContain("r-dash r-dash-long");
+      // In the reduction, latency and sensitivity views as well as the new sweeps.
+      expect(count(out, `B5 ${t.modes.B5}`)).toBeGreaterThan(10);
+    });
+
+    it(`gives each new sweep its chart, reading and run id (${locale})`, () => {
+      const out = render(locale);
+      for (const id of ["e2-surface", "e2-code-burst", "e2-code-sync"]) {
+        const sweep = RESULTS.sweeps[id];
+        expect(sweep, id).toBeDefined();
+        expect(out).toContain(`${id}/${sweep?.run.id}`);
+      }
+      expect(out).toContain(esc(t.gateway.surface.title));
+      expect(out).toContain(esc(t.gateway.burst.title));
+      expect(out).toContain(esc(t.gateway.sync.title));
+      expect(out).toContain(esc(t.gateway.chart.pit.tab));
+      expect(out).toContain(esc(t.gateway.chart.dup.tab));
+    });
+
+    it(`states H5 and H6 with the computed status beside H1 to H4 (${locale})`, () => {
+      const out = render(locale);
+      const ids = [...out.matchAll(/<div class="r-hyp-id">(H\d)<\/div>/g)].map((m) => m[1]);
+      expect(ids).toEqual(["H1", "H2", "H3", "H4", "H5", "H6"]);
+      expect(out).toContain(esc(t.hyp.h5.rule));
+      expect(out).toContain(esc(t.hyp.h6.claim));
+    });
+
+    it(`puts each baseline attack beside the IDEM variant it mirrors, counts from the data (${locale})`, () => {
+      const out = render(locale);
+      const baseline = RESULTS.e5?.baseline ?? [];
+      expect(baseline.length).toBeGreaterThan(0);
+      expect(out).toContain(esc(t.e5.baseline.title));
+      for (const r of baseline) {
+        expect(out).toContain(`<code>${r.variant}</code>`);
+        expect(out).toContain(`<code>${r.mirrors}</code>`);
+      }
+    });
+
+    it(`no longer describes the engine before ADR-033 and ADR-034 (${locale})`, () => {
+      const out = render(locale);
+      expect(out).not.toContain("ADR-025");
+      expect(out).not.toContain("Q7");
+      for (const r of RESULTS.e5?.rows ?? []) expect(t.e5.what[r.variant], r.variant).toBeDefined();
+      for (const r of RESULTS.e5?.rows.filter((x) => x.expected !== "rejected") ?? []) {
+        expect(t.e5.limits.text[r.variant], r.variant).toBeDefined();
+      }
+      for (const r of [...(RESULTS.e5?.rows ?? []), ...(RESULTS.e5?.baseline ?? [])]) {
+        expect(t.e5.where[r.where], r.where).toBeDefined();
+      }
+    });
+  }
+
   it("has no thick coloured edge on a rounded box (the C shape the author rejects)", async () => {
     const { readFileSync } = await import("node:fs");
     const css = readFileSync(`${import.meta.dirname}/../../app/styles/results.css`, "utf8");
@@ -108,7 +171,8 @@ describe("the benchmarks page", () => {
     const out = render("en", { ...RESULTS, e4 });
     expect(out).not.toContain("r-pending");
     expect(out).toContain("r-tablist");
-    expect(count(out, 'role="tab"')).toBe(4 + 3);
+    // Four E4 metrics, three loss levels, and three metrics for each of the two W-code sweeps.
+    expect(count(out, 'role="tab"')).toBe(4 + 3 + 3 + 3);
     expect(out).toContain("N2 IDEM on native NDN");
     // The verdict names both stars at the highest loss, with numbers from the data.
     expect(out).toMatch(/At 5% loss on every link, the native star \(N2\) answered/);

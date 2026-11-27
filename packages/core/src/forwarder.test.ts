@@ -4,7 +4,7 @@ import { keyPairFromSeed, signData } from "./crypto";
 import { entryAge, isFresh, MemoryContentStore } from "./cs";
 import { linkFaces, type Packet } from "./face";
 import { Fib } from "./fib";
-import { Forwarder } from "./forwarder";
+import { Forwarder, type ForwarderOptions } from "./forwarder";
 import { dataOf, PRODUCER, setup, textOf } from "./testkit.test-helpers";
 import { TrustStore } from "./trust";
 import type { Data } from "./types";
@@ -426,5 +426,222 @@ describe("freshness and scope (protocol §8)", () => {
     ag.send({ type: "interest", interest: await s.interest("fetch_page", { url: URL_A }) });
     await clock.runAll();
     expect(got[0]).toMatchObject({ type: "nack", code: "NOT_CACHEABLE" });
+  });
+});
+
+describe("authContext is the edge's own (protocol §8)", () => {
+  it("MUST derive authContext itself and ignore one carried by a received Interest [P-8.4]", async () => {
+    const { deriveAuthContext } = await import("./crypto");
+    const s = await setup();
+    const alice = s.agent("alice");
+    alice.send({ type: "interest", interest: await s.interest("my_notes", {}), auth: "token-alice" });
+    await s.clock.runAll();
+    const victim = await deriveAuthContext("edge-secret", "token-alice");
+    // Mallory knows Alice's value and puts it in her own Interest, with and without a credential.
+    const mallory = s.agent("mallory");
+    mallory.send({
+      type: "interest",
+      interest: { ...(await s.interest("my_notes", {})), authContext: victim },
+      auth: "token-mallory",
+    });
+    mallory.send({
+      type: "interest",
+      interest: { ...(await s.interest("my_notes", {})), authContext: victim },
+    });
+    await s.clock.runAll();
+    expect(mallory.received.map(textOf).sort()).toEqual(["notes of anonymous", "notes of token-mallory"]);
+    expect(s.events.filter((e) => e.kind === "cs_hit")).toHaveLength(0);
+    // A garbage value does not move Alice out of her own partition either.
+    alice.send({
+      type: "interest",
+      interest: { ...(await s.interest("my_notes", {})), authContext: "garbage" },
+      auth: "token-alice",
+    });
+    await s.clock.runAll();
+    expect(textOf(alice.received[1])).toBe("notes of token-alice");
+    expect(s.events.filter((e) => e.kind === "cs_hit")).toHaveLength(1);
+  });
+});
+
+describe("signed lifetime at the forwarder (protocol §8)", () => {
+  /** An edge whose upstream answers every Interest with `make(interest, now)`. */
+  async function rigged(
+    make: (name: string, now: number) => { producedAt: number; ageMs?: number },
+    opts: Partial<ForwarderOptions> = {},
+  ) {
+    const s = await setup();
+    const clock = s.clock;
+    const fib = new Fib();
+    const events: { kind: string; reason?: string }[] = [];
+    const edge = new Forwarder({
+      id: "e",
+      clock,
+      fib,
+      trust: s.trust,
+      onEvent: (e) => events.push(e as never),
+      ...opts,
+    });
+    const [up, prod] = linkFaces(clock, { a: "up", b: "prod" });
+    edge.addFace(up);
+    fib.addProducer(PRODUCER, up.id);
+    let upstream = 0;
+    prod.onReceive(async (p) => {
+      if (p.type !== "interest") return;
+      upstream++;
+      const { producedAt, ageMs } = make(p.interest.name, clock.now());
+      const d = await signData(
+        {
+          name: p.interest.name,
+          content: { content: [{ type: "text", text: `made at ${producedAt}` }] },
+          producedAt,
+          freshnessMs: 60_000,
+          scope: "public",
+          policyVersion: 1,
+        },
+        s.key,
+      );
+      prod.send({ type: "data", nonce: p.interest.nonce, data: ageMs === undefined ? d : { ...d, ageMs } });
+    });
+    const agent = (id: string) => {
+      const [ag, side] = linkFaces(clock, { a: id, b: `e:${id}` });
+      edge.addFace(side, { consumer: true });
+      const got: Packet[] = [];
+      ag.onReceive((p) => {
+        got.push(p);
+      });
+      return { send: (p: Packet) => ag.send(p), got };
+    };
+    return { s, edge, events, agent, upstream: () => upstream };
+  }
+  const LIFE = 60_000 + 60_000; // freshness (= manifest TTL) + default tolerance
+
+  it("MUST NOT cache expired upstream Data; fresh waiters get EXPIRED, stale-ok waiters the Data [P-8.6]", async () => {
+    const r = await rigged((_n, now) => ({ producedAt: now - LIFE }));
+    await r.s.clock.runUntil(500_000);
+    const a = r.agent("a");
+    const b = r.agent("b");
+    const I = await r.s.interest("fetch_page", { url: URL_A });
+    a.send({ type: "interest", interest: I });
+    b.send({
+      type: "interest",
+      interest: { ...(await r.s.interest("fetch_page", { url: URL_A })), mustBeFresh: false },
+    });
+    await r.s.clock.runAll();
+    expect(r.upstream()).toBe(1); // b aggregated into a's entry
+    expect(a.got[0]).toMatchObject({ type: "nack", code: "EXPIRED" });
+    expect((a.got[0] as { message?: string }).message).toMatch(/past its signed lifetime/);
+    expect(b.got[0]?.type).toBe("data");
+    expect(r.edge.cs.stats().entries).toBe(0);
+    expect(r.events).toContainEqual(expect.objectContaining({ kind: "drop", reason: "expired" }));
+    expect(r.events.some((e) => e.kind === "cs_insert")).toBe(false);
+  });
+
+  it("MUST treat Data dated beyond the tolerance in the future as outside its lifetime [P-8.6]", async () => {
+    const r = await rigged((_n, now) => ({ producedAt: now + 60_000 + 1_000 }));
+    const a = r.agent("a");
+    a.send({ type: "interest", interest: await r.s.interest("fetch_page", { url: URL_A }) });
+    await r.s.clock.runAll();
+    expect(a.got[0]).toMatchObject({ type: "nack", code: "EXPIRED" });
+    expect((a.got[0] as { message?: string }).message).toMatch(/future/);
+    expect(r.edge.cs.stats().entries).toBe(0);
+  });
+
+  it("MUST NOT serve a CS entry past its signed lifetime, whatever its ageMs [P-8.6] [P-8.1]", async () => {
+    // Inside its lifetime by 2 s when it arrives, with an understated ageMs of 0.
+    const r = await rigged((_n, now) => ({ producedAt: now - LIFE + 2_000, ageMs: 0 }));
+    await r.s.clock.runUntil(500_000);
+    const a = r.agent("a");
+    a.send({ type: "interest", interest: await r.s.interest("fetch_page", { url: URL_A }) });
+    await r.s.clock.runAll();
+    expect(a.got[0]?.type).toBe("data");
+    expect(r.edge.cs.stats().entries).toBe(1);
+    // 3 s later: fresh by ageMs (3 s < 60 s), but outside the signed lifetime.
+    await r.s.clock.runUntil(r.s.clock.now() + 3_000);
+    a.send({ type: "interest", interest: await r.s.interest("fetch_page", { url: URL_A }) });
+    await r.s.clock.runAll();
+    expect(r.upstream()).toBe(2);
+    expect(r.events.filter((e) => e.kind === "cs_hit")).toHaveLength(0);
+    // mustBeFresh: false may be answered from any entry, expired included.
+    await r.s.clock.runUntil(r.s.clock.now() + 200_000);
+    a.send({
+      type: "interest",
+      interest: { ...(await r.s.interest("fetch_page", { url: URL_A })), mustBeFresh: false },
+    });
+    await r.s.clock.runAll();
+    expect(r.events.filter((e) => e.kind === "cs_hit")).toHaveLength(1);
+    expect(r.upstream()).toBe(2);
+  });
+
+  it("serves Data past its freshness but inside the tolerance (the bounded-staleness limit) [P-8.6]", async () => {
+    const r = await rigged((_n, now) => ({ producedAt: now - 60_000 - 30_000 }));
+    await r.s.clock.runUntil(500_000);
+    const a = r.agent("a");
+    a.send({ type: "interest", interest: await r.s.interest("fetch_page", { url: URL_A }) });
+    await r.s.clock.runAll();
+    expect(a.got[0]?.type).toBe("data");
+    expect(r.edge.cs.stats().entries).toBe(1);
+  });
+
+  it("MUST NOT hand a fresh waiter Data stale by ageMs, whatever the other Interests of its entry asked [P-8.1] [P-8.6]", async () => {
+    // Upstream, a cache answers the entry's stale-ok Interest from an entry 20 s past its
+    // freshness: inside the signed lifetime (tolerance 60 s), stale by its hop-relative age.
+    const r = await rigged((_n, now) => ({ producedAt: now - 80_000, ageMs: 80_000 }));
+    await r.s.clock.runUntil(500_000);
+    const staleOk = r.agent("stale-ok");
+    const fresh = r.agent("fresh");
+    staleOk.send({
+      type: "interest",
+      interest: { ...(await r.s.interest("fetch_page", { url: URL_A })), mustBeFresh: false },
+    });
+    fresh.send({ type: "interest", interest: await r.s.interest("fetch_page", { url: URL_A }) });
+    await r.s.clock.runAll();
+    expect(r.upstream()).toBe(1); // the fresh Interest aggregated onto the stale-ok one
+    expect(staleOk.got[0]?.type).toBe("data");
+    expect(fresh.got[0]).toMatchObject({ type: "nack", code: "EXPIRED" });
+    expect((fresh.got[0] as { message?: string }).message).toMatch(/stale by its age/);
+    expect(r.events).toContainEqual(expect.objectContaining({ kind: "drop", reason: "stale" }));
+    // Stored (it is within its signed lifetime), but never a fresh hit.
+    fresh.send({ type: "interest", interest: await r.s.interest("fetch_page", { url: URL_A }) });
+    await r.s.clock.runAll();
+    expect(r.events.filter((e) => e.kind === "cs_hit")).toHaveLength(0);
+    expect(r.upstream()).toBe(2);
+  });
+
+  it("MUST apply the signed lifetime and the age rule to a pit_full passthrough too [P-7.3] [P-8.6]", async () => {
+    const limits = { pit: { maxEntries: 1, maxFacesPerEntry: 1 } };
+    // A genuine Data ten minutes old: the first waiter's entry and the passthrough both refuse it.
+    const old = await rigged((_n, now) => ({ producedAt: now - 600_000 }), limits);
+    await old.s.clock.runUntil(1_000_000);
+    const [a1, a2, a3] = ["a1", "a2", "a3"].map((id) => old.agent(id));
+    a1?.send({ type: "interest", interest: await old.s.interest("fetch_page", { url: URL_A }) });
+    a2?.send({ type: "interest", interest: await old.s.interest("fetch_page", { url: URL_A }) });
+    a3?.send({
+      type: "interest",
+      interest: { ...(await old.s.interest("fetch_page", { url: URL_A })), mustBeFresh: false },
+    });
+    await old.s.clock.runAll();
+    expect(old.events.filter((e) => e.kind === "bypass" && e.reason === "pit_full")).toHaveLength(2);
+    expect(a1?.got[0]).toMatchObject({ type: "nack", code: "EXPIRED" });
+    expect(a2?.got[0]).toMatchObject({ type: "nack", code: "EXPIRED" });
+    expect(a3?.got[0]?.type).toBe("data"); // mustBeFresh: false may receive it
+    // Stale by ageMs through the passthrough: the same refusal.
+    const stale = await rigged((_n, now) => ({ producedAt: now - 80_000, ageMs: 80_000 }), limits);
+    await stale.s.clock.runUntil(500_000);
+    const [b1, b2] = ["b1", "b2"].map((id) => stale.agent(id));
+    b1?.send({
+      type: "interest",
+      interest: { ...(await stale.s.interest("fetch_page", { url: URL_A })), mustBeFresh: false },
+    });
+    b2?.send({ type: "interest", interest: await stale.s.interest("fetch_page", { url: URL_A }) });
+    await stale.s.clock.runAll();
+    expect(b1?.got[0]?.type).toBe("data");
+    expect(b2?.got[0]).toMatchObject({ type: "nack", code: "EXPIRED" });
+  });
+
+  it("rejects a negative clock tolerance", async () => {
+    const s = await setup();
+    expect(
+      () => new Forwarder({ id: "x", clock: s.clock, fib: new Fib(), trust: s.trust, clockToleranceMs: -1 }),
+    ).toThrow(/clockToleranceMs/);
   });
 });

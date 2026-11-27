@@ -22,6 +22,8 @@ export interface SweepRow {
   upstream_reduction: number;
   /** `1 − upstream(mode) / upstream(B1)` for the same point and seed. */
   upstream_reduction_vs_b1: number;
+  /** `1 − upstream(mode) / upstream(B5)` for the same point and seed (H5, H6). */
+  upstream_reduction_vs_b5: number;
   producer_link_bytes: number;
   /** `1 − bytes(mode) / bytes(B0)` for the same point and seed. */
   bytes_reduction: number;
@@ -32,6 +34,10 @@ export interface SweepRow {
   pit_aggregation_ratio: number;
   core_cs_hits: number;
   local_cache_hits: number;
+  /** B5: calls answered from the edge's gateway cache. */
+  gateway_cache_hits: number;
+  /** B5: cacheable calls sent upstream while an identical call was already upstream (no coalescing). */
+  gateway_inflight_duplicates: number;
   bypasses: number;
   cs_evictions: number;
   latency_mean_ms: number;
@@ -70,6 +76,7 @@ export const SWEEP_COLUMNS = [
   "upstream_calls",
   "upstream_reduction",
   "upstream_reduction_vs_b1",
+  "upstream_reduction_vs_b5",
   "producer_link_bytes",
   "bytes_reduction",
   "edge_interests",
@@ -79,6 +86,8 @@ export const SWEEP_COLUMNS = [
   "pit_aggregation_ratio",
   "core_cs_hits",
   "local_cache_hits",
+  "gateway_cache_hits",
+  "gateway_inflight_duplicates",
   "bypasses",
   "cs_evictions",
   "latency_mean_ms",
@@ -109,12 +118,15 @@ export const SUMMARY_METRICS = [
   "upstream_calls",
   "upstream_reduction",
   "upstream_reduction_vs_b1",
+  "upstream_reduction_vs_b5",
   "producer_link_bytes",
   "bytes_reduction",
   "cs_hit_ratio",
   "pit_aggregation_ratio",
   "core_cs_hits",
   "local_cache_hits",
+  "gateway_cache_hits",
+  "gateway_inflight_duplicates",
   "bypasses",
   "cs_evictions",
   "latency_mean_ms",
@@ -270,6 +282,7 @@ export async function runSweep(
           upstream_calls: m.upstreamCalls,
           upstream_reduction: Number.NaN,
           upstream_reduction_vs_b1: Number.NaN,
+          upstream_reduction_vs_b5: Number.NaN,
           producer_link_bytes: m.producerLinkBytes,
           bytes_reduction: Number.NaN,
           edge_interests: m.edgeInterests,
@@ -279,6 +292,8 @@ export async function runSweep(
           pit_aggregation_ratio: m.pitAggregationRatio,
           core_cs_hits: m.coreCsHits,
           local_cache_hits: m.localCacheHits,
+          gateway_cache_hits: m.gatewayCacheHits,
+          gateway_inflight_duplicates: m.gatewayInflightDuplicates,
           bypasses: m.bypasses,
           cs_evictions: m.csEvictions,
           latency_mean_ms: m.latencyMs.mean,
@@ -303,10 +318,13 @@ export async function runSweep(
       const b0 = bySeed.find((r) => r.mode === "B0");
       const b1 = bySeed.find((r) => r.mode === "B1");
       const b2 = bySeed.find((r) => r.mode === "B2");
+      const b5 = bySeed.find((r) => r.mode === "B5");
       for (const r of bySeed) {
         if (b0 && b0.upstream_calls > 0) r.upstream_reduction = 1 - r.upstream_calls / b0.upstream_calls;
         if (b1 && b1.upstream_calls > 0)
           r.upstream_reduction_vs_b1 = 1 - r.upstream_calls / b1.upstream_calls;
+        if (b5 && b5.upstream_calls > 0)
+          r.upstream_reduction_vs_b5 = 1 - r.upstream_calls / b5.upstream_calls;
         if (b0 && b0.producer_link_bytes > 0) {
           r.bytes_reduction = 1 - r.producer_link_bytes / b0.producer_link_bytes;
         }

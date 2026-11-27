@@ -33,6 +33,8 @@ A borda e o produtor são os implantados, então ficam como estão. Adicione age
 
 A borda é compartilhada por todos no site. O nó **visitors** representa os outros: as chamadas deles chegam por ele quando acontecem, e o cartão da borda lista o que ela viu, as suas marcadas como *você*. Quando uma chamada sua é respondida pelo cache, ou se junta a um Interest pendente, o log e o cartão dizem se foi a chamada de outro visitante que a preencheu: essa resposta atravessou a rede uma vez, para outra pessoa. Só aparecem a ferramenta, os primeiros caracteres do digest dos argumentos e como a borda respondeu, nunca os argumentos; chamadas privadas não levam digest.
 
+Além da assinatura, a página confere o tempo de vida assinado da resposta contra o relógio do seu navegador [P-8.7]. Se esse relógio estiver adiantado em mais do que o TTL da ferramenta mais 60 segundos, ou atrasado em mais de 60 segundos, até uma resposta recém-assinada parece expirada ou datada no futuro. A chamada é então enviada de novo uma vez, sem caches, e quando a segunda resposta falha na mesma conferência a chamada termina em `CLOCK_SKEW` e nenhum conteúdo é mostrado. O remédio é acertar o relógio; não há nada de errado com a resposta.
+
 > [!NOTE]
 > Em produção, o Content Store da borda fica na memória de uma instância de função. Se o seu pedido cair em outra instância, uma chamada que você esperava acertar vai faltar. Isso é a implantação, não o protocolo. O cartão da borda diz de qual instância ouviu, e avisa quando as suas chamadas foram respondidas por outra.
 
@@ -81,6 +83,8 @@ Sua visão mais útil é a **comparação**: a mesma carga, com a mesma semente,
 | `mcp-direct` | vai direto ao produtor. Nada é guardado |
 | `mcp-local-cache` | cada agente lembra as próprias respostas. Uma repetição do mesmo agente é local; a de outro agente vai ao produtor |
 | `idem` | passa pelos forwarders: agregada numa PIT, respondida por um CS, ou encaminhada |
+
+A avaliação tem mais um baseline, um cache compartilhado no gateway, sem assinaturas (modo B5). O sandbox não o oferece: o método está na [Avaliação](/docs/evaluation#modes) e os resultados estão na página de [benchmarks](/benchmarks).
 
 ### O que as configurações mudam {#controls}
 

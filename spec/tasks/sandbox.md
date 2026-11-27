@@ -164,3 +164,16 @@ Self-contained new files; no existing sandbox file was touched while the layout 
   drop; phone, dark, Portuguese; no console errors
 - [ ] Author check in Safari: the head's three icons at the default sidebar width, the card leave
   animation, a real file drag from Finder
+
+## Live mode after the signed lifetime (ADR-034), 2026-11-27
+
+- [x] `lib/i18n/messages/sandbox.ts` (en, pt): the two strings that say a retry always means
+  `BAD_SIGNATURE`; it can now be `EXPIRED`
+- [x] `components/sandbox/live-mode.tsx`: a retry is not always drawn as "tampered"; a call counts as a
+  success only when `retried && verify.ok && !out.error` (`CLOCK_SKEW` keeps `verify.ok` true); a retried
+  call that ended in `CLOCK_SKEW` is labelled as such, and the visitor is told when their own clock is
+  the reason
+- [x] Guide (`content/docs/{en,pt}/sandbox.md`): a browser whose clock is ahead by more than the TTL
+  plus 60 s, or behind by more than 60 s, gets `CLOCK_SKEW` in Live mode
+- [ ] Test for the Live-mode `CLOCK_SKEW` paths (none exists yet)
+- [ ] Check in the running site with a browser clock set wrong on purpose

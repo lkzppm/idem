@@ -1,12 +1,19 @@
 import {
+  type AcceptVerdict,
+  acceptData,
   buildInterest,
   type CallToolResult,
+  type Clock,
   cacheablePolicy,
+  clockTolerance,
   type Data,
   dataFromToolResult,
+  type IdemLocalErrorCode,
+  type IdemWireErrorCode,
   type Interest,
   isIdemError,
   type Manifest,
+  RealClock,
   type ToolIdentity,
   type ToolInfo,
   type ToolPolicy,
@@ -15,6 +22,15 @@ import {
   verifyData,
 } from "@idem/core";
 import { HEADERS, isWireError, PATHS, parseTrace, type TraceHop, type WireError } from "./wire";
+
+/**
+ * Why a call failed: a wire error `{ code, message }` (protocol §10), or the local `CLOCK_SKEW` when
+ * the verified plain-call retry is still outside its signed lifetime [P-8.7].
+ */
+export interface CallError {
+  code: IdemWireErrorCode | Extract<IdemLocalErrorCode, "CLOCK_SKEW">;
+  message: string;
+}
 
 /** Outcome of {@link IdemClient.call}. */
 export interface CallOutcome {
@@ -29,16 +45,18 @@ export interface CallOutcome {
   /** Signature verification at this consumer [P-5.5]. */
   verify?: VerifyResult;
   /**
-   * True when a first answer failed verification and the call was retried as a plain call that no
-   * cache may answer [P-5.5]. The retried answer is verified too: if it is unsigned, signed for
-   * another name or invalid, `error` is `BAD_SIGNATURE` and `result` is an error result.
+   * True when a first answer failed verification [P-5.5] or was outside its signed lifetime [P-8.7]
+   * (`BAD_SIGNATURE` or `EXPIRED`, here or at a forwarder), and the call was retried as a plain call
+   * that no cache may answer. The retried answer is checked too: if it is unsigned, signed for another
+   * name or invalid, `error` is `BAD_SIGNATURE`; if it verifies but is outside its lifetime,
+   * `CLOCK_SKEW`. Either way `result` is an error result.
    */
   retried: boolean;
   /** Events at each hop, from the `idem-trace` response header. */
   trace: TraceHop[];
   latencyMs: number;
   /** Error answer, if any. */
-  error?: WireError;
+  error?: CallError;
 }
 
 /** Options of {@link IdemClient}. */
@@ -57,6 +75,10 @@ export interface IdemClientOptions {
   credential?: string;
   trust?: TrustStore;
   fetch?: typeof fetch;
+  /** Time source of the signed-lifetime check [P-8.7] and of key expiry. Default `RealClock`. */
+  clock?: Clock;
+  /** Clock tolerance of the signed-lifetime check [P-8.6]. Default `DEFAULT_CLOCK_TOLERANCE_MS`. */
+  clockToleranceMs?: number;
   /**
    * Test/demo hook: rewrite a Data answer before verification (simulates an on-path attacker
    * between the edge and this consumer).
@@ -74,6 +96,8 @@ export class IdemClient {
   readonly trust: TrustStore;
   readonly #o: IdemClientOptions;
   readonly #fetch: typeof fetch;
+  readonly #clock: Clock;
+  readonly #tolerance: number;
   #ready?: Promise<{ manifest: Manifest; tools: ToolInfo[] }>;
   readonly #policies = new Map<string, { policy: ToolPolicy; identity: ToolIdentity } | undefined>();
 
@@ -81,6 +105,19 @@ export class IdemClient {
     this.#o = { ...opts, edge: opts.edge.replace(/\/$/, "") };
     this.trust = opts.trust ?? new TrustStore();
     this.#fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    this.#clock = opts.clock ?? new RealClock();
+    this.#tolerance = clockTolerance(opts.clockToleranceMs);
+  }
+
+  /** The shared consumer decision [P-5.5, P-8.7] on this consumer's clock and tolerance. */
+  #accept(data: Data, name: string, mustBeFresh: boolean): Promise<AcceptVerdict> {
+    return acceptData(data, {
+      trust: this.trust,
+      now: this.#clock.now(),
+      name,
+      mustBeFresh,
+      toleranceMs: this.#tolerance,
+    });
   }
 
   /** Fetch and verify the producer manifest (TOFU or pinned [P-6.2]) and its tool list. */
@@ -94,7 +131,7 @@ export class IdemClient {
           (r) => r.json() as Promise<ToolInfo[]>,
         ),
       ]);
-      const v = await this.trust.addManifest(m);
+      const v = await this.trust.addManifest(m, { now: this.#clock.now() });
       if (!v.ok) throw new Error(`manifest rejected: ${v.reason}`);
       for (const tool of t) this.#policies.set(tool.name, await cacheablePolicy(m, tool));
       return { manifest: m, tools: t };
@@ -135,7 +172,7 @@ export class IdemClient {
       return { tool, via: "call", retried: false, latencyMs: performance.now() - t0, ...r };
     }
     const first = await this.sendInterest(interest);
-    if (first.data && first.verify?.ok) {
+    if (first.data && first.verify?.ok && !first.error) {
       return {
         tool,
         via: "idem",
@@ -146,7 +183,7 @@ export class IdemClient {
         result: first.data.content,
       };
     }
-    if (first.error && first.error.code !== "BAD_SIGNATURE") {
+    if (first.error && first.error.code !== "BAD_SIGNATURE" && first.error.code !== "EXPIRED") {
       return {
         tool,
         via: "idem",
@@ -157,9 +194,9 @@ export class IdemClient {
         result: errorResult(first.error),
       };
     }
-    // [P-5.5] BAD_SIGNATURE (at a forwarder or here): retry once as a plain call, which no cache
-    // may answer. The retry is held to the same check: it must carry Data signed for this very
-    // name. Anything else (unsigned, another name, a bad signature) is an error, never content.
+    // [P-5.5] BAD_SIGNATURE, or [P-8.7] EXPIRED (at a forwarder or here): retry once as a plain call,
+    // which no cache may answer. The retry is held to the same checks: it must carry Data signed for
+    // this very name, and be within its signed lifetime. Anything else is an error, never content.
     const direct = await this.#passthrough(this.#o.producerUrl ?? this.#o.edge, tool, args);
     const retry = {
       tool,
@@ -170,9 +207,17 @@ export class IdemClient {
       trace: [...first.trace, ...direct.trace],
     };
     if (!direct.error && direct.verify?.ok && direct.data?.name === interest.name) {
-      return { ...retry, latencyMs: performance.now() - t0 };
+      const v = await this.#accept(direct.data, interest.name, true);
+      if (v.ok) return { ...retry, latencyMs: performance.now() - t0 };
+      // Just produced, yet outside its lifetime: this clock and the producer's disagree, or the
+      // retry's path replays too. The two look the same; fail closed [P-8.7].
+      const error: CallError = {
+        code: "CLOCK_SKEW",
+        message: `the verified retry is still outside: ${v.reason}`,
+      };
+      return { ...retry, latencyMs: performance.now() - t0, error, result: errorResult(error) };
     }
-    const error: WireError = direct.error ?? {
+    const error: CallError = direct.error ?? {
       code: "BAD_SIGNATURE",
       message: direct.data
         ? "the retried result is signed for another name"
@@ -181,7 +226,11 @@ export class IdemClient {
     return { ...retry, latencyMs: performance.now() - t0, error, result: errorResult(error) };
   }
 
-  /** Send a prepared (or deliberately forged) Interest and verify the answer. */
+  /**
+   * Send a prepared (or deliberately forged) Interest and verify the answer [P-5.5]. When the
+   * Interest asked for fresh Data, a verified answer outside its signed lifetime comes back with
+   * `verify.ok` true and `error.code` `EXPIRED` [P-8.7]: the two verdicts stay distinct.
+   */
   async sendInterest(
     interest: Interest,
   ): Promise<{ data?: Data; verify?: VerifyResult; error?: WireError; trace: TraceHop[] }> {
@@ -209,17 +258,16 @@ export class IdemClient {
     }
     let data = body as Data;
     if (this.#o.intercept) data = this.#o.intercept(data);
-    if (data.name !== interest.name) {
-      return {
-        data,
-        verify: { ok: false, code: "BAD_SIGNATURE", reason: "Data name differs from the Interest" },
-        trace,
-      };
-    }
-    const verify = await verifyData(data, this.trust);
-    return verify.ok
-      ? { data, verify, trace }
-      : { data, verify, error: { code: "BAD_SIGNATURE", message: verify.reason }, trace };
+    // The shared consumer decision: name, signature, signed lifetime and age [P-5.5, P-8.7].
+    const v = await this.#accept(data, interest.name, interest.mustBeFresh);
+    if (v.ok) return { data, verify: v.verify, trace };
+    if (v.code !== "EXPIRED" && data.name !== interest.name) return { data, verify: v.verify, trace };
+    return {
+      data,
+      verify: v.verify,
+      error: { code: v.code === "EXPIRED" ? "EXPIRED" : "BAD_SIGNATURE", message: v.reason },
+      trace,
+    };
   }
 
   async #passthrough(
@@ -249,7 +297,7 @@ export class IdemClient {
     const result = body as CallToolResult;
     const data = dataFromToolResult(result);
     if (!data) return { result, trace };
-    const verify = await verifyData(data, this.trust);
+    const verify = await verifyData(data, this.trust, { now: this.#clock.now() });
     return {
       result,
       data,
@@ -260,6 +308,6 @@ export class IdemClient {
   }
 }
 
-function errorResult(e: WireError): CallToolResult {
+function errorResult(e: CallError): CallToolResult {
   return { content: [{ type: "text", text: `${e.code}: ${e.message}` }], isError: true };
 }

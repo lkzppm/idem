@@ -116,21 +116,31 @@ export interface MissOverhead {
   serviceMedianMs: number;
 }
 
+/** One E5 variant over its trials. */
+export interface SafetyRowData {
+  attack: AttackClass;
+  variant: string;
+  where: string;
+  expected: Expectation;
+  trials: number;
+  rejected: number;
+  accepted: number;
+  mechanisms: { mechanism: string; count: number }[];
+  assumes: string;
+  summary: string;
+}
+
 export interface SafetyData {
   run: RunRef;
   trials: number;
-  rows: {
-    attack: AttackClass;
-    variant: string;
-    where: string;
-    expected: Expectation;
-    trials: number;
-    rejected: number;
-    accepted: number;
-    mechanisms: { mechanism: string; count: number }[];
-    assumes: string;
-    summary: string;
-  }[];
+  /** The IDEM variants (`expected` is `rejected`, `limit` or `leaks`). */
+  rows: (SafetyRowData & { expected: Exclude<Expectation, "baseline"> })[];
+  /**
+   * The same attacks run against B5, the unsigned shared gateway cache (`expected: "baseline"`,
+   * ADR-036), each naming the IDEM variant in `rows` it mirrors. Not IDEM claims. Absent for runs
+   * made before the baseline rows existed.
+   */
+  baseline?: (SafetyRowData & { expected: "baseline"; mirrors: string })[];
 }
 
 /** The modes of E4: B0, B2 and B3 over the HTTP overlay, N2 and N3 (B2's and B3's topologies) on native NDN. */
@@ -245,6 +255,10 @@ function baseValueOf(base: SweepBase, param: string): number {
       return base.cs.maxBytes;
     case "lossPct":
       return base.topology.lossPct;
+    case "burstSize":
+      return base.workload.burst?.size ?? 1;
+    case "startSpreadMs":
+      return base.workload.startSpreadMs ?? base.workload.thinkTimeMs;
     default:
       return (base.workload as unknown as Record<string, number>)[param] ?? Number.NaN;
   }
@@ -366,27 +380,36 @@ export function missOverhead(costs: ProcessingCosts, base: SweepBase, argBytes =
 
 function safetyData(r: LoadedRun): SafetyData {
   const cfg = r.config as SafetyConfig;
+  const all = r.metrics.map((m) => ({
+    attack: m.attack as AttackClass,
+    variant: m.variant ?? "",
+    where: m.where ?? "",
+    expected: m.expected as Expectation,
+    trials: Number(m.trials),
+    rejected: Number(m.rejected),
+    accepted: Number(m.accepted),
+    mechanisms: (m.mechanisms ?? "")
+      .split(MECHANISM_SEPARATOR)
+      .filter(Boolean)
+      .map((s) => {
+        const i = s.lastIndexOf("=");
+        return { mechanism: s.slice(0, i), count: Number(s.slice(i + 1)) };
+      }),
+    assumes: m.assumes ?? "",
+    summary: m.summary ?? "",
+    mirrors: m.mirrors ?? "",
+  }));
+  type Row = (typeof all)[number];
+  const isBaseline = (x: Row): x is Row & { expected: "baseline" } => x.expected === "baseline";
+  const rows = all
+    .filter((x): x is Row & { expected: Exclude<Expectation, "baseline"> } => !isBaseline(x))
+    .map(({ mirrors: _mirrors, ...rest }) => rest);
+  const baseline = all.filter(isBaseline);
   return {
     run: runRef(r),
     trials: cfg.trials,
-    rows: r.metrics.map((m) => ({
-      attack: m.attack as AttackClass,
-      variant: m.variant ?? "",
-      where: m.where ?? "",
-      expected: m.expected as Expectation,
-      trials: Number(m.trials),
-      rejected: Number(m.rejected),
-      accepted: Number(m.accepted),
-      mechanisms: (m.mechanisms ?? "")
-        .split(MECHANISM_SEPARATOR)
-        .filter(Boolean)
-        .map((s) => {
-          const i = s.lastIndexOf("=");
-          return { mechanism: s.slice(0, i), count: Number(s.slice(i + 1)) };
-        }),
-      assumes: m.assumes ?? "",
-      summary: m.summary ?? "",
-    })),
+    rows,
+    ...(baseline.length > 0 && { baseline }),
   };
 }
 

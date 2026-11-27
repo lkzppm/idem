@@ -8,6 +8,7 @@ import {
   type ResultsData,
   type Stat,
   type SweepData,
+  significantly,
   statAt,
 } from "@/lib/results/data";
 import { type Format, makeFormat } from "@/lib/results/format";
@@ -17,6 +18,7 @@ import { Breakdown } from "./breakdown";
 import { SplitBar, type Tone } from "./chart";
 import {
   CdfFigure,
+  CodeSweepFigure,
   DeltaFigure,
   MicrobenchFigure,
   MODE_STYLE,
@@ -156,6 +158,9 @@ export function ResultsView({
   const csSize = data.sweeps["e2-cs-size"];
   const think = data.sweeps["e2-think-time"];
   const mixed = data.sweeps["e2-mixed"];
+  const surface = data.sweeps["e2-surface"];
+  const burst = data.sweeps["e2-code-burst"];
+  const sync = data.sweeps["e2-code-sync"];
   const { e1, e5, e4, nfd, missOverhead: miss } = data;
   const e4Read = e4 ? e4Reading(e4) : undefined;
   const nfdRead = nfdReading(nfd);
@@ -215,6 +220,34 @@ export function ResultsView({
 
   const whoTone: Record<string, Tone> = { consumer: "interest", edge: "ink", producer: "data" };
 
+  // ---- IDEM against the shared gateway cache (B5): B2's reduction against B5, as a phrase whose
+  // direction follows its 95% interval, so it reads right whichever way a rerun turns out.
+  const vsB5 = (s: SweepData | undefined, x: number) => at(s, "upstream_reduction_vs_b5", "B2", x);
+  const gap = (st: Stat | undefined): string => {
+    if (!st) return "–";
+    const side = significantly(st, "above") ? "above" : significantly(st, "below") ? "below" : "none";
+    return t.gateway.gap({
+      side,
+      value: side === "none" ? f.pct(st.mean) : f.pct(abs(st.mean)),
+      ci: f.points(st.ci95),
+    });
+  };
+  const ends = (s: SweepData | undefined) =>
+    s ? { lo: Math.min(...s.values), hi: Math.max(...s.values) } : undefined;
+  const surfaceEnds = ends(surface);
+  const burstEnds = ends(burst);
+  const syncEnds = ends(sync);
+  const dupText = (st: Stat | undefined) => (st ? `${f.num(st.mean, 1)} (±${f.num(st.ci95, 1)})` : "–");
+  const red = (s: SweepData | undefined, mode: EvalModeId, x: number) =>
+    f.pct(at(s, "upstream_reduction", mode, x)?.mean ?? Number.NaN);
+  const codePoint = (s: SweepData | undefined, x: number) => ({
+    dup: dupText(at(s, "gateway_inflight_duplicates", "B5", x)),
+    pit: pctCi(f, at(s, "pit_aggregation_ratio", "B2", x)),
+    gap: pctCi(f, vsB5(s, x)),
+  });
+  const h6Count = v.h6.trends.filter((x) => x.grows).length;
+  const baseline = e5?.baseline ?? [];
+
   // ---- the question each section answers, and a one-line verdict computed from its data
   const ask = { label: t.ask.question, verdictLabel: t.ask.verdict };
   const e4Sentence = e4Read
@@ -245,8 +278,14 @@ export function ResultsView({
     : "";
   const nativeVerdict = `${e4Sentence} ${nfdSentence}`.trim();
   const hypCount = (status: VerdictStatus) =>
-    [v.h1.status, v.h2.status, v.h3.status, "not-evaluated" as VerdictStatus].filter((x) => x === status)
-      .length;
+    [
+      v.h1.status,
+      v.h2.status,
+      v.h3.status,
+      "not-evaluated" as VerdictStatus,
+      v.h5.status,
+      v.h6.status,
+    ].filter((x) => x === status).length;
 
   return (
     <main className="results">
@@ -444,6 +483,61 @@ export function ResultsView({
             <Hypothesis id="H4" status="not-evaluated" claim={t.hyp.h4.claim} t={t}>
               <p>{e4 ? t.hyp.h4.ran : t.hyp.h4.evidence}</p>
             </Hypothesis>
+            <Hypothesis id="H5" status={v.h5.status} claim={t.hyp.h5.claim} t={t}>
+              {(() => {
+                const top = v.h5.a.surface[v.h5.a.surface.length - 1];
+                return (
+                  top?.vsB5 && (
+                    <p>
+                      {t.hyp.h5.surface({
+                        above: v.h5.a.surface.filter((p) => p.agrees).length,
+                        points: v.h5.a.surface.length,
+                        top: f.pct(top.value, 0),
+                        vsB5: f.pct(top.vsB5.mean),
+                        ci: f.points(top.vsB5.ci95),
+                      })}
+                    </p>
+                  )
+                );
+              })()}
+              {v.h5.a.inflight.length + v.h5.a.neither.length > 0 && (
+                <p>
+                  {t.hyp.h5.inflight({
+                    above: v.h5.a.inflight.filter((p) => p.agrees).length,
+                    points: v.h5.a.inflight.length,
+                    neither: v.h5.a.neither.length,
+                    neitherAgree: v.h5.a.neither.filter((p) => p.agrees).length,
+                  })}
+                  {v.h5.a.unclassified.length > 0 && ` ${t.hyp.h5.unclassified(v.h5.a.unclassified.length)}`}
+                </p>
+              )}
+              {v.h5.b.pairs.length > 0 && (
+                <p>
+                  {t.hyp.h5.attacks({
+                    holding: v.h5.b.pairs.filter((p) => p.holds).length,
+                    pairs: v.h5.b.pairs.length,
+                  })}
+                </p>
+              )}
+              <p className="r-rule-text">{t.hyp.h5.rule}</p>
+            </Hypothesis>
+            <Hypothesis id="H6" status={v.h6.status} claim={t.hyp.h6.claim} t={t}>
+              {v.h6.trends.map(
+                (x) =>
+                  x.from &&
+                  x.to && (
+                    <p key={`${x.sweep}/${x.metric}`}>
+                      {t.hyp.h6.trend({
+                        what: t.hyp.h6.what[`${x.sweep}/${x.metric}`] ?? `${x.sweep} ${x.metric}`,
+                        from: pctCi(f, x.from.stat),
+                        to: pctCi(f, x.to.stat),
+                        grows: x.grows,
+                      })}
+                    </p>
+                  ),
+              )}
+              <p className="r-rule-text">{t.hyp.h6.rule({ grows: h6Count, all: v.h6.trends.length })}</p>
+            </Hypothesis>
           </ol>
         </Section>
 
@@ -462,6 +556,7 @@ export function ResultsView({
                   b2: f.pct(v.h1.base.vsB0.mean),
                   ci: f.points(v.h1.base.vsB0.ci95),
                   b1: f.pct(v.h1.base.b1.mean),
+                  b5: f.pct(at(agents, "upstream_reduction", "B5", v.h1.base.agents)?.mean ?? Number.NaN),
                 }),
               }),
             }}
@@ -483,6 +578,15 @@ export function ResultsView({
               xFormat={(x) => f.num(x, 1)}
               caption={t.redundancy.overlap.caption}
             />
+            {v.h1.base && vsB5(agents, v.h1.base.agents) && base && (
+              <p className="r-note">
+                {t.redundancy.vsB5({
+                  agents: f.int(v.h1.base.agents),
+                  surface: f.pct(base.workload.surfaceVariation, 0),
+                  gap: gap(vsB5(agents, v.h1.base.agents)),
+                })}
+              </p>
+            )}
             {pitShortest && thinkMin !== undefined && (
               <p className="r-note">
                 {t.redundancy.pit({
@@ -509,6 +613,7 @@ export function ResultsView({
                 t.redundancy.agents.x,
                 t.redundancy.columns.vsB0,
                 t.redundancy.columns.vsB1,
+                t.redundancy.columns.vsB5,
                 t.redundancy.columns.bytes,
                 t.redundancy.columns.hit,
                 t.redundancy.columns.pit,
@@ -517,11 +622,131 @@ export function ResultsView({
                 f.int(x),
                 pctCi(f, at(agents, "upstream_reduction", "B2", x)),
                 pctCi(f, at(agents, "upstream_reduction_vs_b1", "B2", x)),
+                pctCi(f, vsB5(agents, x)),
                 pctCi(f, at(agents, "bytes_reduction", "B2", x)),
                 pctCi(f, at(agents, "cs_hit_ratio", "B2", x)),
                 pctCi(f, at(agents, "pit_aggregation_ratio", "B2", x)),
               ])}
             />
+          </Section>
+        )}
+
+        {surface && burst && sync && surfaceEnds && burstEnds && syncEnds && (
+          <Section
+            id="gateway"
+            nav={t.nav.gateway}
+            title={t.gateway.title}
+            lead={t.gateway.lead}
+            ask={{
+              ...ask,
+              question: t.gateway.question,
+              verdict: t.gateway.verdict({
+                zeroValue: f.pct(surfaceEnds.lo, 0),
+                b5zero: red(surface, "B5", surfaceEnds.lo),
+                b2zero: red(surface, "B2", surfaceEnds.lo),
+                zero: gap(vsB5(surface, surfaceEnds.lo)),
+                topValue: f.pct(surfaceEnds.hi, 0),
+                top: gap(vsB5(surface, surfaceEnds.hi)),
+                burstValue: f.int(burstEnds.hi),
+                burst: gap(vsB5(burst, burstEnds.hi)),
+              }),
+            }}
+          >
+            <ReductionFigure
+              t={t}
+              f={f}
+              sweep={surface}
+              copy={t.gateway.surface}
+              xFormat={(x) => f.pct(x, 0)}
+              caption={t.gateway.surface.caption({
+                agents: f.int(surface.base.workload.agents),
+                overlap: f.num(surface.base.workload.overlap, 1),
+              })}
+              modes={["B1", "B5", "B2"]}
+              fillTo="B5"
+              extra={[
+                {
+                  head: t.gateway.chart.columns.vsB5,
+                  cell: (i) => pctCi(f, surface.metrics.upstream_reduction_vs_b5?.B2?.[i]),
+                },
+              ]}
+            />
+            <p className="r-note">
+              {t.gateway.surface.reading({
+                zero: f.pct(surfaceEnds.lo, 0),
+                b5zero: red(surface, "B5", surfaceEnds.lo),
+                b2zero: red(surface, "B2", surfaceEnds.lo),
+                bound: f.pct(at(surface, "oracle_reduction", "B0", surfaceEnds.lo)?.mean ?? Number.NaN),
+                gap: pctCi(f, vsB5(surface, surfaceEnds.lo)),
+                top: f.pct(surfaceEnds.hi, 0),
+                b5top: red(surface, "B5", surfaceEnds.hi),
+                b2top: red(surface, "B2", surfaceEnds.hi),
+                gapTop: pctCi(f, vsB5(surface, surfaceEnds.hi)),
+              })}
+            </p>
+            <CodeSweepFigure
+              t={t}
+              f={f}
+              sweep={burst}
+              copy={t.gateway.burst}
+              xFormat={(x) => f.int(x)}
+              caption={t.gateway.burst.caption({
+                agents: f.int(burst.base.workload.agents),
+                calls: f.int(burst.base.workload.callsPerAgent),
+                spread: f.duration(burst.base.workload.startSpreadMs ?? burst.base.workload.thinkTimeMs),
+              })}
+            />
+            {(() => {
+              const one = codePoint(burst, burstEnds.lo);
+              const top = codePoint(burst, burstEnds.hi);
+              return (
+                <p className="r-note">
+                  {t.gateway.burst.reading({
+                    one: f.int(burstEnds.lo),
+                    dupOne: one.dup,
+                    pitOne: one.pit,
+                    gapOne: one.gap,
+                    top: f.int(burstEnds.hi),
+                    dupTop: top.dup,
+                    pitTop: top.pit,
+                    gapTop: top.gap,
+                  })}
+                </p>
+              );
+            })()}
+            <CodeSweepFigure
+              t={t}
+              f={f}
+              sweep={sync}
+              copy={t.gateway.sync}
+              xFormat={(x) => f.duration(x)}
+              caption={t.gateway.sync.caption({
+                agents: f.int(sync.base.workload.agents),
+                calls: f.int(sync.base.workload.callsPerAgent),
+                burst: f.int(sync.base.workload.burst?.size ?? 1),
+              })}
+            />
+            {(() => {
+              const wide = codePoint(sync, syncEnds.hi);
+              const narrow = codePoint(sync, syncEnds.lo);
+              return (
+                <p className="r-note">
+                  {t.gateway.sync.reading({
+                    wide: f.duration(syncEnds.hi),
+                    dupWide: wide.dup,
+                    pitWide: wide.pit,
+                    gapWide: wide.gap,
+                    narrow:
+                      syncEnds.lo === 0
+                        ? t.gateway.sync.instant
+                        : t.gateway.sync.within(f.duration(syncEnds.lo)),
+                    dupNarrow: narrow.dup,
+                    pitNarrow: narrow.pit,
+                    gapNarrow: narrow.gap,
+                  })}
+                </p>
+              );
+            })()}
           </Section>
         )}
 
@@ -557,6 +782,7 @@ export function ResultsView({
                 agents: f.int(agents.cdfValue),
                 hit: f.pct(at(agents, "cs_hit_ratio", "B2", agents.cdfValue)?.mean ?? Number.NaN),
                 local: f.pct(at(agents, "upstream_reduction", "B1", agents.cdfValue)?.mean ?? Number.NaN),
+                gateway: f.pct(at(agents, "upstream_reduction", "B5", agents.cdfValue)?.mean ?? Number.NaN),
               })}
             />
             <DeltaFigure t={t} f={f} sweep={agents} xFormat={(x) => f.int(x)} />
@@ -704,6 +930,7 @@ export function ResultsView({
                       <tr>
                         <th scope="col">{t.sensitivity.mixed.fraction}</th>
                         <th scope="col">{modeLabel(t, "B1")}</th>
+                        <th scope="col">{modeLabel(t, "B5")}</th>
                         <th scope="col">{modeLabel(t, "B2")}</th>
                         <th scope="col">{t.modes.bound}</th>
                         <th scope="col">{t.sensitivity.mixed.bypass}</th>
@@ -714,6 +941,7 @@ export function ResultsView({
                         <tr key={x}>
                           <th scope="row">{f.pct(x, 0)}</th>
                           <td>{pctCi(f, at(mixed, "upstream_reduction", "B1", x))}</td>
+                          <td>{pctCi(f, at(mixed, "upstream_reduction", "B5", x))}</td>
                           <td>{pctCi(f, at(mixed, "upstream_reduction", "B2", x))}</td>
                           <td>{f.pct(at(mixed, "oracle_reduction", "B0", x)?.mean ?? Number.NaN)}</td>
                           <td>{f.num(at(mixed, "bypasses", "B2", x)?.mean ?? Number.NaN, 1)}</td>
@@ -918,6 +1146,81 @@ export function ResultsView({
                 ))}
               </table>
             </div>
+            {baseline.length > 0 && (
+              <div className="r-block r-baseline">
+                <h3>{t.e5.baseline.title}</h3>
+                <p className="r-note">{t.e5.baseline.lead}</p>
+                <div className="r-scroll">
+                  <table className="r-table r-table-open r-safety">
+                    <thead>
+                      <tr>
+                        <th scope="col">{t.e5.baseline.columns.attack}</th>
+                        <th scope="col">{t.e5.baseline.columns.b5}</th>
+                        <th scope="col">{t.e5.baseline.columns.idem}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {baseline.map((r) => {
+                        const mirror = e5.rows.find((x) => x.variant === r.mirrors);
+                        const count = (row: { rejected: number; accepted: number; trials: number }) => (
+                          <>
+                            <span className="r-count-n">
+                              {t.e5.baseline.accepted(f.int(row.accepted), f.int(row.trials))}
+                            </span>
+                            <SplitBar
+                              label={`${t.e5.accepted}: ${f.int(row.accepted)} / ${f.int(row.trials)}`}
+                              parts={[
+                                {
+                                  key: "r",
+                                  value: row.rejected,
+                                  tone: "ink",
+                                  title: `${t.e5.columns.rejected}: ${f.int(row.rejected)}`,
+                                },
+                                {
+                                  key: "a",
+                                  value: row.accepted,
+                                  tone: "data",
+                                  title: `${t.e5.accepted}: ${f.int(row.accepted)}`,
+                                },
+                              ]}
+                            />
+                          </>
+                        );
+                        return (
+                          <tr key={r.variant}>
+                            <th scope="row">
+                              <code>{r.variant}</code>
+                              <span className="r-what">{t.e5.what[r.variant] ?? r.summary}</span>
+                              {r.assumes && (
+                                <span className="r-assumes">
+                                  {t.e5.precondition} {t.e5.assumes[r.variant] ?? r.assumes}
+                                </span>
+                              )}
+                            </th>
+                            <td className="r-count">{count(r)}</td>
+                            <td className="r-count">
+                              <code>{r.mirrors}</code>
+                              {mirror ? (
+                                count(mirror)
+                              ) : (
+                                <span className="r-count-n">{t.e5.baseline.missing}</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="r-note">
+                  {t.e5.baseline.pair({
+                    holding: v.h5.b.pairs.filter((p) => p.holds).length,
+                    pairs: v.h5.b.pairs.length,
+                  })}{" "}
+                  {t.e5.baseline.reading}
+                </p>
+              </div>
+            )}
             <Provenance t={t} kind="simulation" runs={[e5.run]} />
           </Section>
         )}
@@ -1012,7 +1315,7 @@ export function ResultsView({
           <div className="r-block">
             <h3>{t.method.notRunTitle}</h3>
             <ul className="r-list">
-              {t.method.notRun.map((x) => (
+              {[t.method.notRun.e3, ...(e4 ? [] : [t.method.notRun.e4]), t.method.notRun.browser].map((x) => (
                 <li key={x}>{x}</li>
               ))}
             </ul>

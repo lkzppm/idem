@@ -1,5 +1,5 @@
-import type { ResultsData, Stat } from "@idem/sim";
-import { significantly, statAt } from "./data";
+import type { ResultsData, Stat, SweepData } from "@idem/sim";
+import { seriesOf, significantly, statAt } from "./data";
 
 /** How the data leaves a hypothesis of spec 00 §6. */
 export type VerdictStatus = "supported" | "partly" | "refuted" | "not-evaluated";
@@ -48,6 +48,32 @@ export interface Verdicts {
     privateVariants: number;
     privateLeakingVariants: string[];
   };
+  /** H5, by the rules of spec 05 §4 (E2): (a) from the sweeps against B5, (b) from E5's baseline rows. */
+  h5: {
+    status: VerdictStatus;
+    a: {
+      status: VerdictStatus;
+      /** `e2-surface` at every value above 0: B2's reduction against B5, above zero. */
+      surface: H5Point[];
+      /** Surface-0 points where B5 sent duplicates upstream while an identical call was in flight. */
+      inflight: H5Point[];
+      /** Surface-0 points where B5's mean in-flight duplicates is 0: B2 neither above nor below zero. */
+      neither: H5Point[];
+      /**
+       * Surface-0 points the rule does not classify: B5's mean in-flight duplicates is above 0 but
+       * its 95% interval reaches zero. Spec 05 names no expectation for them; they are counted here
+       * and not evaluated.
+       */
+      unclassified: H5Point[];
+    };
+    b: { status: VerdictStatus; pairs: BaselinePair[] };
+  };
+  /** H6: PIT aggregation and the reduction against B5 grow with burst size and start synchrony. */
+  h6: {
+    status: VerdictStatus;
+    /** One entry per sweep and metric, in the order burst/pit, burst/vsB5, sync/pit, sync/vsB5. */
+    trends: H6Trend[];
+  };
   e5: {
     variants: number;
     /** Variants the protocol claims to stop, and those stopped in every trial. */
@@ -58,6 +84,81 @@ export interface Verdicts {
     /** Variants the specification documents as limits or accepted risks of v1: measured, not claimed. */
     declared: string[];
   } | null;
+}
+
+/** One point of a sweep in an H5 (a) set: B2's reduction against B5 there, and whether it agrees with the rule. */
+export interface H5Point {
+  sweep: string;
+  value: number;
+  vsB5: Stat | undefined;
+  /** B5's in-flight duplicates per run at the point (absent for `e2-surface` above 0). */
+  inflight?: Stat;
+  agrees: boolean;
+}
+
+/** A baseline row of E5 beside the IDEM variant it mirrors. */
+export interface BaselinePair {
+  baseline: string;
+  mirrors: string;
+  baselineAccepted: number;
+  baselineTrials: number;
+  /** Absent when the run has no IDEM variant of that id (the pair then cannot hold). */
+  mirrorAccepted?: number;
+  mirrorTrials?: number;
+  holds: boolean;
+}
+
+/** Whether one metric of one W-code sweep grows in the direction H6 states. */
+export interface H6Trend {
+  sweep: "e2-code-burst" | "e2-code-sync";
+  metric: "pit_aggregation_ratio" | "upstream_reduction_vs_b5";
+  /** The two ends, in the stated direction (burst 1 → 16; start window 20 s → 0). */
+  from?: { value: number; stat: Stat };
+  to?: { value: number; stat: Stat };
+  grows: boolean;
+}
+
+/** Two 95% intervals that do not overlap, `a` below `b`. */
+function apartBelow(a: Stat, b: Stat): boolean {
+  return a.mean + a.ci95 < b.mean - b.ci95;
+}
+
+/**
+ * Spec 05 §4, H6: the ends of the sweep are apart in the stated direction and no consecutive pair
+ * of points is apart in the opposite one. `reverse` walks the sweep from its last value to its first.
+ */
+function trend(
+  sweep: SweepData | undefined,
+  name: H6Trend["sweep"],
+  metric: H6Trend["metric"],
+  reverse: boolean,
+): H6Trend {
+  if (!sweep) return { sweep: name, metric, grows: false };
+  const points = seriesOf(sweep, metric, "B2");
+  if (reverse) points.reverse();
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (!first || !last || points.length < 2) return { sweep: name, metric, grows: false };
+  let against = false;
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const next = points[i];
+    if (prev && next && apartBelow(next.stat, prev.stat)) against = true;
+  }
+  return {
+    sweep: name,
+    metric,
+    from: { value: first.value, stat: first.stat },
+    to: { value: last.value, stat: last.stat },
+    grows: apartBelow(first.stat, last.stat) && !against,
+  };
+}
+
+/** Supported when every part is, refuted when none is, partly otherwise. */
+function tally(parts: boolean[]): VerdictStatus {
+  if (parts.length === 0) return "not-evaluated";
+  const yes = parts.filter(Boolean).length;
+  return yes === parts.length ? "supported" : yes === 0 ? "refuted" : "partly";
 }
 
 export function computeVerdicts(data: ResultsData): Verdicts {
@@ -180,5 +281,99 @@ export function computeVerdicts(data: ResultsData): Verdicts {
       declared: rows.filter((r) => r.expected !== "rejected").map((r) => r.variant),
     };
   }
-  return { h1, h2, h3, e5 };
+  // ---- H5 (a): fewer calls upstream than B5 when spellings vary or identical calls are in
+  // flight, the same number when neither happens (spec 05 §4, E2).
+  const surfaceSweep = data.sweeps["e2-surface"];
+  const zeroSweeps: [string, SweepData | undefined, number[] | undefined][] = [
+    ["e2-surface", surfaceSweep, surfaceSweep?.values.filter((x) => x === 0)],
+    ["e2-code-burst", data.sweeps["e2-code-burst"], data.sweeps["e2-code-burst"]?.values],
+    ["e2-code-sync", data.sweeps["e2-code-sync"], data.sweeps["e2-code-sync"]?.values],
+  ];
+  const a: Verdicts["h5"]["a"] = {
+    status: "not-evaluated",
+    surface: [],
+    inflight: [],
+    neither: [],
+    unclassified: [],
+  };
+  if (surfaceSweep) {
+    for (const x of surfaceSweep.values.filter((x) => x > 0)) {
+      const vsB5 = statAt(surfaceSweep, "upstream_reduction_vs_b5", "B2", x);
+      a.surface.push({ sweep: "e2-surface", value: x, vsB5, agrees: significantly(vsB5, "above") });
+    }
+  }
+  for (const [name, sweep, values] of zeroSweeps) {
+    if (!sweep || !values) continue;
+    for (const x of values) {
+      const vsB5 = statAt(sweep, "upstream_reduction_vs_b5", "B2", x);
+      const inflight = statAt(sweep, "gateway_inflight_duplicates", "B5", x);
+      if (!inflight) continue;
+      const point = { sweep: name, value: x, vsB5, inflight };
+      if (significantly(inflight, "above")) {
+        a.inflight.push({ ...point, agrees: significantly(vsB5, "above") });
+      } else if (inflight.mean === 0) {
+        a.neither.push({
+          ...point,
+          agrees: vsB5 !== undefined && !significantly(vsB5, "above") && !significantly(vsB5, "below"),
+        });
+      } else {
+        // Not in the spec's text: a positive mean whose interval reaches zero. Left unevaluated.
+        a.unclassified.push({ ...point, agrees: false });
+      }
+    }
+  }
+  const evaluated = [...a.surface, ...a.inflight, ...a.neither];
+  if (evaluated.length > 0) {
+    const above = [...a.surface, ...a.inflight].filter((p) => p.agrees).length;
+    // "Refuted if no point of the surface or in-flight sets is above zero": read as no point of
+    // either set (their union), the reading the sentence's own "no point ... is" supports.
+    a.status =
+      evaluated.every((p) => p.agrees) && a.surface.length > 0 && a.inflight.length > 0
+        ? "supported"
+        : above === 0
+          ? "refuted"
+          : "partly";
+  }
+
+  // ---- H5 (b): the baseline row accepted at least once, the IDEM variant it mirrors never.
+  const pairs: BaselinePair[] = (data.e5?.baseline ?? []).map((r) => {
+    const mirror = data.e5?.rows.find((x) => x.variant === r.mirrors);
+    return {
+      baseline: r.variant,
+      mirrors: r.mirrors,
+      baselineAccepted: r.accepted,
+      baselineTrials: r.trials,
+      ...(mirror && { mirrorAccepted: mirror.accepted, mirrorTrials: mirror.trials }),
+      holds: r.accepted >= 1 && mirror !== undefined && mirror.accepted === 0,
+    };
+  });
+  const b: Verdicts["h5"]["b"] = { status: tally(pairs.map((p) => p.holds)), pairs };
+  // Supported if (a) and (b) are, refuted if both are refuted, partly otherwise; with neither
+  // part evaluable there is nothing to state.
+  const h5status: VerdictStatus =
+    a.status === "not-evaluated" && b.status === "not-evaluated"
+      ? "not-evaluated"
+      : a.status === "supported" && b.status === "supported"
+        ? "supported"
+        : a.status === "refuted" && b.status === "refuted"
+          ? "refuted"
+          : "partly";
+  const h5: Verdicts["h5"] = { status: h5status, a, b };
+
+  // ---- H6: in e2-code-burst (growing burst) and e2-code-sync (shrinking start window), B2's PIT
+  // aggregation ratio and its reduction against B5 both grow.
+  const burst = data.sweeps["e2-code-burst"];
+  const sync = data.sweeps["e2-code-sync"];
+  const trends: H6Trend[] = [
+    trend(burst, "e2-code-burst", "pit_aggregation_ratio", false),
+    trend(burst, "e2-code-burst", "upstream_reduction_vs_b5", false),
+    trend(sync, "e2-code-sync", "pit_aggregation_ratio", true),
+    trend(sync, "e2-code-sync", "upstream_reduction_vs_b5", true),
+  ];
+  const h6: Verdicts["h6"] = {
+    status: burst || sync ? tally(trends.map((x) => x.grows)) : "not-evaluated",
+    trends,
+  };
+
+  return { h1, h2, h3, h5, h6, e5 };
 }

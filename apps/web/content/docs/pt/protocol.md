@@ -1,4 +1,4 @@
-<!-- translated-from: spec/01-protocol.md sha256:86c85a73b08092ada3f0fe9a93cae712e19f44b77e4eef7378eaa552fbbe070a -->
+<!-- translated-from: spec/01-protocol.md sha256:226481ec1ac518077ec66c30264d1d7eb9498d06d12b1180710f91f33cc7f121 -->
 # 01 — Protocolo IDEM v1 (normativo)
 
 MUST/SHOULD/MAY conforme RFC 2119/8174. Cada regra tem um id `[P-x.y]` que os testes citam.
@@ -98,7 +98,7 @@ interface Interest {
   lifetimeMs: number;         // default 10_000
   nonce: string;              // 64 random bits, b64u
   hopLimit: number;           // default 8
-  authContext?: string;       // first hop only; see §8
+  authContext?: string;       // never set by a sender; ignored on receipt [P-8.4]
 }
 ```
 
@@ -202,16 +202,28 @@ on Interest I from face F:
     I.name.schemaDigest ≠ the manifest's         (reason "not_cacheable")
   digest(I.args) ≠ I.name.argsDigest           → error DIGEST_MISMATCH; event "drop"
   hopLimit == 0 or loop (name, nonce)          → drop; event "drop"
-  CS has fresh D for I.name (scope ok)         → reply D to F; event "cs_hit"
-  PIT has an entry for I.name                  → add F to entry; event "pit_aggregate"
+  CS has D for I.name (scope ok), and D is     → reply D to F; event "cs_hit"
+    fresh [P-8.1] and not expired [P-8.6],
+    or I.mustBeFresh is false
+  PIT has an entry for I.name                  → add F (with I.mustBeFresh) to entry;
+                                                 event "pit_aggregate"
   otherwise                                    → create PIT entry; FIB(producer) → next hop;
                                                  send I; event "upstream_out"
 
 on Data D from upstream:
   verify signature and contentDigest           → fail: drop, error to waiters; "verify_fail"
+  signed scope private, manifest public        → drop, BAD_SIGNATURE to waiters [P-8.5]
+  D expired at this node [P-8.6]               → not stored; EXPIRED to every waiter that
+                                                 asked for fresh Data, D to the others;
+                                                 event "drop" (reason "expired")
+  D stale by its ageMs [P-8.1]                 → EXPIRED to every waiter that asked for fresh
+                                                 Data, D to the others; event "drop"
+                                                 (reason "stale")
   if cacheable and scope allows                → store in CS; event "cs_insert"
-  deliver D to every face in the PIT entry     → event "pit_satisfy"(n faces)
+  deliver D to every other face in the entry   → event "pit_satisfy"(n faces)
   remove PIT entry
+
+on Data D for a passthrough Interest [P-7.3]   → the same two checks, then relay D or EXPIRED
 
 on PIT entry lifetime expiry                   → TIMEOUT error to all; event "pit_expire"
 
@@ -230,6 +242,8 @@ fora do schema [P-3.1], a nova tentativa de [P-5.5]) são o que o forwarder deix
 - **[P-7.2]** Erros (TIMEOUT, 5xx upstream, `isError`) MUST NOT ser guardados em cache (não há cache negativo na v1).
 - **[P-7.3]** O PIT MUST limitar suas entradas e as faces por entrada (proteção contra DoS); quando o limite
   é excedido → passthrough (encaminhado sem estado de PIT, sem agregação e sem cache; evento `bypass`, motivo `pit_full`).
+  O passthrough guarda o `mustBeFresh` do Interest e o `ttlMs` da ferramenta, e a sua resposta passa
+  pelas verificações de [P-8.6] como se tivesse uma entrada de PIT própria.
 - **[P-7.4]** O CS MUST respeitar um orçamento em bytes. A política de substituição é configurável (`lru`
   por padrão; `lfu` e `fifo` para experimentos).
 
@@ -237,9 +251,12 @@ fora do schema [P-3.1], a nova tentativa de [P-5.5]) são o que o forwarder deix
 
 - **[P-8.1]** Um Data é fresco no nó N enquanto `ageMs + (now_N − receivedAt_N) < freshnessMs`. Ao servir
   pelo CS, N atualiza `ageMs` (semântica do cabeçalho HTTP `Age`, RFC 9111). A idade é contada por salto,
-  a partir do recebimento, no relógio de cada nó: a v1 não exige relógios acertados entre os nós e não
-  compara o `producedAt` assinado com relógio nenhum. O `ageMs` não é assinado; logo, esta regra só obriga
-  os nós honestos (§11, replay de dado vencido).
+  a partir do recebimento, no relógio de cada nó; por isso, esta regra não exige relógios acertados entre
+  os nós. O `ageMs` não é assinado: sozinha, a regra só obriga os nós honestos. O que um nó desonesto
+  consegue fazer um receptor aceitar é limitado, em vez disso, pelo `producedAt` assinado [P-8.6], até a
+  tolerância de relógio (§11, replay de dado vencido). Um Interest com `mustBeFresh: true` só é respondido
+  por uma entrada do CS se ela estiver fresca por esta regra e por [P-8.2] e não estiver expirada por
+  [P-8.6]; um Interest com `mustBeFresh: false` pode ser respondido por qualquer entrada, fresca ou não.
 - **[P-8.2]** O `freshnessMs` de um Data MUST ser ≤ o `ttlMs` do manifesto para aquela ferramenta.
   Forwarders e consumidores MUST usar `min(freshnessMs, ttlMs)` como frescor efetivo.
 - **[P-8.3]** `scope: "public"`: pode ir para qualquer CS. `scope: "private"`: só para um CS **particionado
@@ -248,12 +265,54 @@ fora do schema [P-3.1], a nova tentativa de [P-5.5]) são o que o forwarder deix
   O PIT é particionado da mesma forma: Interests `private` são agregados **somente** com Interests do
   mesmo `authContext`. Um Interest `private` sem `authContext` (anônimo, ou além da borda) nunca é
   agregado e nunca é respondido por um CS.
-- **[P-8.4]** O `authContext` MUST ser derivado de forma não reversível (por exemplo, HMAC do token com um
-  segredo da borda) e MUST NOT ser propagado além do primeiro salto. Um forwarder ignora o `authContext`
-  em Interests que não vêm de uma face de consumidor.
+- **[P-8.4]** A borda MUST derivar o `authContext` ela mesma, de forma não reversível, a partir da
+  credencial que chegou com o Interest e de um segredo seu (por exemplo, HMAC do token com o segredo da
+  borda), e MUST ignorar qualquer `authContext` presente em um Interest recebido, em qualquer face: um
+  valor que o remetente pudesse escolher permitiria a ele ler a partição de outro contexto. Sem credencial,
+  ou em uma face que não leva a consumidores, não há `authContext`. Ele MUST NOT ser propagado além do
+  primeiro salto. O campo continua no Interest (§4) para que o formato de transmissão não mude; os
+  remetentes o deixam sem valor.
 - **[P-8.5]** Um Data cujo `scope` assinado é `private` enquanto o manifesto diz `public` MUST NOT ser
   entregue a uma entrada agregada do PIT nem guardado em cache: o forwarder o trata como inválido
   (`BAD_SIGNATURE` para quem espera, que tenta de novo como em [P-5.5]).
+- **[P-8.6]** *Tempo de vida assinado.* No nó N, a idade aparente de um Data é `now_N − producedAt`. O IDEM
+  tira isso do `apparent_age` da RFC 9111 §4.2.3 [RFC9111], com o `producedAt` assinado no lugar do `Date`
+  não assinado, e se afasta dela em um ponto: a idade não é limitada a 0 por baixo. A RFC 9111 pode fazer
+  esse corte porque os seus caches são confiáveis; com um carimbo de tempo assinado, o corte deixaria um
+  Data datado no futuro viver pelo seu frescor mais o deslocamento. O Data está **fora do seu tempo de
+  vida assinado** em N quando está *expirado*, `apparentAge ≥ min(freshnessMs, ttlMs) + clockToleranceMs`,
+  ou *datado no futuro*, `producedAt − now_N > clockToleranceMs`. `clockToleranceMs` é uma opção local de
+  cada nó, com padrão de 60 000 ms; ela cobre a diferença de relógio entre N e o produtor mais o tempo de
+  trânsito. Dentro da janela, um Data é aceito qualquer que seja a sua idade aparente. Nesta seção,
+  "expirado" quer dizer fora do tempo de vida assinado, de qualquer um dos lados. Um forwarder MUST
+  tratar como inválido um Data vindo do upstream que esteja expirado: ele MUST NOT guardá-lo, e MUST
+  responder a todo downstream cujo Interest tinha `mustBeFresh: true` com `EXPIRED` no lugar do Data; um
+  downstream cujo Interest tinha `mustBeFresh: false` MAY recebê-lo. O PIT guarda a flag por downstream;
+  assim, Interests com flags diferentes continuam dividindo uma mesma entrada. Um forwarder MUST NOT
+  responder a um Interest com `mustBeFresh: true` por uma entrada do CS que esteja expirada, diga o que
+  disser o `ageMs` dela.
+  O invariante que essas regras mantêm: um downstream que pediu Data fresco recebe só Data fresco por
+  [P-8.1]/[P-8.2] e dentro do seu tempo de vida assinado, quaisquer que sejam as flags dos outros
+  Interests da entrada, e também por um passthrough [P-7.3]. Para um Data vindo do upstream, fresco por
+  [P-8.1] quer dizer que o seu `ageMs`, se presente, está abaixo de `min(freshnessMs, ttlMs)`; um Data sem
+  `ageMs` vem do produtor, não de um cache, e não chega velho. Um forwarder MUST responder a um
+  downstream assim com `EXPIRED` no lugar de um Data que está velho pelo seu `ageMs`, como para um
+  expirado, e entregar o Data aos outros. Por estar dentro do seu tempo de vida assinado, esse Data MAY
+  ser guardado; ele nunca é um acerto fresco, já que a sua idade já alcança o seu frescor.
+- **[P-8.7]** *Verificação do tempo de vida no consumidor.* Depois de [P-5.5], um consumidor cujo Interest
+  tinha `mustBeFresh: true` MUST NOT entregar ao agente um Data expirado [P-8.6], julgado pelo seu próprio
+  relógio, nem um Data velho pelo seu `ageMs` [P-8.1] (a regra de [P-8.6] para Data vindo do upstream).
+  Ele tenta de novo uma vez como chamada comum, a nova tentativa de [P-5.5], que ele também faz
+  quando um forwarder respondeu `EXPIRED`. O resultado da nova tentativa MUST trazer um Data assinado para
+  o mesmo nome, passar pela verificação e não estar expirado. Se ele passa pela verificação mas está
+  expirado (de qualquer um dos lados), a chamada falha com o erro local `CLOCK_SKEW` e nenhum conteúdo é
+  entregue ao agente; a mensagem do erro traz o `producedAt`, a hora local e qual lado da janela foi
+  perdido. Um Data que o produtor acabou de fazer e que já parece expirado, ou datado no futuro além da
+  tolerância, quer dizer que o relógio deste nó e o do produtor discordam em mais do que a janela permite,
+  ou que alguém no caminho da nova tentativa também faz replay; não há como distinguir os dois casos, e
+  por isso a chamada falha fechada. Um consumidor que pediu com `mustBeFresh: false` pula a verificação. Um
+  consumidor só nativo (§9.2) não tem chamada comum e falha fechado com `EXPIRED`, como já faz para
+  `BAD_SIGNATURE` [P-9.3].
 
 ## 9. Bindings de transporte
 
@@ -285,7 +344,7 @@ fora do schema [P-3.1], a nova tentativa de [P-5.5]) são o que o forwarder deix
   requisições enviadas por um forwarder (ausente ⇒ o remetente é um consumidor e este nó é a borda
   dele); `idem-trace` nas respostas (lista JSON de `{ node, events }` por salto, só para diagnóstico,
   nunca confiável). Códigos de status: 400 `DIGEST_MISMATCH`, 422 `NOT_CACHEABLE`,
-  502 `BAD_SIGNATURE`/`UNTRUSTED_KEY`/`UPSTREAM_ERROR`, 504 `TIMEOUT`, 508 `HOP_LIMIT`/`LOOP`. Um produtor
+  502 `BAD_SIGNATURE`/`EXPIRED`/`UNTRUSTED_KEY`/`UPSTREAM_ERROR`, 504 `TIMEOUT`, 508 `HOP_LIMIT`/`LOOP`. Um produtor
   MAY expor esse conjunto de endpoints além do MCP; as bordas SHOULD preferi-lo quando disponível (ADR-014).
 - **Endpoint MCP da borda:** a borda MAY expor um endpoint MCP comum (Streamable HTTP) que lista as
   ferramentas do produtor; cada `tools/call` entra no motor do forwarder como um pedido de consumidor
@@ -295,8 +354,50 @@ fora do schema [P-3.1], a nova tentativa de [P-5.5]) são o que o forwarder deix
   com `_meta["dev.idem/data"]` anexado para que um cliente que conhece o IDEM possa verificar de novo. Ele
   não roteia pelos cabeçalhos `Mcp-Method` / `Mcp-Name` da 2026-07-28 [MCP-CHANGELOG]; um proxy que repassa
   os bytes do MCP intactos e decide por esses cabeçalhos não faz parte da v1 (ADR-024).
-- **Produtor legado (sem IDEM):** a borda MAY rodar em *modo proxy-producer*, assinando com a chave do
-  próprio gateway. A confiança então passa para o gateway, e o Data MUST dizer isso no seu `keyLocator`.
+- **Produtor legado (sem IDEM):** um operador MAY rodar um *proxy-producer* na frente de um servidor MCP
+  que não fala IDEM (a *origem*), ao lado da borda ou no mesmo processo. O proxy é um produtor IDEM por
+  direito próprio (§5, §6): ele chama a origem por MCP comum, nomeia os resultados e os assina com a sua
+  própria chave. A confiança então passa para o proxy, e todo Data diz isso no seu nome e no seu
+  `keyLocator`. Implementado em `@idem/mcp` (`createProxyProducer`, ADR-038).
+  - **[P-9.5]** Um proxy-producer MUST usar o seu próprio nome de produtor e a sua própria chave; assim,
+    os seus nomes são `/idem/v1/<proxy>/…` e o seu `keyLocator` é `/idem/v1/<proxy>/_key/<keyId>`. Ele
+    MUST NOT assinar sob o nome da origem. Um consumidor que só confia no nome ou na chave da origem,
+    portanto, não aceita um Data assinado pelo proxy como se fosse da origem: [P-5.2] o rejeita
+    (`UNTRUSTED_KEY`, ou `BAD_SIGNATURE` quando o nome ou o key locator é reescrito). Cada ferramenta na
+    lista de ferramentas do proxy leva `_meta["dev.idem/origin"] = { origin, readOnlyHint }`: o endpoint
+    da origem, e quem responde pelo `readOnlyHint` listado (`"origin"`, `"operator"` ou `"absent"`). Como
+    a própria lista de ferramentas, esse registro não é assinado e é só informativo. Os objetos Manifest
+    e Data não mudam.
+  - **[P-9.6]** A política de cache é do operador, por ferramenta. Uma ferramenta sem política não é
+    cacheável: cada chamada a ela é repassada à origem e devolvida sem assinatura. Para [P-6.1](b), o
+    proxy MUST NOT oferecer como cacheável uma ferramenta que o `tools/list` da origem marca com
+    `readOnlyHint: false`, e MUST NOT oferecer uma que não tem `readOnlyHint`, a menos que o operador
+    afirme isso de forma explícita (`operatorAssertsReadOnly`); a sua própria lista de ferramentas
+    mostra então `readOnlyHint: true`, com `"operator"` no registro de origem.
+  - **[P-9.7]** A credencial de uma chamada à origem segue a política declarada pelo operador, nunca o
+    estado atual da ferramenta. Para uma ferramenta que o operador declarou cacheável com escopo
+    `public`, o proxy MUST NOT repassar a credencial do usuário final à origem, esteja a ferramenta
+    oferecida como cacheável, retida depois de uma mudança de schema [P-9.8] ou recusada depois de uma
+    releitura: ele chama com a sua própria credencial configurada, ou com nenhuma, para que uma
+    resposta compartilhada não possa depender de quem perguntou e para que uma origem não consiga obter
+    credenciais de usuários mudando a sua lista de ferramentas. Para uma ferramenta declarada `private`,
+    ele repassa a credencial do usuário final (`Authorization: Bearer`) e assina o Data como `private`
+    (§8). Para uma ferramenta que o operador não declarou, ou declarou como não cacheável, o operador
+    não prometeu nada: o proxy repassa a chamada com a credencial do usuário final, como faria um proxy
+    transparente, e nunca a assina.
+  - **[P-9.8]** Depois de cada chamada à origem cujo resultado ele assinaria, o proxy MUST comparar a
+    entrada atual do `tools/list` da origem para aquela ferramenta (schema de entrada, schema de saída,
+    `readOnlyHint`) com aquela a partir da qual o seu manifesto foi montado. Havendo diferença, ele MUST
+    NOT assinar aquele resultado: o Interest é respondido com `NOT_CACHEABLE`, e uma chamada comum
+    recebe o resultado da origem sem assinatura. Toda ferramenta que mudou fica então não cacheável, sob
+    uma nova versão do manifesto, até o proxy reler a lista de ferramentas da origem (um refresh), o
+    que incrementa a versão de novo; o novo `schema-digest` dá nomes novos [P-2.2], e um Interest para
+    um nome antigo nunca é respondido. Um Data assinado antes da mudança continua podendo ser servido
+    até o fim do seu frescor, como acontece com qualquer produtor que muda uma ferramenta.
+  - Falhas da origem e resultados `isError` viram resultados de erro com `freshnessMs = 0`, nunca
+    guardados em cache ([P-5.3], [P-7.2]). Um resultado da origem com `resultType: "input_required"`
+    não é nomeado [P-5.4]; a v1 não repassa as rodadas de uma chamada de várias idas e voltas, então
+    uma chamada comum recebe um resultado de erro.
 
 ### 9.2 NDN nativo (NDNts)
 
@@ -331,6 +432,9 @@ NDN v0.3; nomear, assinar e verificar continuam sendo do `@idem/core`, sem mudan
     exatamente como em [P-5.5]. Um Data que falha em qualquer uma não é entregue (`BAD_SIGNATURE` /
     `UNTRUSTED_KEY`). A nova tentativa como chamada simples de [P-5.5] precisa do overlay; um
     consumidor só nativo falha fechado.
+  - A perda é recuperada pelo consumidor: um Interest que fica sem resposta durante o seu
+    InterestLifetime MAY ser emitido de novo para o mesmo nome com um Nonce novo (o NFD descarta um
+    par nome + Nonce que já viu). O `NdnConsumer` faz isso `retransmissions` vezes (padrão 0).
   - Um Data maior que 8800 bytes (o limite de pacote do NFD) não é segmentado na v1: o produtor
     responde `UPSTREAM_ERROR`.
 - **Erros.** Um Nack de aplicação: um Data com o nome do Interest, ContentType NACK,
@@ -353,6 +457,7 @@ NDN v0.3; nomear, assinar e verificar continuam sendo do `@idem/core`, sem mudan
 |---|---|
 | `DIGEST_MISMATCH` | o nome não bate com os argumentos |
 | `BAD_SIGNATURE` | assinatura ou contentDigest inválidos |
+| `EXPIRED` | Data fora do seu tempo de vida assinado em um forwarder (expirado, ou datado no futuro além da tolerância), ou velho pelo seu `ageMs`, para um Interest que pediu Data fresco; a mensagem diz qual [P-8.6]; o consumidor tenta de novo como em [P-8.7] |
 | `UNTRUSTED_KEY` | a chave não está em um manifesto confiável |
 | `NOT_CACHEABLE` | Interest para uma ferramenta que o manifesto não marca como cacheável, ou cujo `schema-digest` não é o do manifesto: devia ter sido uma chamada comum [P-4.2] (§7) |
 | `TIMEOUT` | a entrada do PIT expirou |
@@ -361,28 +466,41 @@ NDN v0.3; nomear, assinar e verificar continuam sendo do `@idem/core`, sem mudan
 
 Erros locais (levantados pelas implementações, nunca enviados pela rede): `BAD_NAME`, `BAD_JSON`,
 `BAD_ENCODING`, `INVALID_ARGS` (→ passthrough), `UNSUPPORTED_SCHEMA` (→ não cacheável), `BAD_POLICY`,
-`BAD_MANIFEST`, `CRYPTO_UNSUPPORTED`. Quando um erro local precisa atravessar um salto, ele é mapeado para
-`NOT_CACHEABLE` (problemas de argumento, schema ou nome) ou `UPSTREAM_ERROR` (qualquer outro).
+`BAD_MANIFEST`, `CRYPTO_UNSUPPORTED`, `CLOCK_SKEW` (a nova tentativa verificada de [P-8.7] continua fora
+do seu tempo de vida assinado, de qualquer um dos lados).
+Quando um erro local precisa atravessar um salto, ele é mapeado para `NOT_CACHEABLE` (problemas de
+argumento, schema ou nome) ou `UPSTREAM_ERROR` (qualquer outro).
 
 ## 11. Considerações de segurança e privacidade
 
 - **Envenenamento de cache:** mitigado pela verificação de assinatura no forwarder e no consumidor (P-5.5, P-7.1).
   A nova tentativa do consumidor também é verificada; por isso, tirar a assinatura de um resultado repetido
   não rebaixa a chamada a uma chamada sem verificação (P-5.5).
-- **Replay de dado vencido (limite da v1):** o frescor na v1 é relativo e contado por salto (P-8.1). O
-  `ageMs` não é assinado, e nenhuma regra compara o `producedAt` assinado com o relógio de quem recebe.
-  Quem está no caminho de um Interest (um forwarder, ou um atacante em um enlace sem TLS) pode, portanto,
-  respondê-lo com um **Data genuíno que já passou do seu frescor**: um que gravou antes, ou um cujo `ageMs`
-  ele declara menor do que é. A assinatura é válida; logo, quem recebe aceita, e um forwarder o guarda em
-  cache como novo e o serve por até mais um período de frescor. O que essa parte não consegue fazer: mudar
-  o conteúdo, responder sob outro nome ou assinar pelo produtor; e um Data só é aceito da face para a qual
-  o seu Interest foi enviado (§4.1), de modo que quem está fora do caminho não consegue injetar um. A v1
-  não impede o replay; ela limita quem pode fazê-lo (TLS por salto no overlay deixa só os próprios
-  forwarders) e o mantém visível (`producedAt` e `freshnessMs` são assinados e chegam ao consumidor). O E5
-  o mede (05-evaluation). Limitar a vida de um Data pelo `producedAt` exige relógios acertados entre o
-  produtor e quem verifica, e fica adiado (ADR-025, Q6).
+- **Replay de dado vencido:** o frescor relativo, contado por salto (P-8.1), apoia-se no `ageMs` não
+  assinado; sozinho, portanto, ele só obriga os nós honestos. Quem está no caminho de um Interest (um
+  forwarder, ou um atacante em um enlace sem TLS) pode respondê-lo com um **Data genuíno que já passou do
+  seu frescor**: um que gravou antes, ou um cujo `ageMs` ele declara menor do que é. O tempo de vida
+  assinado (P-8.6) limita o que isso rende: uma vez expirado o Data, um forwarder que o recebe não o
+  guarda em cache e não o entrega a um Interest que pediu Data fresco (`EXPIRED`), nenhum CS o serve como
+  fresco, e um consumidor o recusa e tenta de novo (P-8.7). O que sobra é uma **defasagem limitada**: um
+  replay mais novo que `min(freshnessMs, ttlMs) + clockToleranceMs` é aceito, e um forwarder pode
+  guardá-lo e servi-lo até esse limite, nunca depois. A tolerância é, portanto, o máximo que um caminho
+  consegue esticar a vida de um Data; perto de um TTL curto ela é grande, e quem implanta a escolhe
+  levando isso em conta. A regra precisa que o relógio do produtor e o de cada verificador concordem
+  dentro da tolerância. Um nó cujo relógio está adiantado em mais do que o frescor mais a tolerância
+  falha fechado: o seu forwarder responde `EXPIRED`, e o seu consumidor, depois da nova tentativa como
+  chamada comum, `CLOCK_SKEW`. Um nó cujo relógio está atrasado aceita um Data por mais tempo, em até a
+  tolerância; atrasado em mais do que isso, ele vê um Data fresco como datado no seu futuro e falha
+  fechado do mesmo jeito. Um Data que o produtor assinou com um `producedAt` muito no futuro (uma falha
+  de relógio) é recusado em toda parte até essa data entrar na tolerância, de modo que quem está no
+  caminho não consegue ficar repetindo-o. O que quem está no caminho não consegue fazer de jeito
+  nenhum: mudar o conteúdo, responder sob outro nome ou assinar pelo produtor; e um Data só é aceito da
+  face para a qual o seu Interest foi enviado (§4.1), de modo que quem está fora do caminho não consegue
+  injetar um. TLS por salto no overlay deixa só os próprios forwarders no caminho. O E5 mede tanto a
+  afirmação quanto o limite (05-evaluation, ADR-034).
 - **Vazamento entre usuários:** o `cacheScope` do MCP não é controle de acesso [MCP-CACHE]; aqui o escopo é
-  assinado pelo produtor e o CS `private` é particionado (P-8.3).
+  assinado pelo produtor, o CS `private` é particionado (P-8.3), e a chave da partição é derivada pela
+  borda, nunca tirada do Interest (P-8.4).
 - **Canal lateral de tempo:** um acerto rápido revela que alguém já pediu aquele nome. Registrado como
   risco (Q3); uma mitigação opcional (atraso aleatório para `private`) fica fora da v1.
 - **Argumentos em claro:** o Interest leva os argumentos até o produtor. No overlay, TLS por salto.

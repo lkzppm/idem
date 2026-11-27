@@ -622,7 +622,7 @@ function Packages({ t }: { t: FigureStrings["packages"] }) {
       {node(330, 24, 140, "apps/web")}
       {node(130, 112, 160, "@idem/gateway")}
       {node(430, 112, 140, "@idem/sim")}
-      {node(590, 112, 110, "@idem/ndn", { dashed: true })}
+      {node(590, 112, 110, "@idem/ndn")}
       {node(260, 200, 200, "@idem/core", { ink: true })}
       <T x={360} y={262} a="middle">
         {t.core}

@@ -1,0 +1,55 @@
+{
+  "experiment": "e2-code-burst",
+  "kind": "sweep",
+  "title": "E2 \u2014 calls issued by code in bursts: burst size (W-code, H6)",
+  "description": "W-code (ADR-037): each agent runs code that issues its calls in steps of burstSize calls sent at once (as asyncio.gather or Promise.all over tool functions), waits for all of them, then thinks for one model turn before the next step. The calls per agent are held at 16, so only the shape changes: from 16 steps of one call (the model-turn workload) to one step of 16. Agents start uniformly within 1 s (startSpreadMs), an orchestrator spawning its sub-agents. Assumptions, none measured and none tuned on results: 8 agents; 16 calls per agent; the shared catalog, Zipf exponent and overlap of the W-syn base (50 documents, 0.8, 0.5); a model turn between steps with an exponential think time of mean 2 s; surface variation 0, because arguments written by code are built mechanically (loop variables, ids copied from an earlier result) and vary less in spelling than model-written ones; links, service time, result sizes, TTL and Content Store as the W-syn base. The shape (calls issued from code, several per model turn, in parallel) is documented for programmatic tool calling and Code Mode; how often such calls repeat across agents has not been measured by anyone, so this sweep shows the mechanism, not a measured workload. Same seeds at every point; reductions are paired by seed against B0, B1 and B5 (ADR-036).",
+  "seeds": {
+    "first": 1,
+    "count": 30
+  },
+  "modes": ["B0", "B1", "B5", "B2"],
+  "sweep": {
+    "param": "burstSize",
+    "values": [1, 2, 4, 8, 16]
+  },
+  "base": {
+    "workload": {
+      "agents": 8,
+      "callsPerAgent": 16,
+      "catalogSize": 50,
+      "zipfAlpha": 0.8,
+      "overlap": 0.5,
+      "thinkTimeMs": 2000,
+      "surfaceVariation": 0,
+      "privateFraction": 0,
+      "sideEffectFraction": 0,
+      "burst": {
+        "size": 4,
+        "parallel": true
+      },
+      "startSpreadMs": 1000
+    },
+    "topology": {
+      "agentLinkMs": 5,
+      "producerLinkMs": 40,
+      "lossPct": 0,
+      "tree": {
+        "edges": 2,
+        "coreLinkMs": 10,
+        "producerLinkMs": 30
+      }
+    },
+    "producer": {
+      "serviceMedianMs": 150,
+      "serviceSigma": 0.5,
+      "ttlMs": 60000,
+      "pageBytesMedian": 6144
+    },
+    "cs": {
+      "maxBytes": 8388608,
+      "policy": "lru"
+    },
+    "interestLifetimeMs": 10000
+  },
+  "processing": "processing.json"
+}

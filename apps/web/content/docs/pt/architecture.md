@@ -11,6 +11,8 @@ A menor implantação útil é uma estrela: agentes, um forwarder de borda, o pr
 - Um forwarder **regional** agrega e guarda em cache entre bordas. Ele só armazena Data `public`.
 - O **produtor** executa as ferramentas, nomeia ele mesmo os resultados e os assina.
 
+Um servidor não precisa ser reescrito para ser um produtor. Um operador pode colocar um **proxy-producer** na frente de um servidor MCP que não fala IDEM. O proxy ocupa o lugar do produtor nesta figura, com o seu próprio nome e a sua própria chave, e chama aquele servidor por MCP comum. A [referência da API](/docs/api#mcp-proxy) mostra como, e a página de [Segurança](/docs/security#limits) diz o que isso muda na confiança.
+
 Uma chamada a uma ferramenta não cacheável não pega outra estrada. Ela percorre os mesmos enlaces como uma chamada comum, sem entrada no PIT e sem entrada no cache, e cada forwarder que ela atravessa emite `bypass`.
 
 ## Pacotes {#packages}
@@ -21,8 +23,8 @@ Uma chamada a uma ferramenta não cacheável não pega outra estrada. Ela percor
 |---|---|---|
 | `@idem/core` | nomes, canonicalização, JCS, digests, Data e manifestos assinados, o armazenamento de confiança, o **motor do forwarder** (PIT, CS, FIB) e seus eventos, os relógios, um `Producer` independente de transporte e os auxiliares do consumidor | navegador, Node, Vercel, simulador |
 | `@idem/gateway` | IDEM sobre HTTP: um handler de produtor, um forwarder HTTP (borda ou regional) e um cliente que verifica. Tudo é um `(Request) => Promise<Response>` no padrão Web | navegador (cliente), Node, Vercel |
-| `@idem/mcp` | o binding MCP: um produtor e uma borda como endpoints MCP, e a verificação de resultados recebidos por MCP | Node, Vercel |
-| `@idem/sim` | um simulador determinístico de eventos discretos: topologias, enlaces com atraso, perda e banda, cargas de trabalho com semente, métricas | Node (experimentos), navegador (sandbox) |
+| `@idem/mcp` | o binding MCP: um produtor e uma borda como endpoints MCP, a verificação de resultados recebidos por MCP, e um proxy-producer para servidores MCP que não falam IDEM | Node, Vercel |
+| `@idem/sim` | um simulador determinístico de eventos discretos: topologias, enlaces com atraso, perda e banda, cargas de trabalho com semente, métricas, e o cache de gateway sem assinatura que a avaliação usa como baseline | Node (experimentos), navegador (sandbox) |
 | `@idem/ndn` | o binding nativo sobre NDN (NDNts): mapeamento de nomes, o codec de Interest/Data, assinaturas Ed25519 do NDN, um produtor que embrulha o `Producer` e um consumidor que verifica. PIT e CS são os do forwarder NDN | Node, navegador |
 | `apps/web` | este site: página inicial, sandbox, documentação, resultados, e o produtor e a borda de demonstração como rotas | Vercel |
 
@@ -39,6 +41,8 @@ As regras da [seção 7 do protocolo](/docs/protocol#s7) vivem em uma classe, `F
 | **cs** (`ContentStore`) | `MemoryContentStore`, um LRU com orçamento em bytes; a interface admite outro armazenamento | a mesma classe |
 | **trust** (`TrustStore`) | manifestos buscados no produtor | um manifesto construído na própria execução |
 | **onEvent** | traces devolvidos a quem chamou, no cabeçalho `idem-trace` | o canvas e o log do sandbox; as métricas dos experimentos |
+
+Cada forwarder também recebe uma tolerância de relógio, `clockToleranceMs`, para o tempo de vida assinado de [P-8.6]; ela é de 60 segundos, a menos que seja configurada.
 
 Como o relógio é injetado, uma simulação não dorme: ela salta de evento em evento. Como o WebCrypto é assíncrono, o `VirtualClock` espera o callback de cada timer terminar antes de executar o próximo; assim, assinar e verificar nunca reordenam eventos, e uma execução com uma dada semente é reproduzível.
 
@@ -57,7 +61,7 @@ Toda ação observável de um forwarder é um evento tipado. Nada mais é medido
 | `cs_insert`, `cs_evict` | um Data entra no Content Store, ou sai dele para abrir espaço |
 | `pit_satisfy` | o Data é entregue a todas as faces em espera (leva quantas) |
 | `pit_expire` | o tempo de vida de uma entrada do PIT acabou; quem esperava recebe `TIMEOUT` |
-| `drop` | um Interest ou Data é descartado, com um motivo (`digest_mismatch`, `hop_limit`, `loop`, `unsolicited`, ...) |
+| `drop` | um Interest ou Data é descartado, com um motivo (`digest_mismatch`, `hop_limit`, `loop`, `unsolicited`, `expired`, ...) |
 | `bypass` | uma chamada ou um Interest passa sem estado de PIT ou CS, com um motivo |
 
 ## Fluxos {#flows}
@@ -103,7 +107,7 @@ Sobre o próprio MCP, os mesmos objetos viajam em `_meta`. Um produtor servido p
 
 ### NDN nativo {#ndn}
 
-Implementado em `@idem/ndn` (ADR-026); ainda não rodado no NFD, que é o próximo passo (Mini-NDN, E4). Um nome IDEM vira um nome NDN, um GenericNameComponent por parte, e o ApplicationParameters do Interest leva os argumentos canônicos como bytes JCS. O NDN acrescenta o seu próprio ParametersSha256DigestComponent depois do `args-digest`, então duas chamadas equivalentes recebem o mesmo nome nativo exatamente quando recebem o mesmo nome IDEM. O Content do Data é o envelope JCS `{ content, meta, signature }`, e o pacote também é assinado com o Ed25519 do NDN pela chave do produtor, então o consumidor confere as duas assinaturas. O PIT e o Content Store do próprio NFD fazem a agregação e o cache; como eles indexam só pelo nome, sem contexto de autorização, ferramentas `private` nunca usam este binding e ficam no overlay.
+Implementado em `@idem/ndn` (ADR-026). Ele já foi executado contra forwarders NFD reais, em Docker: uma verificação funcional sobre faces TCP, UDP e WebSocket, e o experimento de emulação E4 ([Avaliação](/docs/evaluation#e4)). Um nome IDEM vira um nome NDN, um GenericNameComponent por parte, e o ApplicationParameters do Interest leva os argumentos canônicos como bytes JCS. O NDN acrescenta o seu próprio ParametersSha256DigestComponent depois do `args-digest`, então duas chamadas equivalentes recebem o mesmo nome nativo exatamente quando recebem o mesmo nome IDEM. O Content do Data é o envelope JCS `{ content, meta, signature }`, e o pacote também é assinado com o Ed25519 do NDN pela chave do produtor, então o consumidor confere as duas assinaturas. O PIT e o Content Store do próprio NFD fazem a agregação e o cache; como eles indexam só pelo nome, sem contexto de autorização, ferramentas `private` nunca usam este binding e ficam no overlay.
 
 ## Onde cada peça roda {#deploy}
 

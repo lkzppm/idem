@@ -1,10 +1,18 @@
 // The MCP edge is the consumer on behalf of an unmodified MCP client, so [P-5.5] is its duty.
 // In process: MCP client → createMcpEdge → gateway (with an attacker on its consumer side) → producer.
-import { type CallToolResult, type Data, keyPairFromSeed, Producer, type ProducerTool } from "@idem/core";
+import {
+  type CallToolResult,
+  type Clock,
+  type Data,
+  keyPairFromSeed,
+  Producer,
+  type ProducerTool,
+  RealClock,
+} from "@idem/core";
 import { createGateway, createProducerHandler, type Gateway, PATHS } from "@idem/gateway";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
-import { createMcpEdge } from "./index";
+import { createMcpEdge, IdemConsumer } from "./index";
 
 const PRODUCER = "demo.idem.dev";
 
@@ -31,9 +39,11 @@ type Result = {
 };
 
 /** An MCP client connected to an edge whose answers to its own consumer side pass through `attacker`. */
-async function connect(attacker: Rewrite): Promise<Client> {
+async function connect(attacker: Rewrite, clock?: Clock): Promise<Client> {
   const key = await keyPairFromSeed(new Uint8Array(32).fill(5));
-  const producer = createProducerHandler(new Producer({ producer: PRODUCER, key, tools }));
+  const producer = createProducerHandler(
+    new Producer({ producer: PRODUCER, key, tools, ...(clock && { clock }) }),
+  );
   const honest = createGateway({
     id: "edge",
     upstreams: [{ producer: PRODUCER, url: "http://producer.internal", kind: "producer" }],
@@ -85,5 +95,40 @@ describe("MCP edge as the consumer (protocol §9.1)", () => {
       expect(JSON.stringify(r)).not.toContain("evil");
       await client.close();
     }
+  });
+
+  it("MUST fail closed with CLOCK_SKEW when even the retry is outside its signed lifetime [P-8.7]", async () => {
+    // The producer's clock runs ten minutes behind: the edge answers EXPIRED, the retry is old too.
+    const real = new RealClock();
+    const behind: Clock = {
+      now: () => Date.now() - 10 * 60_000,
+      setTimeout: (f, ms) => real.setTimeout(f, ms),
+      clearTimeout: (h) => real.clearTimeout(h),
+    };
+    const client = await connect((_p, b) => b, behind);
+    const r = (await client.callTool(call)) as Result;
+    expect(r.isError).toBe(true);
+    expect(r.content[0]?.text).toMatch(/^CLOCK_SKEW: .*producedAt \d+, local time \d+/);
+    expect(JSON.stringify(r)).not.toContain("page https://ex.com/a");
+    await client.close();
+  });
+
+  it("IdemConsumer reports a verified but expired result as EXPIRED, apart from BAD_SIGNATURE [P-8.7]", async () => {
+    const key = await keyPairFromSeed(new Uint8Array(32).fill(5));
+    const p = new Producer({ producer: PRODUCER, key, tools });
+    const result = await p.handleCall("fetch_page", call.arguments);
+    const consumer = new IdemConsumer();
+    await consumer.pin(PRODUCER, [key.publicKeyJwk]);
+    expect(await consumer.verifyToolResult(result)).toMatchObject({ ok: true });
+    const real = new RealClock();
+    const later = new IdemConsumer({
+      trust: consumer.trust,
+      clock: {
+        now: () => Date.now() + 365 * 86_400_000,
+        setTimeout: real.setTimeout,
+        clearTimeout: real.clearTimeout,
+      },
+    });
+    expect(await later.verifyToolResult(result)).toMatchObject({ ok: false, code: "EXPIRED" });
   });
 });

@@ -6,6 +6,7 @@
  * @packageDocumentation
  */
 
+export { type AcceptOptions, type AcceptVerdict, acceptData, type VerifiedData } from "./accept";
 export { type CanonicalArgs, canonicalizeArgs } from "./canonical";
 export { type Clock, RealClock, VirtualClock } from "./clock";
 export { type BuildInterestInput, buildInterest, cacheablePolicy, INTEREST_DEFAULTS } from "./consumer";
@@ -68,6 +69,16 @@ export {
   type PitLimits,
 } from "./forwarder";
 export { type JsonObject, type JsonValue, jcs, toJson } from "./jcs";
+export {
+  apparentAge,
+  clockTolerance,
+  DEFAULT_CLOCK_TOLERANCE_MS,
+  isOutsideLifetime,
+  lifetimeOf,
+  lifetimeReason,
+  lifetimeState,
+  staleByAge,
+} from "./lifetime";
 export {
   ARGS_DIGEST_LENGTH,
   argsDigestOf,

@@ -11,6 +11,8 @@ The smallest useful deployment is a star: agents, one edge forwarder, the produc
 - A **regional** forwarder aggregates and caches across edges. It stores `public` Data only.
 - The **producer** runs the tools, names the results itself and signs them.
 
+A server does not have to be rewritten to be a producer. An operator can put a **proxy-producer** in front of an MCP server that does not speak IDEM. The proxy takes the producer's place in this picture, with its own name and its own key, and calls that server over plain MCP. The [API reference](/docs/api#mcp-proxy) shows how, and [Security](/docs/security#limits) says what this changes about trust.
+
 A call to a tool that is not cacheable does not take a different road. It travels the same links as a plain call, with no PIT entry and no cache entry, and each forwarder it crosses emits `bypass`.
 
 ## Packages {#packages}
@@ -21,8 +23,8 @@ A call to a tool that is not cacheable does not take a different road. It travel
 |---|---|---|
 | `@idem/core` | names, canonicalization, JCS, digests, signed Data and manifests, the trust store, the **forwarder engine** (PIT, CS, FIB) and its events, the clocks, a transport-agnostic `Producer` and the consumer helpers | browser, Node, Vercel, simulator |
 | `@idem/gateway` | IDEM over HTTP: a producer handler, an HTTP forwarder (edge or regional) and a verifying client. Everything is a Web-standard `(Request) => Promise<Response>` | browser (client), Node, Vercel |
-| `@idem/mcp` | the MCP binding: a producer and an edge as MCP endpoints, and verification of results received over MCP | Node, Vercel |
-| `@idem/sim` | a deterministic discrete-event simulator: topologies, links with delay, loss and bandwidth, seeded workloads, metrics | Node (experiments), browser (sandbox) |
+| `@idem/mcp` | the MCP binding: a producer and an edge as MCP endpoints, verification of results received over MCP, and a proxy-producer for MCP servers that do not speak IDEM | Node, Vercel |
+| `@idem/sim` | a deterministic discrete-event simulator: topologies, links with delay, loss and bandwidth, seeded workloads, metrics, and the unsigned gateway cache that the evaluation uses as a baseline | Node (experiments), browser (sandbox) |
 | `@idem/ndn` | the native binding over NDN (NDNts): name mapping, the Interest/Data codec, NDN Ed25519 signatures, a producer that wraps `Producer` and a verifying consumer. PIT and CS are the NDN forwarder's | Node, browser |
 | `apps/web` | this site: landing page, sandbox, docs, results, and the demo producer and edge as routes | Vercel |
 
@@ -39,6 +41,8 @@ The rules of [protocol §7](/docs/protocol#s7) live in one class, `Forwarder`. I
 | **cs** (`ContentStore`) | `MemoryContentStore`, a byte-budgeted LRU; the interface allows another store | the same class |
 | **trust** (`TrustStore`) | manifests fetched from the producer | a manifest built in the run |
 | **onEvent** | traces returned to the caller in the `idem-trace` header | the sandbox's canvas and log; the experiments' metrics |
+
+Each forwarder also takes a clock tolerance, `clockToleranceMs`, for the signed lifetime of [P-8.6]; it is 60 seconds unless configured.
 
 Because the clock is injected, a simulation does not sleep: it jumps from event to event. Because WebCrypto is asynchronous, `VirtualClock` awaits each timer's callback before running the next one, so signing and verifying never reorder events and a run with a given seed is reproducible.
 
@@ -57,7 +61,7 @@ Every observable action of a forwarder is a typed event. Nothing else is measure
 | `cs_insert`, `cs_evict` | a Data enters the Content Store, or leaves it to make room |
 | `pit_satisfy` | the Data is delivered to every waiting face (carries how many) |
 | `pit_expire` | a PIT entry's lifetime ran out; the waiters get `TIMEOUT` |
-| `drop` | an Interest or Data is discarded, with a reason (`digest_mismatch`, `hop_limit`, `loop`, `unsolicited`, ...) |
+| `drop` | an Interest or Data is discarded, with a reason (`digest_mismatch`, `hop_limit`, `loop`, `unsolicited`, `expired`, ...) |
 | `bypass` | a call or Interest goes through without PIT or CS state, with a reason |
 
 ## Flows {#flows}
@@ -103,7 +107,7 @@ Over MCP itself the same objects ride in `_meta`. A producer served by `createMc
 
 ### Native NDN {#ndn}
 
-Implemented in `@idem/ndn` (ADR-026); not yet run on NFD, which is the next step (Mini-NDN, E4). An IDEM name becomes an NDN name, one GenericNameComponent per part, and the Interest's ApplicationParameters carry the canonical arguments as JCS bytes. NDN appends its own ParametersSha256DigestComponent after the `args-digest`, so two equivalent calls get the same native name exactly when they get the same IDEM name. The Data's Content is the JCS envelope `{ content, meta, signature }`, and the packet is also signed with NDN's Ed25519 by the producer's key, so a consumer checks both signatures. NFD's own PIT and Content Store do the aggregation and caching; because they key by name alone, with no authorization context, `private` tools never use this binding and stay on the overlay.
+Implemented in `@idem/ndn` (ADR-026). It has been run against real NFD forwarders in Docker: a functional check over TCP, UDP and WebSocket faces, and the emulation experiment E4 ([Evaluation](/docs/evaluation#e4)). An IDEM name becomes an NDN name, one GenericNameComponent per part, and the Interest's ApplicationParameters carry the canonical arguments as JCS bytes. NDN appends its own ParametersSha256DigestComponent after the `args-digest`, so two equivalent calls get the same native name exactly when they get the same IDEM name. The Data's Content is the JCS envelope `{ content, meta, signature }`, and the packet is also signed with NDN's Ed25519 by the producer's key, so a consumer checks both signatures. NFD's own PIT and Content Store do the aggregation and caching; because they key by name alone, with no authorization context, `private` tools never use this binding and stay on the overlay.
 
 ## Where each piece runs {#deploy}
 

@@ -3,7 +3,7 @@ import { buildTopology, type SimConfig, type SimMode } from "../config";
 import { assertProcessingCosts, type ProcessingCosts } from "../processing";
 
 /** Modes compared in the evaluation (05-evaluation §1). */
-export type EvalModeId = "B0" | "B1" | "B2" | "B3" | "B4";
+export type EvalModeId = "B0" | "B1" | "B2" | "B3" | "B4" | "B5";
 
 /** How each evaluation mode maps onto the simulator: its engine mode and its topology. */
 export const EVAL_MODES: Readonly<
@@ -14,6 +14,7 @@ export const EVAL_MODES: Readonly<
   B2: { id: "B2", name: "idem", simMode: "idem", topology: "star" },
   B3: { id: "B3", name: "idem-tree", simMode: "idem", topology: "tree" },
   B4: { id: "B4", name: "idem-noverify", simMode: "idem-noverify", topology: "star" },
+  B5: { id: "B5", name: "mcp-gateway-cache", simMode: "mcp-gateway-cache", topology: "star" },
 };
 
 /** Every mode id, in order. */
@@ -36,6 +37,10 @@ export interface SweepBase {
     privateFraction: number;
     /** Fraction of calls to the non-cacheable tool (W-mixed). */
     sideEffectFraction: number;
+    /** W-code (ADR-037): calls issued in steps of `size` (see `SyntheticWorkload.burst`). Absent: one per step. */
+    burst?: { size: number; parallel: boolean };
+    /** Agents start uniformly within this window, ms. Absent: `thinkTimeMs`. */
+    startSpreadMs?: number;
   };
   topology: {
     /** One-way agent ↔ edge latency, ms. */
@@ -74,6 +79,8 @@ export const SWEEP_PARAMS = [
   "ttlMs",
   "csMaxBytes",
   "lossPct",
+  "burstSize",
+  "startSpreadMs",
 ] as const;
 export type SweepParam = (typeof SWEEP_PARAMS)[number];
 
@@ -171,6 +178,17 @@ function parseBase(v: unknown): SweepBase {
   if (policy !== "lru" && policy !== "lfu" && policy !== "fifo") {
     throw new ConfigError("base.cs.policy", "must be lru, lfu or fifo");
   }
+  let burst: { size: number; parallel: boolean } | undefined;
+  if (w.burst !== undefined) {
+    const bw = obj(w.burst, "base.workload.burst");
+    if (typeof bw.parallel !== "boolean")
+      throw new ConfigError("base.workload.burst.parallel", "must be a boolean");
+    burst = { size: num(bw.size, "base.workload.burst.size", { min: 1, int: true }), parallel: bw.parallel };
+  }
+  const startSpreadMs =
+    w.startSpreadMs === undefined
+      ? undefined
+      : num(w.startSpreadMs, "base.workload.startSpreadMs", { min: 0 });
   return {
     workload: {
       agents: num(w.agents, "base.workload.agents", { min: 1, int: true }),
@@ -182,6 +200,8 @@ function parseBase(v: unknown): SweepBase {
       surfaceVariation: num(w.surfaceVariation, "base.workload.surfaceVariation", FRACTION),
       privateFraction: num(w.privateFraction, "base.workload.privateFraction", FRACTION),
       sideEffectFraction: num(w.sideEffectFraction, "base.workload.sideEffectFraction", FRACTION),
+      ...(burst && { burst }),
+      ...(startSpreadMs !== undefined && { startSpreadMs }),
     },
     topology: {
       agentLinkMs: num(t.agentLinkMs, "base.topology.agentLinkMs", { min: 0 }),
@@ -247,7 +267,7 @@ export function parseExperimentConfig(json: unknown): ExperimentConfig {
     const seeds = obj(c.seeds, "seeds");
     if (!Array.isArray(c.modes) || c.modes.length === 0) throw new ConfigError("modes", "must list modes");
     const modes = c.modes.map((m, i) => {
-      if (typeof m !== "string" || !(m in EVAL_MODES)) throw new ConfigError(`modes[${i}]`, "must be B0..B4");
+      if (typeof m !== "string" || !(m in EVAL_MODES)) throw new ConfigError(`modes[${i}]`, "must be B0..B5");
       return m as EvalModeId;
     });
     if (new Set(modes).size !== modes.length) throw new ConfigError("modes", "must not repeat a mode");
@@ -317,7 +337,7 @@ export function parseExperimentConfig(json: unknown): ExperimentConfig {
 export function applyParam(base: SweepBase, param: SweepParam, value: number): SweepBase {
   const b: SweepBase = {
     ...base,
-    workload: { ...base.workload },
+    workload: { ...base.workload, ...(base.workload.burst && { burst: { ...base.workload.burst } }) },
     topology: { ...base.topology, tree: { ...base.topology.tree } },
     producer: { ...base.producer },
     cs: { ...base.cs },
@@ -364,6 +384,12 @@ export function applyParam(base: SweepBase, param: SweepParam, value: number): S
     case "lossPct":
       b.topology.lossPct = value >= 0 && value <= 100 ? value : bad("must be in [0, 100]");
       break;
+    case "burstSize":
+      b.workload.burst = { size: positiveInt(), parallel: b.workload.burst?.parallel ?? true };
+      break;
+    case "startSpreadMs":
+      b.workload.startSpreadMs = value >= 0 ? value : bad("must be ≥ 0");
+      break;
   }
   if (b.workload.privateFraction + b.workload.sideEffectFraction > 1) {
     bad("privateFraction + sideEffectFraction must be ≤ 1");
@@ -372,10 +398,11 @@ export function applyParam(base: SweepBase, param: SweepParam, value: number): S
 }
 
 /**
- * The simulator configuration of one evaluation mode at one point. B0, B1, B2 and B4 run on the
- * star (agents → edge → producer); B3 runs on the tree. In B0 and B1 the edge only relays plain
- * calls, so every mode crosses the same links, and the producer answers them as a plain MCP
- * server (no IDEM metadata on the wire).
+ * The simulator configuration of one evaluation mode at one point. B0, B1, B2, B4 and B5 run on
+ * the star (agents → edge → producer); B3 runs on the tree. In B0, B1 and B5 the edge relays plain
+ * calls (B5 answering the cacheable public ones from its gateway cache when it can), so every mode
+ * crosses the same links, and the producer answers them as a plain MCP server (no IDEM metadata on
+ * the wire).
  */
 export function simConfigFor(base: SweepBase, mode: EvalModeId, processing?: ProcessingCosts): SimConfig {
   const m = EVAL_MODES[mode];

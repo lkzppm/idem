@@ -2,12 +2,12 @@
   "experiment": "e2-mixed",
   "kind": "sweep",
   "title": "E2 \u2014 non-cacheable and private calls under load (W-mixed)",
-  "description": "W-mixed at the base workload: 10% of the calls go to the private tool my_notes, and the swept fraction goes to the side-effecting tool send_email (never cacheable, passthrough). Checks bypass and scope behavior under load. Same seeds at every point; reductions are paired by seed against B0 (and B1).",
+  "description": "W-mixed at the base workload: 10% of the calls go to the private tool my_notes, and the swept fraction goes to the side-effecting tool send_email (never cacheable, passthrough). Checks bypass and scope behavior under load. Same seeds at every point; reductions are paired by seed against B0 (and B1). B5 is plain MCP with one shared exact-match cache at the edge keyed by the arguments as sent, as MCP gateways ship it (ADR-036); it is run on the same seeds.",
   "seeds": {
     "first": 1,
     "count": 30
   },
-  "modes": ["B0", "B1", "B2", "B3"],
+  "modes": ["B0", "B1", "B2", "B3", "B5"],
   "sweep": {
     "param": "sideEffectFraction",
     "values": [0, 0.1, 0.2, 0.4]

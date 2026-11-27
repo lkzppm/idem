@@ -96,7 +96,7 @@ one they are keyed by nonce (never aggregated, never cached) [P-8.3]. (3) Data w
 manifest) and consumer helpers (`cacheablePolicy`, `buildInterest`). `@idem/gateway` serves it over
 the IDEM HTTP endpoints (§9.1 table); `@idem/mcp` serves the same producer over MCP.
 **Consequences.** One producer implementation for simulation, HTTP and MCP. Edges prefer the IDEM
-endpoint and fall back to MCP for legacy producers (proxy-producer mode still pending).
+endpoint and fall back to MCP for legacy producers (proxy-producer mode: ADR-038).
 
 ## ADR-015 — WebGPU rendering for the sandbox and landing (replaces `@xyflow/react`)
 **Context.** The showcase spec named `@xyflow/react` for the topology view; the owner asked for
@@ -677,19 +677,375 @@ charts hydrate, so the readout works, and the marks' entrance animation is uncha
 ran) and is shown as it is, beside the run before it that passed 9 of 9. When E4 is committed,
 nothing in the page changes; only its verdict wording may need a second look.
 
+## ADR-033 — `authContext` is never taken from an Interest (resolves Q7)
+**Context.** E5 variant `private/authcontext-known` was the one claim the engine did not keep
+(ADR-023): `Forwarder` used an `authContext` already present in an Interest that arrived on a
+consumer face as the partition key of `private` PIT and CS entries, so a consumer that knew another
+user's value read that user's cached `private` result. [P-8.4] already said the edge derives the
+value; the HTTP gateway happened to rebuild incoming Interests without the field, so the deployed
+overlay was not exposed, but the engine, the simulator's links and any binding that passes Interests
+through were.
+**Decision.** A forwarder never honours an `authContext` carried by a received Interest, on any face.
+On a consumer face it derives its own, `HMAC(authSecret, credential)`, or has none (no credential, no
+secret); on other faces there is none. [P-8.4] now states both MUSTs ("derive", "ignore any present
+in a received Interest") and a test cites it (`forwarder.test.ts`: a consumer carrying the victim's
+value, with and without its own credential, gets its own or the anonymous result; a garbage value
+does not move a user out of their own partition). The field stays in the `Interest` of §4, documented
+as never set by a sender and ignored on receipt: removing it would change §4, the wire format.
+Alternatives: rejecting an Interest that carries the field (rejected: it would turn an ignored,
+harmless value into an error path and gains nothing, since the value is never used); removing the
+field (rejected: a §4 change needs `/idem/v2`, §12).
+**Consequences.** `private/authcontext-known` is a claim like the other `private` variants and the
+E5 test asserts every `expected: "rejected"` variant holds, with no exception list. No change to §2,
+§4, §5 or §6: no `/idem/v2`. The gateway, the NDN codec and the sandbox's NDN view already dropped
+the field; nothing else in the repository set it. E5 must be rerun for the results to show the fix.
+
+## ADR-034 — Signed lifetime: Data is bounded by `producedAt`, two-sided, with a 60 s tolerance (resolves Q6)
+**Context.** Freshness in v1 was hop-relative only ([P-8.1], the unsigned `ageMs`). A party on the path
+could replay a genuine Data of any age: the signature verified, a forwarder cached it as new and the
+consumer accepted it (ADR-025; E5 `replay/expired@upstream` and `@last-hop`, both `limit`). ADR-025
+recorded the candidate rule and left open the tolerance, the error code, `mustBeFresh: false` across
+hops, and how a consumer with a wrong clock is told apart from an attack.
+**Decision.** (1) *Rule [P-8.6].* At node N, `apparentAge = now_N − producedAt`. A Data is outside its
+signed lifetime when it is expired, `apparentAge ≥ min(freshnessMs, ttlMs) + clockToleranceMs`, or
+dated in the future, `producedAt − now_N > clockToleranceMs`. IDEM takes `apparent_age` from RFC 9111
+§4.2.3 with the signed `producedAt` in place of `Date`, and does not clamp it at 0: RFC 9111 can clamp
+because its caches are trusted, while with a signed timestamp a clamp would let a future-dated Data
+live for its freshness plus the offset. One predicate, `lifetimeState` in `@idem/core`, is used by the
+forwarder, every consumer and the E5 judge; it fails closed on values that are not numbers.
+(2) *Tolerance.* A node-local option, default `DEFAULT_CLOCK_TOLERANCE_MS` = 60 000 ms. Precedents: 60 s
+is the grace period the NDN packet specification recommends for signed-Interest timestamps, and the
+default clock skew of MCPS, applied additively to its window with one error for "outside the window";
+Signed HTTP Exchanges use no tolerance but a window of days (signers backdate instead). Tool results
+live for seconds to minutes, so a minute is large next to short TTLs; the spec says so (§11), and E4
+saw honest deliveries delayed by seconds under loss, which a smaller value would reject.
+(3) *Forwarder.* Data from upstream outside its lifetime is never stored; every downstream whose
+Interest had `mustBeFresh: true` gets the new wire error `EXPIRED` (HTTP 502), the others get the
+Data. A CS entry is served to a fresh Interest only if fresh by [P-8.1]/[P-8.2] AND within its signed
+lifetime, whatever its `ageMs` says. Hop-relative freshness stays: it needs no clock agreement and is
+what honest caches use; the signed bound is added, not substituted. (4) *`mustBeFresh: false`* keeps
+its meaning (any CS entry may answer) and extends to the lifetime: such a waiter may receive Data
+outside it and its consumer skips the check; nothing outside it is ever stored. The smallest engine
+change that keeps "a fresh waiter never receives Data outside its lifetime" is one boolean per PIT
+in-record, so Interests with different flags still aggregate. (5) *Consumer [P-8.7].* After
+verification, a consumer that asked for fresh Data refuses Data outside its lifetime on its own clock
+and retries once as a plain call (the [P-5.5] retry, also on an `EXPIRED` Nack). The retry must carry
+Data for the same name, verify, and be within its lifetime; if it verifies but is not, the call fails
+with the new local code `CLOCK_SKEW`, whose message carries `producedAt`, the local time and the side
+missed. A Data the producer has just made that looks expired or future-dated means the two clocks
+disagree beyond the window, or the retry's path replays too: they cannot be told apart, so the call
+fails closed and reports the offset, as the Signed Exchanges notes recommend (a clock-suspect
+diagnostic, not an integrity alarm). A native-only consumer has no plain call and fails closed with
+`EXPIRED`. Signature and lifetime stay distinct verdicts: `verifyData` is unchanged, `IdemClient`
+returns `verify.ok` with `error.code` `EXPIRED`.
+Alternatives: one wire code per side (expired, from the future), as both the Signed Exchanges and the
+NDN notes recommend because the remedies differ (rejected by decision: one code `EXPIRED` for
+"outside its signed lifetime", the message says which side, and the remedy at the consumer is the same
+plain-call retry either way); clamping future-dated Data at age 0 (rejected: a producer clock glitch
+signing a far-future `producedAt` could be replayed by an on-path party until that date; Signed
+Exchanges and JWT `nbf` refuse future-dated signatures the same way); a manifest cap on
+`expires − date` as Signed Exchanges have (already [P-8.2]: freshness is capped by the manifest
+`ttlMs`); partitioning the PIT by `mustBeFresh`, as NFD matches PIT entries on it (rejected: the PIT key
+and the CS key would diverge, a larger change for the same invariant); reusing `BAD_SIGNATURE`
+(rejected: the signature is valid, and the verdicts must stay distinguishable).
+**Consequences.** No change to §2, §4, §5 or §6 (only §7, §8, §9.1 status codes, §10, §11): no
+`/idem/v2`. The residual limit is bounded staleness: a replay younger than `min(freshnessMs, ttlMs) +
+60 s` is accepted and may be served by a cache until that bound, never later; E5 measures it as
+`replay/in-tolerance@upstream` and `@last-hop` (`limit`), while `replay/expired@*`,
+`replay/understated-age@core` (a malicious regional sets `ageMs: 0`; stopped at the edge) and
+`replay/future-dated@upstream` (assumes a producer clock glitch) are claims. Clocks must now agree
+within the tolerance: a node ahead by more than freshness + tolerance, or behind by more than the
+tolerance, fails closed (`EXPIRED`, then `CLOCK_SKEW`); this includes browsers in the sandbox's Live
+mode. Honest simulator runs are unchanged (the pinned E2 fingerprints pass as they were; the largest
+honest late serve in the committed E2 runs is under 50 ms). E5 must be rerun. H3 can now cover
+staleness, up to the stated bound. Supersedes the deferral of ADR-025.
+**Amended 2026-11-27 (review).** Three defects. (1) A fresh Interest aggregated onto a PIT entry
+opened by a `mustBeFresh: false` Interest was handed whatever the next hop answered: in a tree, a
+copy past its freshness by `ageMs` but inside its signed lifetime reached the fresh waiter, which
+gave an ordinary off-path consumer the stale-replay ability §11 gives only to on-path parties. The
+forwarder now answers every fresh in-record `EXPIRED` when the Data is stale by its `ageMs`
+(`staleByAge`: `ageMs` present and at least `min(freshnessMs, ttlMs)`; a Data without `ageMs` comes
+from its producer and is not stale on arrival, so error results with freshness 0 still reach fresh
+waiters) and delivers it to the others; [P-8.6] states the invariant ("a downstream that asked for
+fresh Data receives only Data fresh by [P-8.1]/[P-8.2] and within its signed lifetime, whatever the
+flags of the other Interests") and [P-8.7] adds the same age rule at the consumer. (2) The `pit_full`
+passthrough relayed Data with no check; its entry now keeps `mustBeFresh` and the TTL and applies
+both checks ([P-7.3]). (3) The E5 claim `replay/expired@last-hop` was decided by the harness: its
+consumer refused with `lifetimeState` and its judge tested the same predicate, so the row read 250 of
+250 even with no shipped consumer check. The consumer decision is now one exported function,
+`acceptData` (name, `verifyData`, signed lifetime, age), used by `IdemClient`, `IdemConsumer`,
+`NdnConsumer`, the simulator's agents and the E5 harness; the judge works on ground truth (the world
+records when the producer made each text) and no longer calls `lifetimeState`; `safety.test.ts`
+requires each claim's mechanism to show the layer that must stop it, and fails when the consumer's
+[P-8.7] check or the forwarder's [P-8.6] check is removed. No wire change.
+
+## ADR-035 — Related work and the novelty claim, restated; the ArcticSwarm citation pinned to v1
+**Context.** Until 2026-11-26 spec 00 §3 claimed novelty against the NDN lineage only (RICE, NFN,
+NFaaS, one NDNComm talk) and motivated the project with one number, [ARCTICSWARM] Table 21. A
+full-text read of about forty sources found four things. (1) Prior work caches tool-call results and
+none of it was cited: a digest of canonicalized arguments as the key (ToolCaching, TwinHash,
+ArcticSwarm's own harness), one execution for concurrent identical calls (TwinHash, `mcp-proxy`, HTTP
+request collapsing), a cache shared across agents (proposed and replayed over production traces by
+the AgentSysBench paper; TVCache in training), and shipping middleware that caches `tools/call`
+unsigned. (2) Signing around MCP is an active area (MCPS, signed receipts drafts, signed manifests
+named as a known mechanism by the misbinding paper), signed objects that any cache may serve inside a
+signed window exist on the web (Signed HTTP Exchanges), and Codexproof (AgentNet 2026) already brings
+NDN's signed named objects to tool results, naming the answer and not the request. (3) The cited
+number had been withdrawn: Table 21 exists only in arXiv:2609.01870v1; v2 (11 Nov. 2026) removed it,
+and the old wording ("almost all from a different subagent") matched the paper's prose, not its
+table, which gives 30.7% and 27.6% of all calls as cross-agent. (4) The [NDN-AI] entry had the wrong
+title and one author of three, and the talk lists its two items as "Future works", about split DNN
+inference, not as open problems about LLM tool results.
+**Decision.** (1) *The claim.* IDEM claims no mechanism as new. Spec 00 §3 now reads: "No single
+mechanism in IDEM is new. Its contribution is their combination into one protocol for tool calls, and
+its measurement: a call is named by its request, so a repeat is recognised before anyone answers; the
+result is signed by its producer with a scope and a bounded lifetime, so a cache the receiver does
+not trust may serve it; the producer, not an annotation or a gateway operator, authorizes caching;
+and the same objects run over an MCP-compatible HTTP overlay and over native NDN." The words "first"
+and "novel" are not used for tool-result caching, for in-flight aggregation or for signing MCP
+messages. Where the project said "provenance" it now says origin authenticity: the signature proves
+which producer answered, not that the answer is true, and records no lineage. (2) *Related work* is
+grouped in five families (the ICN lineage; caches for tool results; signing in MCP and signed caching
+on the web; agent networking; tool calls issued by code), each with what it does and what it leaves
+open. (3) *Citation rule.* An arXiv reference whose claim depends on a table or a number carries the
+version that was read, and the entry says so when a later version dropped the material; a source read
+in part is marked as such; a bibliographic detail the reading could not verify is left out.
+[ARCTICSWARM] is pinned to v1 and its entry states that v2 removed the table. (4) *The measured
+problem* is restated with both sources and their limits: duplicates and the cross-agent share per
+tool, with the 0.4% for free-text search (ArcticSwarm v1); recurrence across sessions in 24-hour
+production traces and what a 10-minute TTL keeps of it (AgentSysBench); and the drift of re-executed
+live MCP calls (DynamicMCPBench), which bounds the thesis to the period the producer signs. (5) Two
+hypotheses, H5 (what the protocol adds to a shared unsigned cache, B5) and H6 (code-driven bursts,
+W-code), and four non-goals (model outputs and tokens, lineage, long-running tools in the native
+binding, discovery and delegation) enter spec 00. (6) Two docs pages carry this to readers: Use cases
+(Learn, after Introduction) and Related work (Research, before Evaluation). Their rule: every
+statement about the outside world has a key in spec 08 and says no more than the source; each
+scenario states the strength of its outside evidence; no IDEM result number appears on them.
+Alternatives: keeping a narrower "first to apply NDN to MCP tool calls" claim (rejected: Codexproof
+applies NDN's signed objects to tool results, and the claim would rest on the distinction between
+naming the request and naming the answer, which is better stated than hidden); citing ArcticSwarm v2
+(rejected: it has no count of duplicates); dropping the ArcticSwarm figure (rejected: it is the only
+measurement of cross-agent overlap inside one task, and v1 remains a citable version; the entry says
+what happened); leaving ToolCacheAgent in (rejected: withdrawn from ICLR 2026 and not readable in
+full).
+**Consequences.** Changed: `spec/00-vision.md` (§1, §2, §3, §5, §6), `spec/08-references.md` (grouped;
+about sixty new entries; [ARCTICSWARM], [NDN-AI], [CFN], [NDN-CACHE-SURVEY] and [IETF-AGENTS]
+corrected; the [MCP-CHANGELOG] URL fixed), `spec/04-showcase.md` §4, the Introduction in both
+languages, and the new pages `use-cases` and `related-work` in both languages with their entries in
+`components/docs/pages.ts` and the docs dictionary. Q4 in the open questions cites [NDN-AI] for
+"semantic forwarding", which is accurate for the talk; its wording can also cite [FUZZY-FWD]. The
+security, evaluation and concepts pages still describe the protocol before ADR-033 and ADR-034 and
+the evaluation before B5 and W-code; they are updated by the docs-sync step, not here. The claim now
+depends on the comparison with B5: if IDEM does no better than a shared unsigned cache where neither
+surface variation nor concurrency occurs, H5(a) says so in advance, and what remains is H5(b).
+
+## ADR-036 — B5, the industry baseline: a shared, unsigned exact-match cache at the gateway
+**Context.** The evaluation compared IDEM with direct MCP (B0) and a per-agent cache (B1). B4
+(`idem-noverify`) is not what is deployed: it still names, canonicalizes and aggregates. A
+reviewer's first question is what IDEM gives that a cache at the gateway does not. The read of
+shipping products (`gateway-caching-products` notes) found that the large MCP gateways (Kong,
+LiteLLM, Agent Router, agentgateway; Cloudflare's AI Gateway caches LLM responses) document no
+`tools/call` cache, and that the products that do cache tool results (FastMCP's response-caching
+middleware, the `mcp-proxy` crate, IBM ContextForge's plugin) do it as an unsigned add-on the caller
+cannot check.
+**Decision.** (1) *What B5 is.* A new simulator mode `mcp-gateway-cache` (evaluation mode B5) that
+models that add-on as shipped, neither weakened nor improved. Plain MCP end to end, as B0 and B1
+(ADR-023): no names, no signatures, no manifest on the wire, the producer answers as a plain MCP
+server, and nothing is verified ("every cache here is trusted"). The edge keeps one cache shared by
+every agent behind it, as a gateway does (in-process or a shared store such as Redis, which
+`mcp-proxy` offers and the Gravitee guidance names). (2) *Key.* Producer, tool and the arguments as
+sent, serialized with sorted keys: FastMCP's `json.dumps(sort_keys=True)`; `mcp-proxy` keys on
+"request type, name/URI, and arguments", ContextForge on the tool name and selected argument fields.
+None applies a producer-declared normalization, so two spellings of one URL are two keys. The key
+holds no credential: `mcp-proxy` and ContextForge key without one. FastMCP partitions per access
+token, which removes sharing between users; a cache partitioned that way is B1 keyed on raw
+arguments, not B5. (3) *No coalescing.* Two misses for the same key that are in flight at the same
+time both go upstream (cache-aside). FastMCP does get, call, put with no in-flight map; ContextForge
+has none; Cloudflare documents the same race for its LLM cache. `mcp-proxy` has an opt-in
+`coalesce_requests`, with the caution to enable it "only when sharing identical concurrent tool
+calls [...] is appropriate": the model takes the common case and the spec names the exception. (4)
+*What is stored.* Error results (`isError`) are not stored, as FastMCP and `mcp-proxy` refuse them.
+(5) *Generous where the comparison would otherwise be about configuration.* The operator caches
+exactly the tools the producer's manifest marks cacheable and `public`, with the manifest's TTL
+counted from the store at the edge, so neither TTL nor the choice of tools is what differs (the
+products decide by tool name, and FastMCP's default caches every tool for an hour); the cache has
+the byte budget and the replacement policy of the IDEM Content Store and counts the stored result's
+JSON bytes against it. B5 does no cryptographic work and is charged no CPU, like B0 and B1. (6)
+*Where it lives.* In `@idem/sim` (`gateway-cache.ts`: `GatewayCache`, and `GatewayRelay`, which
+wraps each client face of the core forwarder that relays plain calls as in B0), not in `@idem/core`:
+core implements the protocol and must not grow a baseline. (7) *E5 baseline rows.* Three variants
+run the attack of an IDEM variant against B5 with the same judge on ground truth:
+`baseline/tamper-cache@edge` (a compromised, buggy or malicious cache rewrites a stored result;
+mirrors `tamper/content@last-hop`, the IDEM position with the same relation to the consumer),
+`baseline/tamper@upstream` (mirrors `tamper/content@upstream`) and `baseline/private-miskeyed@edge`
+(the operator lists a per-user tool as cacheable in a gateway keyed by tool and arguments; mirrors
+`private/sequential`). Precedents for that misconfiguration are the MCP Python SDK's warning that
+`cacheScope` "is a label, not a lock" and the `share_public` leak it describes, and Kong's
+CVE-2026-92443 (a shared cache serving a credentialed response to a caller with none). They carry
+`expected: "baseline"` and `mirrors`; acceptance is their expected outcome; they are not claims or
+findings and are kept apart from the IDEM rows (`SafetyData.baseline`).
+Alternatives: modelling FastMCP's server-side placement (rejected as the baseline: a hit there saves
+the tool's work but every request still crosses the network to the server, and its per-token
+partition shares nothing across users; it is closer to B1); modelling `mcp-proxy` with coalescing on
+(rejected as the common case; it is a steelman, and with it B5 differs from IDEM only by
+canonicalization and signatures, which `e2-surface` at 0 already isolates); extending B4 (rejected:
+B4 is IDEM with one check off, not a product); putting the relay in core (rejected, see (6)).
+**Consequences.** Spec 05 §1 has B5 with an "as run" paragraph, §3 the metrics
+`upstream_reduction_vs_b5`, `gateway_cache_hits` and `gateway_inflight_duplicates`, §4 the sweep
+`e2-surface` (B0, B1, B5, B2 over surface variation), B5 in the six existing sweeps, the verdict
+rule for H5 and the baseline group of E5 (34 variants: 31 IDEM, 3 baseline). Adding a mode perturbs
+no other run: the fingerprints of all 4,620 runs of B0 to B4 in the committed sweeps (30 seeds,
+macOS) are identical before and after, and `legacy.test.ts` now compares exactly the cases it
+pinned, since a new case has no recorded hash. The source digest changes, so the orchestrator reruns
+E2 and E5; the committed numbers stay valid for B0 to B4. What B5 does not capture: an operator who
+caches tools that are not read-only (FastMCP's default), a cache whose key includes headers or
+session state, and a gateway running several instances with separate in-process caches.
+**Amended 2026-11-27 (review).** Two defects. (1) B5 cached `public` tools only, so in `e2-mixed`
+the per-user `my_notes` went upstream on every call in B5 while IDEM's edge served its repeats from
+the `authContext` partition: part of the gap was a handicap, not the protocol. FastMCP, one of the
+products cited, keys per access token, so a per-credential partition is a shipped key design. B5 now
+caches every tool the manifest marks cacheable: `public` ones under the shared key (as `mcp-proxy`
+and ContextForge key), `private` ones in a partition per caller credential (FastMCP's), with the same
+TTL and the same byte budget (`GatewayRelayOptions.perCredential`). Runs with no `private` cacheable
+call are unchanged; B5 in `e2-mixed` and any sweep with `privateFraction` above 0 must be rerun. The
+E5 row `baseline/private-miskeyed@edge` stays as what it is, a misconfiguration (a per-user tool
+listed as cacheable without a partition), and its `assumes` says so. (2) `baseline/tamper@upstream`
+judged the first user's own answer, which crossed the rewritten link directly, so plain MCP with no
+cache would have scored the same. Only later users answered from the gateway cache are judged now (a
+trial with none is a setup failure), and the row assumes what the attacker needs: control of the
+gateway-producer link, with no TLS on it or a compromised hop.
+
+## ADR-037 — W-code: tool calls issued by code, in bursts
+**Context.** Agents increasingly issue tool calls from code instead of one per model turn:
+Cloudflare's Code Mode and Anthropic's programmatic tool calling run a program the model wrote,
+which calls tools as functions, in loops or in parallel (`asyncio.gather`), and returns only the
+final output to the model ("reduces model round trips from N [...] to 1"; strong fit for "fan-out or
+parallel operations across many items"; `code-mode` notes). In every design a host-side MCP client
+performs the calls, so IDEM's attachment point is unchanged. W-syn draws one call per model turn
+with an exponential think time and starts each agent at a random point of one think time: it cannot
+say "several calls at once, then a turn", nor "sub-agents spawned at the same instant". No source
+measures how often code-issued calls repeat across agents (the notes say so); ArcticSwarm runs about
+8 agents per task, the production characterization reports no inter-arrival or burst distribution.
+**Decision.** (1) `SyntheticWorkload.burst = { size, parallel? }`: a script step issues the next
+`size` planned calls, all at once (`parallel`, the default) or back to back with no think time,
+waits for all of them, then thinks (`thinkTimeMs`, the model turn) before the next step. (2)
+`startSpreadMs`: the first step starts uniformly within `[0, startSpreadMs)`; 0 starts every agent
+at the same instant. (3) *Today is a special case.* Without `burst` a step is one call, and without
+`startSpreadMs` the window is the think time; the start uses the same single uniform draw, scaled,
+and think times are drawn only between steps, so a configuration without the fields runs exactly as
+before (fingerprints of all committed sweeps identical) and `burst: { size: 1 }` equals it call for
+call (a test). (4) *The plan does not change, only its timing.* Bursts take consecutive calls of the
+agent's W-syn plan, so `callsPerAgent` held constant means the same calls at every burst size; the
+W-code sweeps hold it at 16. (5) *Concurrency inside one agent.* Each call keeps its own waiter
+(keyed by its nonce or call id), its own [P-5.5] retry and lifetime checks, and its own `private`
+check, so concurrent calls of one agent behave as independent calls; tested with `private` and
+side-effect calls in a burst and a tampered Data in the middle of one. (6) *Configs.*
+`e2-code-burst` (burst size 1 to 16 at a 1 s start window) and `e2-code-sync` (start window 0 to 20
+s at burst 4), modes B0, B1, B5, B2, surface variation 0 because code builds arguments mechanically;
+every base value is stated as an assumption in the config and in spec 05 §2; nothing is tuned on
+results. H6 is read from B2's `pit_aggregation_ratio` and `upstream_reduction_vs_b5`, with B5's
+`gateway_inflight_duplicates` as the calls the PIT absorbs.
+Alternatives: a Poisson or bursty arrival process per agent (rejected: it cannot express "wait for
+all, then a turn", which is what bounds a step); grouping calls in `planWorkload` (rejected: it
+would change the plan's random draws for every configuration); scaling calls per agent with the
+burst size (rejected: it would confound the shape with the volume); bursts in the per-agent workload
+(deferred: no committed experiment needs it).
+**Consequences.** Spec 05 §2 has W-code and its base point, §4 the two sweeps and the H6 rule.
+W-code does not model: per-entity fan-out into names nobody else asks for beyond W-syn's private
+pool, often user-specific and `private`; free-form arguments such as SQL strings that JSON
+canonicalization does not normalize; a code runtime replaying a recorded result (Cloudflare's
+durable runtime), which never reaches IDEM; per-call rate limits and the per-call pause and resume
+of Anthropic's API; sandbox deadlines (none is reached at these settings); server-side Code Mode,
+where the agent's only visible call is the program and IDEM can sit only on the server's upstream
+leg. Inside a parallel step B1 gets no hit for a repeated call, since both copies miss before either
+returns, which is what a per-agent cache without coalescing does.
+**Amended 2026-11-27 (review).** Parallel steps were not deterministic in B1 to B4: the step started
+every call's preparation at once (`Promise.all`), so several WebCrypto digests (B1's names, the
+Interests' args digests) were in flight inside one timer callback and finished in thread-pool order,
+which decided the send order and with it CPU-charged send times and which call got which service-time
+draw (reruns of one seed gave 16 to 22 distinct metric sets at burst 4 and 16). A step now prepares
+its calls one after the other in plan order and then sends them all at the same virtual instant. The
+same fault existed outside bursts: the timer that retries an unanswered Interest did not return the
+retry's promise, so the clock moved on while its digest ran; it returns it now. A test perturbs the
+completion order of every WebCrypto call and requires identical full fingerprints for both burst
+sweeps' first seed in every mode and for the pinned lossy tree run. Runs without bursts and without an
+Interest timeout are byte-identical; the pinned `tree-loss/idem` hash, recorded from a run whose
+retry time depended on digest timing, was re-recorded. The W-code sweeps must be rerun.
+
+## ADR-038 — Proxy-producer mode: the proxy is a producer with its own name and key
+**Context.** IDEM pays off only when producers sign, and almost no MCP server does. §9.1 said only
+that an edge MAY run in proxy-producer mode with the gateway's key and that the Data must say so
+(roadmap M3, "optional, flagged"). The products that cache `tools/call` today do it at a proxy with an
+operator-chosen list of tools and a trusted cache: FastMCP caches every tool once its middleware is
+added and reads no annotation, `mcp-proxy` caches per backend TTL and never forwards inbound tokens,
+and a shared trusted cache that keys badly leaks across users (Kong CVE-2026-92443)
+(`gateway-caching-products.md`). The adoption path for IDEM is the same proxy, minus the trusted cache.
+**Decision.** `createProxyProducer({ upstream, name, key, tools })` in `@idem/mcp` returns a
+`ProxyProducer`, a subclass of the core `Producer` (ADR-014) whose tool handlers call the origin over
+plain MCP (SDK v2 client, one client per credential). It is served like any producer
+(`createProducerHandler`, `createMcpProducer`), so nothing existing changes unless it is called.
+(1) *Own name, own key* [P-9.5]: names are `/idem/v1/<proxy>/…`, the key locator is the proxy's, and
+a proxy configured with the origin's host as its name is refused. The origin is recorded per tool in
+the tool list, `_meta["dev.idem/origin"] = { origin, readOnlyHint }`, not in the Manifest or Data,
+whose wire objects (§5, §6) stay unchanged; the record is unsigned, like the tool list. (2) *Operator
+policy* [P-9.6]: nothing is cacheable by default; a declared tool is offered as cacheable only if the
+origin says `readOnlyHint: true`, or if it says nothing and the operator sets
+`operatorAssertsReadOnly`. An explicit `false` cannot be overridden. A missing hint is the common case
+for legacy servers, so requiring it outright would block adoption; accepting the operator's word
+silently would empty [P-6.1](b). The option's name puts the responsibility on the operator, and the
+origin record shows `"operator"` to consumers. Declared tools that cannot be cached make creation fail
+with `BAD_POLICY`. (3) *Credentials* [P-9.7]: `public` tools are called with the proxy's own
+credential or none, never the end user's, so a shared answer cannot depend on who asked (this is
+`mcp-proxy`'s rule, kept for the shared case only); `private` tools get the end user's credential and
+are signed `private`; relayed tools get the end user's credential. (4) *Schema drift* [P-9.8]: the
+proxy re-reads the origin's `tools/list` after each origin call it would sign and compares the tool's
+schemas and `readOnlyHint` with those its manifest was built from. On a change the result is not
+signed (`NOT_CACHEABLE` to the Interest, the unsigned result to a plain call), every changed tool is
+held not cacheable under a new manifest version, `onSchemaChange` fires, and `refresh()` re-reads the
+list and bumps the version again. Manifest versions default to the clock in seconds so a restart never
+rolls back [P-6.3]. (5) Origin errors and `isError` are error results with freshness 0 ([P-5.3],
+[P-7.2]); `input_required` is not named [P-5.4] and is not relayed.
+*The trust shift, plainly.* A consumer that verifies proxy-signed Data learns that the holder of the
+proxy's key vouches that this content answered this call at `producedAt`, with this freshness and
+scope, and that no node on the path changed it. It learns nothing the proxy could not have invented:
+not that the origin produced the content, nor that the origin's tool is really read-only. A consumer
+that trusts the origin's name or key does not accept the Data as the origin's (`UNTRUSTED_KEY`, or
+`BAD_SIGNATURE` once relabelled); trusting the proxy is a separate, visible decision.
+*Alternatives.* The gateway signing under the origin's name: rejected, the Data would claim an author
+that never saw it, and the first time the origin adopts IDEM two keys would sign one name. An
+attestation of the origin's TLS session (TLSNotary-style proofs that the bytes came from the origin):
+out of scope for v1. Checking the schema on a timer instead of after each signed call: rejected, a
+window in which results are signed under a stale digest; the cost is one `tools/list` per miss, and
+hits never reach the proxy. Relaying multi-round-trip calls: deferred, `Producer.handleCall` carries
+no `inputResponses`/`requestState`.
+**Consequences.** §9.1 "Legacy producer" now holds [P-9.5]–[P-9.8], each cited by a test in
+`packages/mcp/src/proxy.test.ts` (an unmodified MCP v2 server behind the proxy behind an edge; three
+plain MCP clients reach the origin once and a fourth call is a CS hit). No change to §2, §4, §5 or
+§6: no `/idem/v2`. `@modelcontextprotocol/client` 2.4.0 moves from dev to runtime dependency of
+`@idem/mcp`. Forwarders and consumers read a manifest once, so after an origin schema change they see
+the refreshed manifest only after a restart; until then the changed tool answers `NOT_CACHEABLE` or
+`DIGEST_MISMATCH`, and Data signed before the change is servable until its freshness ends. Re-reading
+a manifest on those errors is left open.
+**Amended 2026-11-27 (review).** The proxy chose the credential from the tool's current cacheable
+state, not from the operator's declaration: once the origin changed its `tools/list` entry for a tool
+declared `{ cacheable: true, scope: "public" }`, the held tool was relayed with the end user's bearer
+token, and the same after a `refresh()` that refused it, so an origin could harvest user tokens by
+editing its tool list. The credential now follows the declared policy only: a tool declared public
+always gets the proxy's credential or none, offered, held or refused; an undeclared tool, or one
+declared not cacheable, is relayed with the end user's credential, because the operator made no
+promise for it. [P-9.7] says all three cases, and the [P-9.7] and [P-9.8] tests assert the bearer
+the origin sees on held and refused calls.
+
 ## Open questions
 
 - **Q2 — Encrypted `private` content.** Name-based access control would allow shared caching of
   private results. Out of v1.
 - **Q3 — Timing side channel.** Cache hit latency reveals prior requests. Measure in E5; mitigation out of v1.
 - **Q4 — Semantic matching.** Embedding-based near-duplicate matching (cf. semantic forwarding in
-  [NDN-AI]) as future work; must never be used for `private` scope.
+  [NDN-AI] and [FUZZY-FWD]) as future work; must never be used for `private` scope.
 - **Q5 — Forwarder ↔ forwarder transport.** HTTP/2 now; evaluate HTTP/3 / WebTransport later.
-- **Q6 — Bounding a Data's life by the signed `producedAt`.** The candidate rule of ADR-025 closes
-  stale replay. To decide before adopting it: the default tolerance and how it relates to short TTLs;
-  the error code (`BAD_SIGNATURE` or a new one); `mustBeFresh: false` across hops; and how a consumer
-  with a wrong clock is told apart from an attack. Must land with E5's judge and a new E5 run.
-- **Q7 — `authContext` supplied by a consumer.** The engine trusts an `authContext` present on an
-  Interest from a consumer face (E5 `private/authcontext-known`, ADR-023); only the HTTP gateway drops
-  it. Candidate: the first forwarder always derives its own value and ignores, or rejects, one that
-  arrives ([P-8.4] already says who sets it). Must land with a new E5 run.
+- **Q6 — Bounding a Data's life by the signed `producedAt`.** Resolved by ADR-034: two-sided signed
+  lifetime [P-8.6] with a 60 s default tolerance, `EXPIRED` on the wire, `CLOCK_SKEW` at the consumer
+  [P-8.7]. Remaining limit: bounded staleness inside the tolerance (E5 `replay/in-tolerance@*`).
+- **Q7 — `authContext` supplied by a consumer.** Resolved by ADR-033: the edge always derives its own
+  and ignores any `authContext` in a received Interest [P-8.4].

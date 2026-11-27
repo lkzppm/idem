@@ -22,12 +22,14 @@ Reading order; it drives the sidebar and the previous / next links (`components/
 | Group | Page | Route | Source |
 |---|---|---|---|
 | Learn | Introduction | `/docs` | `content/docs/<locale>/introduction.md` |
+| Learn | Use cases | `/docs/use-cases` | `content/docs/<locale>/use-cases.md` |
 | Learn | Concepts | `/docs/concepts` | `content/docs/<locale>/concepts.md` |
 | Learn | Architecture | `/docs/architecture` | `content/docs/<locale>/architecture.md` |
 | Specification | Protocol (normative) | `/docs/protocol` | `spec/01-protocol.md`; pt: `content/docs/pt/protocol.md` (translation), `?text=en` shows the normative text |
 | Specification | Security | `/docs/security` | `content/docs/<locale>/security.md` |
 | Use | API reference | `/docs/api` | `content/docs/<locale>/api.md` |
 | Use | Using the sandbox | `/docs/sandbox` | `content/docs/<locale>/sandbox.md` |
+| Research | Related work | `/docs/related-work` | `content/docs/<locale>/related-work.md` |
 | Research | Evaluation | `/docs/evaluation` | `content/docs/<locale>/evaluation.md` |
 | Research | Decisions | `/docs/decisions` | `spec/07-decisions.md` (English in both languages, with a note) |
 | Research | References | `/docs/references` | `spec/08-references.md` (English in both languages, with a note) |
@@ -51,7 +53,7 @@ Bindings and FAQ are folded into API reference, Architecture and Security (reaso
 
 ## Pending (need the running site)
 
-- [ ] Every route returns 200 in English and with the cookie `idem-locale=pt`: `/docs`, `/docs/concepts`,
+- [ ] Every route returns 200 in English and with the cookie `idem-locale=pt`: `/docs`, `/docs/use-cases`, `/docs/related-work`, `/docs/concepts`,
       `/docs/architecture`, `/docs/protocol`, `/docs/protocol?text=en`, `/docs/security`, `/docs/api`,
       `/docs/sandbox`, `/docs/evaluation`, `/docs/decisions`, `/docs/references`; `/spec` and
       `/docs/introduction` redirect; `/docs/nope` is a 404
@@ -92,7 +94,8 @@ Bindings and FAQ are folded into API reference, Architecture and Security (reaso
 Resolved on 2026-11-17 (details in `review.md`, round 1): spec 03 rewritten against the code; spec 01 §5,
 §7, §8, §9.1, §10 and §11 fixed, with ADR-024 (reconciliation) and ADR-025 (stale replay is a declared v1
 limit, rule deferred, Q6). `content/docs/pt/protocol.md` and its hash follow; the API and security pages
-were updated in both languages.
+were updated in both languages. (Superseded on 2026-11-27: ADR-034 turned that limit into the rule
+[P-8.6], and ADR-033 closed Q7; see the last section.)
 
 ## Incident
 
@@ -111,3 +114,38 @@ or restart the server. `apps/web/.next/dev/lock` may still name the dead process
 - [x] API (`#ndn`), Architecture (`#ndn` and the package table) and Introduction status rows updated in
   English and Portuguese for the native binding; the Portuguese protocol translation's §9.2 and its source
   hash refreshed (ADR-026). Not rendered in a browser yet.
+
+## Use cases and Related work (ADR-035, 2026-11-27)
+
+- [x] Use cases and Related work written in en and pt, wired into `components/docs/pages.ts` and the docs
+  dictionary, ADR-035; `pages.test.ts`
+- [ ] In-site check of both pages: the 7-column comparison table at 390 px, the 11 small tables, reuse of
+  the `swarm` and `scope` figures
+
+## Docs sync after ADR-033 to ADR-038 (2026-11-27)
+
+Checked by scripts and by the repository's tests, not in the running site.
+
+- [x] `content/docs/pt/protocol.md` level with `spec/01-protocol.md`: the §4 comment, the §7 pseudo-code,
+  [P-8.1], [P-8.4], [P-8.6], [P-8.7], the §9.1 status codes and [P-9.5] to [P-9.8], the loss-recovery
+  item of §9.2, §10 and §11; rule ids, heading numbers, section references, ADR ids, reference keys and
+  code blocks compared with the spec by script; source hash updated
+- [x] Security (en, pt): the replay attack with its two rules, the `authContext` text of ADR-033,
+  `EXPIRED` and `CLOCK_SKEW`, what a wrong clock does, the proxy-producer and its trust shift with the
+  known gap, the comparison with the unsigned gateway cache (method only)
+- [x] Concepts (en, pt): freshness in two parts, the hop-relative age and the signed lifetime
+- [x] Evaluation (en, pt): H1 to H6, B0 to B5 and why B5 exists, W-code, the nine sweeps, the three kinds
+  of E5 rows, E4 as run on the Docker bench, and a section on what has not been run (E3, E4 with more
+  than 3 seeds, the browser half of E1). No result numbers
+- [x] API (en, pt): the lifetime exports and the `clockToleranceMs` options, `EXPIRED` and `CLOCK_SKEW`,
+  `createProxyProducer` with a usage example that typechecks against `packages/mcp/src`, the new and
+  the previously unlisted `@idem/sim` exports; every name exported by the five `index.ts` files appears
+  on the page in both languages (checked by script)
+- [x] Architecture and sandbox guide (en, pt), `spec/02-architecture.md`: the proxy-producer, B5,
+  `CLOCK_SKEW` in Live mode, the package list, the native binding as run against NFD. `README.md` read
+  and left as it is (nothing in it is now false). `CLAUDE.md`: the Emulation row and the `experiments/`
+  layout no longer name Mini-NDN
+- [x] en and pt keep the same headings, anchors and block structure on every written page (script)
+- [ ] The pages above, read in the running site in both languages: the new tables on the evaluation and
+  API pages at 390 px, the new `#replay`, `#core-lifetime`, `#mcp-proxy` and `#not-run` anchors under the
+  sticky header

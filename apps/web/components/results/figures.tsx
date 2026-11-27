@@ -6,6 +6,7 @@ import { InfoTip } from "../sandbox/ui";
 import {
   type ChartLabels,
   type ChartSeries,
+  type Dash,
   type Marker,
   niceTicks,
   SeriesKey,
@@ -14,17 +15,23 @@ import {
 } from "./chart";
 import { InView } from "./in-view";
 import { LineChart } from "./interactive-chart";
+import { ChartTabs } from "./tabs";
 
 type RunRef = SweepData["run"];
 type Micro = NonNullable<ResultsData["e1"]>;
 
-/** How each mode is drawn, everywhere on the page: the colour says what travels, the dash and the marker say which mode. */
-export const MODE_STYLE: Record<EvalModeId, { tone: Tone; dash: boolean; marker: Marker }> = {
+/**
+ * How each mode is drawn, everywhere on the page: the colour says what travels, the dash and the
+ * marker say which mode. B5, the third baseline in blue, is dash-dot with diamonds, so it parts from
+ * B0 (solid, circles) and B1 (dashed, squares) without its colour.
+ */
+export const MODE_STYLE: Record<EvalModeId, { tone: Tone; dash: Dash; marker: Marker }> = {
   B0: { tone: "interest", dash: false, marker: "circle" },
   B1: { tone: "interest", dash: true, marker: "square" },
   B2: { tone: "data", dash: false, marker: "circle" },
   B3: { tone: "data", dash: true, marker: "diamond" },
   B4: { tone: "muted", dash: true, marker: "square" },
+  B5: { tone: "interest", dash: "long", marker: "diamond" },
 };
 
 /** The chart's own words (hint, legend, toggles), with a line saying what the readout's numbers are. */
@@ -172,7 +179,9 @@ export function ReductionFigure({
   caption,
   compact = false,
   bound = true,
-  modes = ["B1", "B2", "B3"],
+  modes = ["B1", "B5", "B2", "B3"],
+  fillTo = "B1",
+  extra = [],
   info,
 }: {
   t: ResultsMessages;
@@ -184,6 +193,10 @@ export function ReductionFigure({
   compact?: boolean;
   bound?: boolean;
   modes?: EvalModeId[];
+  /** The mode the halftone runs to from B2: what IDEM adds over it (B1 by default, B5 where B5 is the point). */
+  fillTo?: EvalModeId;
+  /** More columns for the table twin, one value per swept point. */
+  extra?: { head: ReactNode; cell: (index: number) => string }[];
   /** A note behind an info button beside the title. */
   info?: { label: string; body: ReactNode };
 }) {
@@ -238,8 +251,8 @@ export function ReductionFigure({
         xLabel={copy.x}
         yLabel={copy.y ?? t.sensitivity.y}
         {...(!compact &&
-          shown.includes("B1") &&
-          shown.includes("B2") && { fill: { from: "B2", to: "B1", tone: "data" as Tone } })}
+          shown.includes(fillTo) &&
+          shown.includes("B2") && { fill: { from: "B2", to: fillTo, tone: "data" as Tone } })}
         {...(compact && { width: 420, height: 300, labelRoom: 44 })}
         labels={chartLabels(t, t.chart.noteCi(sweep.seeds))}
       />
@@ -248,11 +261,17 @@ export function ReductionFigure({
       <ValueTable
         t={t}
         caption={`${copy.title}. ${t.chart.meanCi}`}
-        head={[copy.x, ...shown.map((m) => modeHead(t, m)), ...(bound ? [t.modes.bound] : [])]}
+        head={[
+          copy.x,
+          ...shown.map((m) => modeHead(t, m)),
+          ...(bound ? [t.modes.bound] : []),
+          ...extra.map((c) => c.head),
+        ]}
         rows={sweep.values.map((v, i) => [
           xFormat(v),
           ...shown.map((m) => pctCi(f, sweep.metrics.upstream_reduction?.[m]?.[i])),
           ...(bound ? [f.pct(sweep.metrics.oracle_reduction?.B0?.[i]?.mean ?? Number.NaN)] : []),
+          ...extra.map((c) => c.cell(i)),
         ])}
       />
     </InView>
@@ -271,7 +290,9 @@ export function CdfFigure({
   sweep: SweepData;
   caption: string;
 }) {
-  const modes = (["B0", "B1", "B2", "B3"] as EvalModeId[]).filter((m) => (sweep.cdf[m]?.length ?? 0) > 99);
+  const modes = (["B0", "B1", "B5", "B2", "B3"] as EvalModeId[]).filter(
+    (m) => (sweep.cdf[m]?.length ?? 0) > 99,
+  );
   const p99 = Math.max(...modes.map((m) => sweep.cdf[m]?.[99] ?? 0));
   const ticks = niceTicks(0, p99, 6);
   const xMax = Math.max(p99, ticks[ticks.length - 1] ?? p99);
@@ -281,6 +302,8 @@ export function CdfFigure({
     short: m,
     tone: MODE_STYLE[m].tone,
     dash: MODE_STYLE[m].dash,
+    // No markers on a distribution: B5's diamonds would be all that told it from B0, so its
+    // dash-dot stroke does that here.
     marker: "none",
     // From the fastest call to the 99th percentile; the curve starts on the axis.
     points: [
@@ -334,7 +357,7 @@ export function DeltaFigure({
   sweep: SweepData;
   xFormat: (v: number) => string;
 }) {
-  const modes = (["B1", "B2", "B3"] as EvalModeId[]).filter((m) => sweep.modes.some((x) => x.id === m));
+  const modes = (["B1", "B5", "B2", "B3"] as EvalModeId[]).filter((m) => sweep.modes.some((x) => x.id === m));
   const metric = "latency_p50_vs_b0_ms";
   const series: ChartSeries[] = modes.map((m) => ({
     id: m,
@@ -386,6 +409,193 @@ export function DeltaFigure({
         rows={sweep.values.map((v, i) => [
           xFormat(v),
           ...modes.map((m) => msCi(f, sweep.metrics[metric]?.[m]?.[i], true)),
+        ])}
+      />
+    </InView>
+  );
+}
+
+/** One line chart of `metric` along a sweep, for the given modes, starting at zero. */
+function SweepChart({
+  t,
+  f,
+  sweep,
+  metric,
+  modes,
+  copy,
+  xFormat,
+  yTick,
+  text,
+  bound = false,
+  fillTo,
+}: {
+  t: ResultsMessages;
+  f: Format;
+  sweep: SweepData;
+  metric: string;
+  modes: EvalModeId[];
+  copy: { title: string; desc: string; x: string; y: string };
+  xFormat: (v: number) => string;
+  yTick: (v: number) => string;
+  text: (s: Stat) => string;
+  bound?: boolean;
+  fillTo?: EvalModeId;
+}) {
+  const shown = modes.filter((m) => sweep.modes.some((x) => x.id === m));
+  const series: ChartSeries[] = [];
+  if (bound) {
+    series.push({
+      id: "bound",
+      label: t.modes.bound,
+      tone: "ink",
+      reference: true,
+      points: seriesOf(sweep, "oracle_reduction", "B0").map((p) => ({
+        x: p.index,
+        y: p.stat.mean,
+        text: f.pct(p.stat.mean),
+      })),
+    });
+  }
+  for (const m of shown) {
+    series.push({
+      id: m,
+      label: modeLabel(t, m),
+      short: m,
+      ...MODE_STYLE[m],
+      points: seriesOf(sweep, metric, m).map((p) => ({
+        x: p.index,
+        y: p.stat.mean,
+        lo: p.stat.mean - p.stat.ci95,
+        hi: p.stat.mean + p.stat.ci95,
+        text: text(p.stat),
+      })),
+    });
+  }
+  const top = upperBound(series, 0);
+  const ticks = niceTicks(0, top || 1, 5);
+  const yMax = Math.max(top, ticks[ticks.length - 1] ?? top) * 1.04 || 1;
+  const n = sweep.values.length;
+  return (
+    <LineChart
+      title={copy.title}
+      desc={copy.desc}
+      series={series}
+      xDomain={[-0.3, n - 1 + 0.3]}
+      yDomain={[0, yMax]}
+      xTicks={sweep.values.map((v, i): Tick => ({ at: i, label: xFormat(v) }))}
+      yTicks={ticks.map((v): Tick => ({ at: v, label: yTick(v) }))}
+      xLabel={copy.x}
+      yLabel={copy.y}
+      {...(fillTo &&
+        shown.includes(fillTo) &&
+        shown.includes("B2") && { fill: { from: "B2", to: fillTo, tone: "data" as Tone } })}
+      labels={chartLabels(t, t.chart.noteCi(sweep.seeds))}
+    />
+  );
+}
+
+/**
+ * A W-code sweep (H6): upstream reduction of B1, B5 and B2 with the halftone of what IDEM adds over
+ * B5, then in tabs the share of requests B2's PIT absorbed and the duplicates B5 sent upstream while
+ * an identical call was already in flight. One table carries all of it.
+ */
+export function CodeSweepFigure({
+  t,
+  f,
+  sweep,
+  copy,
+  xFormat,
+  caption,
+}: {
+  t: ResultsMessages;
+  f: Format;
+  sweep: SweepData;
+  copy: { title: string; desc: string; x: string };
+  xFormat: (v: number) => string;
+  caption: string;
+}) {
+  const c = t.gateway.chart;
+  const dup = (s: Stat | undefined) => (s ? `${f.num(s.mean, 1)} ± ${f.num(s.ci95, 1)}` : "–");
+  const panels = [
+    {
+      id: "reduction",
+      label: c.reduction.tab,
+      node: (
+        <SweepChart
+          t={t}
+          f={f}
+          sweep={sweep}
+          metric="upstream_reduction"
+          modes={["B1", "B5", "B2"]}
+          copy={{ title: copy.title, desc: copy.desc, x: copy.x, y: t.sensitivity.y }}
+          xFormat={xFormat}
+          yTick={(v) => f.pct(v, 0)}
+          text={(s) => pctCi(f, s)}
+          bound
+          fillTo="B5"
+        />
+      ),
+    },
+    {
+      id: "pit",
+      label: c.pit.tab,
+      node: (
+        <SweepChart
+          t={t}
+          f={f}
+          sweep={sweep}
+          metric="pit_aggregation_ratio"
+          modes={["B2"]}
+          copy={{ title: c.pit.title, desc: c.pit.desc, x: copy.x, y: c.pit.y }}
+          xFormat={xFormat}
+          yTick={(v) => f.pct(v, 0)}
+          text={(s) => pctCi(f, s)}
+        />
+      ),
+    },
+    {
+      id: "dup",
+      label: c.dup.tab,
+      node: (
+        <SweepChart
+          t={t}
+          f={f}
+          sweep={sweep}
+          metric="gateway_inflight_duplicates"
+          modes={["B5"]}
+          copy={{ title: c.dup.title, desc: c.dup.desc, x: copy.x, y: c.dup.y }}
+          xFormat={xFormat}
+          yTick={(v) => f.num(v, Number.isInteger(v) ? 0 : 1)}
+          text={dup}
+        />
+      ),
+    },
+  ];
+  const at = (metric: string, mode: EvalModeId, i: number) => sweep.metrics[metric]?.[mode]?.[i];
+  return (
+    <InView>
+      <h3 className="r-figure-title">{copy.title}</h3>
+      <ChartTabs label={c.tabs} panels={panels} />
+      <figcaption>{caption}</figcaption>
+      <Provenance t={t} kind="simulation" runs={[sweep.run]} seeds={sweep.seeds} />
+      <ValueTable
+        t={t}
+        caption={`${copy.title}. ${t.chart.meanCi}`}
+        head={[
+          copy.x,
+          ...(["B1", "B5", "B2"] as EvalModeId[]).map((m) => modeHead(t, m)),
+          t.modes.bound,
+          c.columns.vsB5,
+          c.columns.pit,
+          c.columns.dup,
+        ]}
+        rows={sweep.values.map((v, i) => [
+          xFormat(v),
+          ...(["B1", "B5", "B2"] as EvalModeId[]).map((m) => pctCi(f, at("upstream_reduction", m, i))),
+          f.pct(at("oracle_reduction", "B0", i)?.mean ?? Number.NaN),
+          pctCi(f, at("upstream_reduction_vs_b5", "B2", i)),
+          pctCi(f, at("pit_aggregation_ratio", "B2", i)),
+          dup(at("gateway_inflight_duplicates", "B5", i)),
         ])}
       />
     </InView>

@@ -484,6 +484,10 @@
   stroke-dasharray: 7 6;
   stroke-linecap: butt;
 }
+/* Dash-dot: the third stroke of one colour (B5 beside B0 and B1). */
+.r-line.r-dash.r-dash-long {
+  stroke-dasharray: 12 4 2.5 4;
+}
 .r-line.r-ref {
   stroke-width: 1.5;
   stroke-dasharray: 0.1 5;
