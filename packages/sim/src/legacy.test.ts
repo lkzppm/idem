@@ -33,7 +33,9 @@ describe("legacy configurations run unchanged (ADR-027)", () => {
   it.skipIf(expected === undefined)(
     `every pinned case matches the pre-change run on ${process.platform}`,
     async () => {
-      expect(await pinnedFingerprints()).toEqual(expected);
+      // Runs added later (B5 in the sweeps, the H5/H6 sweeps) were not recorded and are not
+      // compared; a recorded run that is no longer produced makes the objects differ.
+      expect(await pinnedFingerprints(new Set(Object.keys(expected ?? {})))).toEqual(expected);
     },
     180_000,
   );

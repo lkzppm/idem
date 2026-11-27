@@ -1,6 +1,6 @@
 // End to end over a real in-process NDN forwarder (@ndn/fw): Interest → Data and back.
 // @ndn/fw has no Interest aggregation and no Content Store; those are NFD's in Mini-NDN (spec 05 E4).
-import { jcs, keyPairFromSeed, Producer, signData, TrustStore, utf8 } from "@idem/core";
+import { jcs, keyPairFromSeed, Producer, signData, TrustStore, utf8, VirtualClock } from "@idem/core";
 import { consume, produce } from "@ndn/endpoint";
 import { Forwarder, FwPacket } from "@ndn/fw";
 import { Name, Data as NdnData, Interest as NdnInterest } from "@ndn/packet";
@@ -332,5 +332,30 @@ describe("handshake over a lossy path", () => {
     const r = await lossy.init();
     expect(r.tools.length).toBeGreaterThan(0);
     expect(link.dropped()).toBe(1);
+  });
+});
+
+describe("signed lifetime on the native binding", () => {
+  it("MUST fail closed with EXPIRED on a verified Data outside its lifetime: no plain call on NDN [P-8.7]", async () => {
+    const n = await setupNetwork();
+    close = () => n.served.close();
+    // The consumer's clock reads 10 min after the producer's: Data made "now" is expired here.
+    const ahead = new NdnConsumer({ producer: PRODUCER, fw: n.fw, clock: new VirtualClock(10 * 60_000) });
+    const out = await ahead.call("fetch_page", { url: "https://ex.com/life" });
+    expect(out.verify?.ok).toBe(true);
+    expect(out.error?.code).toBe("EXPIRED");
+    expect(out.error?.message).toMatch(/past its signed lifetime/);
+    expect(out.data).toBeUndefined();
+    expect(out.result.isError).toBe(true);
+  });
+
+  it("MUST fail closed with EXPIRED on Data dated beyond the tolerance in its future [P-8.6] [P-8.7]", async () => {
+    const n = await setupNetwork();
+    close = () => n.served.close();
+    await n.clock.runUntil(10 * 60_000); // the producer's clock moves on; this consumer's stays at 0
+    const behind = new NdnConsumer({ producer: PRODUCER, fw: n.fw, clock: new VirtualClock(0) });
+    const out = await behind.call("fetch_page", { url: "https://ex.com/future" });
+    expect(out.error?.code).toBe("EXPIRED");
+    expect(out.error?.message).toMatch(/future/);
   });
 });

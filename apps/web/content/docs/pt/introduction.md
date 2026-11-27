@@ -18,8 +18,8 @@ O IDEM (*Interest-Driven Exchange for Models*) é uma camada orientada a conteú
 Na revisão 2026-07-28 o MCP passou a ser sem estado: cada requisição é autocontida e o protocolo se comporta como uma API HTTP comum [MCP-CHANGELOG]. O modelo de comunicação continua sendo uma mensagem de um endereço para outro, e disso decorrem três lacunas.
 
 1. **Chamadas de ferramenta não são cacheáveis pelo protocolo.** O mecanismo de cache do MCP cobre as requisições de descoberta e de listagem e `resources/read`. `tools/call` fica de fora [MCP-CACHE].
-2. **Resultados não carregam integridade nem procedência.** O `cacheScope` do MCP é um rótulo. A especificação diz aos servidores que não dependam dele para controle de acesso [MCP-CACHE], e a documentação do SDK o chama de "a label, not a lock" [MCP-PY-CACHE]. Uma resposta servida por um intermediário não pode ser conferida por quem a recebe.
-3. **Enxames de agentes se repetem.** Quando vários subagentes trabalham na mesma tarefa, eles buscam as mesmas páginas e leem os mesmos arquivos. Uma medição publicada de um enxame de pesquisa mostrou que uma grande parte das buscas repetia outra já feita na mesma tarefa, quase sempre por um subagente *diferente* [ARCTICSWARM]. Um cache dentro de cada agente não enxerga essas repetições.
+2. **Resultados não carregam integridade nem prova de origem.** O `cacheScope` do MCP é um rótulo. A especificação diz aos servidores que não dependam dele para controle de acesso [MCP-CACHE], e a documentação do SDK o chama de "a label, not a lock" [MCP-PY-CACHE]. Uma resposta servida por um intermediário não pode ser conferida por quem a recebe.
+3. **Os agentes repetem uns aos outros, e um cache dentro de um agente não enxerga isso.** Existem duas medições. Em um enxame de pesquisa trabalhando em 120 perguntas, 32,6% das chamadas `web_fetch` e 43,1% das chamadas `pdf_read` pediram algo que já tinha sido pedido antes na mesma pergunta; as chamadas que repetiam o pedido de um subagente *diferente* foram 30,7% e 27,6% do total de chamadas de cada ferramenta. As pesquisas em texto livre não convergiram: 0,4% eram repetições [ARCTICSWARM]. Em traces de produção de um dia, 27% das consultas de busca distintas de uma aplicação se repetem e respondem por 67,3% das suas chamadas de busca [AGENTSYSBENCH]. Esse segundo número é recorrência entre sessões ao longo de 24 horas, e um cache com tempo de vida curto recolhe bem menos do que isso. [Casos de uso](/docs/use-cases#research-swarms) traz as duas medições por inteiro, com os seus limites.
 
 ## O que o IDEM faz a respeito {#approach}
 
@@ -39,6 +39,8 @@ Três coisas são próprias das chamadas de ferramenta e não existem no NDN cl�
 - **O produtor autoriza o cache.** As anotações de ferramenta do MCP, como `readOnlyHint`, são dicas não confiáveis. No IDEM uma ferramenta só é cacheável se o manifesto assinado do produtor disser que é.
 - **Os agentes atuais continuam funcionando.** A borda pode ser um endpoint MCP comum. Um agente que não sabe nada de IDEM se conecta a ela, e suas chamadas repetidas são nomeadas, agregadas e guardadas em cache no caminho.
 
+Nenhuma dessas peças é nova sozinha: outros trabalhos guardam em cache resultados de ferramenta, fundem chamadas idênticas ou assinam mensagens do MCP. O que o IDEM reivindica é a combinação, e [Trabalhos relacionados](/docs/related-work) diz de onde vem cada peça.
+
 ## Onde ele fica na pilha {#stack}
 
 O IDEM toma emprestado o *modelo* de uma arquitetura da camada de rede e o executa onde ficam os caches HTTP e as CDNs.
@@ -46,7 +48,7 @@ O IDEM toma emprestado o *modelo* de uma arquitetura da camada de rede e o execu
 | Binding | Camada | Pilha |
 |---|---|---|
 | Overlay HTTP (implementado) | overlay na camada de aplicação, como um cache HTTP ou uma CDN, mas com objetos nomeados e assinados | MCP / IDEM → HTTP → TLS → TCP/QUIC → IP |
-| NDN nativo (implementado; ainda não rodado no NFD) | os nomes são carregados pelo NDN, que substitui o IP na camada de rede | nomes IDEM → NDN → enlace / túneis UDP |
+| NDN nativo (implementado; rodado no NFD) | os nomes são carregados pelo NDN, que substitui o IP na camada de rede | nomes IDEM → NDN → enlace / túneis UDP |
 
 Neste projeto, "transporte" sempre quer dizer um transporte do MCP (stdio, Streamable HTTP), nunca a camada 4 do modelo OSI. O IDEM não promete segmentação, controle de fluxo nem controle de congestionamento: isso continua com o TCP e o QUIC (ADR-010).
 
@@ -65,7 +67,9 @@ Nestes casos ele deliberadamente não faz nada, e a chamada segue como MCP comum
 - resultados de ferramenta em várias idas e voltas (`input_required`), que o próprio MCP não guarda em cache;
 - argumentos que não validam contra o schema da ferramenta.
 
-O IDEM também não substitui o MCP. É uma camada por baixo e ao lado dele.
+O IDEM também não substitui o MCP. É uma camada por baixo e ao lado dele. Ele não guarda em cache o que um modelo escreve e não economiza tokens: atua abaixo do modelo, no caminho da chamada de ferramenta.
+
+[Casos de uso](/docs/use-cases) percorre oito cenários que existem hoje e diz, para cada um, o que se repete, onde o IDEM ficaria e o que ele não resolve. A lista completa dos casos em que ele serve mal está em [Onde o IDEM não se encaixa](/docs/use-cases#not-fit).
 
 ## O que existe hoje {#status}
 
@@ -75,19 +79,21 @@ O IDEM é um protótipo de pesquisa da disciplina EEL878 (Redes de Computadores 
 |---|---|
 | `@idem/core`: nomes, canonicalização, assinaturas, manifesto, motor do forwarder | implementado, testado contra as regras MUST do protocolo |
 | `@idem/gateway`: IDEM sobre HTTP (handler do produtor, forwarder, cliente que verifica) | implementado |
-| `@idem/mcp`: produtor e borda como endpoints MCP, verificação de resultados | implementado; o wrapper `withIdem(server)` está planejado |
+| `@idem/mcp`: produtor e borda como endpoints MCP, verificação de resultados, proxy-producer para servidores que não falam IDEM | implementado; o wrapper `withIdem(server)` está planejado |
 | `@idem/sim`: simulador determinístico sobre o motor real | implementado |
-| `@idem/ndn`: binding NDN nativo (NDNts) | implementado e testado sobre um forwarder NDN em processo; execuções no NFD do Mini-NDN pendentes |
+| `@idem/ndn`: binding NDN nativo (NDNts) | implementado; conferido contra forwarders NFD reais em Docker e comparado com o overlay sob perda de pacotes (experimento E4). O Mini-NDN em si não foi usado |
 | Experimentos | veja o método em [Avaliação](/docs/evaluation) e o que já foi medido em [Benchmarks](/benchmarks) |
 
 As hipóteses que o projeto testa são enunciadas antes de qualquer medição, e uma hipótese refutada com método correto é relatada como refutada.
 
 ## Como ler esta documentação {#map}
 
-- **[Conceitos](/docs/concepts)** explica as ideias em ordem, com figuras. Comece por aqui.
+- **[Casos de uso](/docs/use-cases)** mostra onde o IDEM se encaixa em sistemas que estão em uso hoje, e onde não.
+- **[Conceitos](/docs/concepts)** explica as ideias em ordem, com figuras. Comece por aqui para entender o mecanismo.
 - **[Arquitetura](/docs/architecture)** mostra os pacotes, o motor único do forwarder e os fluxos.
 - **[Protocolo](/docs/protocol)** é o texto normativo, vindo da especificação do repositório. Cada regra tem um id, como [P-2.1], que os testes citam.
 - **[Segurança](/docs/security)** percorre o modelo de ameaças e a regra por trás de cada defesa.
 - **[Referência da API](/docs/api)** lista o que cada pacote exporta.
 - **[Como usar o sandbox](/docs/sandbox)** diz o que você está vendo quando abre o [sandbox](/sandbox).
+- **[Trabalhos relacionados](/docs/related-work)** situa o IDEM entre os trabalhos em que ele se apoia e enuncia a única coisa que ele reivindica.
 - **[Avaliação](/docs/evaluation)** descreve os experimentos; **[Decisões](/docs/decisions)** e **[Referências](/docs/references)** registram por que as coisas são como são e em que se apoiam.

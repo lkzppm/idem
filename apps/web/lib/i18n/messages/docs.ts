@@ -12,7 +12,7 @@ export const docs = defineMessages(
       /** The browser tab of a docs page: `%s` is the page's title. */
       titleTemplate: "IDEM • %s",
       description:
-        "IDEM documentation: concepts, the normative v1 protocol, architecture, the API of the @idem packages, the sandbox guide and the evaluation method.",
+        "IDEM documentation: use cases, concepts, the normative v1 protocol, architecture, the API of the @idem packages, the sandbox guide, related work and the evaluation method.",
     },
     nav: {
       label: "Documentation",
@@ -30,6 +30,10 @@ export const docs = defineMessages(
       introduction: {
         title: "Introduction",
         lead: "IDEM turns a read-only tool call into a name and its result into signed data, so the same question is answered once and any node on the path can serve the answer.",
+      },
+      "use-cases": {
+        title: "Use cases",
+        lead: "Where IDEM fits in systems that run today: eight settings, what repeats in each, what the protocol adds and what it leaves unsolved.",
       },
       concepts: {
         title: "Concepts",
@@ -49,11 +53,15 @@ export const docs = defineMessages(
       },
       api: {
         title: "API reference",
-        lead: "The public surface of the four packages (core, gateway, mcp and sim), as the source exports it.",
+        lead: "The public surface of the five packages (core, gateway, mcp, sim and ndn), as the source exports it.",
       },
       sandbox: {
         title: "Using the sandbox",
         lead: "What the sandbox runs, what each control changes, and how to read the protocol state it shows.",
+      },
+      "related-work": {
+        title: "Related work",
+        lead: "The work IDEM builds on and the work next to it: what each one does, what it leaves open for tool calls, and the one combination IDEM claims.",
       },
       evaluation: {
         title: "Evaluation",
@@ -181,9 +189,9 @@ export const docs = defineMessages(
       },
       packages: {
         title:
-          "Package dependencies: gateway, sim and the planned ndn package depend on core; mcp depends on gateway and core; the web app uses mcp, gateway, sim and core.",
+          "Package dependencies: gateway, sim and ndn depend on core; mcp depends on gateway and core; the web app uses mcp, gateway, sim and core.",
         core: "Web APIs only: browser, Node, Vercel, simulator",
-        planned: "planned (M6)",
+        planned: "native NDN (NDNts)",
         mcp: "MCP binding",
         web: "site, sandbox, demo routes",
         sim: "simulator",
@@ -212,7 +220,7 @@ export const docs = defineMessages(
       title: "Docs",
       titleTemplate: "IDEM • %s",
       description:
-        "Documentação do IDEM: conceitos, o protocolo v1 normativo, arquitetura, a API dos pacotes @idem, o guia do sandbox e o método de avaliação.",
+        "Documentação do IDEM: casos de uso, conceitos, o protocolo v1 normativo, arquitetura, a API dos pacotes @idem, o guia do sandbox, trabalhos relacionados e o método de avaliação.",
     },
     nav: {
       label: "Documentação",
@@ -230,6 +238,10 @@ export const docs = defineMessages(
       introduction: {
         title: "Introdução",
         lead: "O IDEM transforma uma chamada de ferramenta somente leitura em um nome e o resultado em dado assinado: a mesma pergunta é respondida uma vez, e qualquer nó do caminho pode servir a resposta.",
+      },
+      "use-cases": {
+        title: "Casos de uso",
+        lead: "Onde o IDEM se encaixa em sistemas que já estão em uso: oito cenários, o que se repete em cada um, o que o protocolo acrescenta e o que ele deixa sem resolver.",
       },
       concepts: {
         title: "Conceitos",
@@ -249,11 +261,15 @@ export const docs = defineMessages(
       },
       api: {
         title: "Referência da API",
-        lead: "A superfície pública dos quatro pacotes (core, gateway, mcp e sim), como o código-fonte a exporta.",
+        lead: "A superfície pública dos cinco pacotes (core, gateway, mcp, sim e ndn), como o código-fonte a exporta.",
       },
       sandbox: {
         title: "Como usar o sandbox",
         lead: "O que o sandbox executa, o que cada controle muda e como ler o estado do protocolo que ele mostra.",
+      },
+      "related-work": {
+        title: "Trabalhos relacionados",
+        lead: "Os trabalhos em que o IDEM se apoia e os que estão ao lado dele: o que cada um faz, o que deixa em aberto para chamadas de ferramenta e a única combinação que o IDEM reivindica.",
       },
       evaluation: {
         title: "Avaliação",
@@ -378,9 +394,9 @@ export const docs = defineMessages(
       },
       packages: {
         title:
-          "Dependências dos pacotes: gateway, sim e o pacote ndn planejado dependem do core; mcp depende de gateway e core; o site usa mcp, gateway, sim e core.",
+          "Dependências dos pacotes: gateway, sim e ndn dependem do core; mcp depende de gateway e core; o site usa mcp, gateway, sim e core.",
         core: "só Web APIs: navegador, Node, Vercel, simulador",
-        planned: "planejado (M6)",
+        planned: "NDN nativo (NDNts)",
         mcp: "binding MCP",
         web: "site, sandbox, rotas de demo",
         sim: "simulador",

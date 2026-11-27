@@ -1,13 +1,17 @@
 import {
+  acceptData,
   buildInterest,
   type CallToolResult,
+  type Clock,
   cacheablePolicy,
+  clockTolerance,
   type Data,
   type IdemWireErrorCode,
   type Interest,
   isIdemError,
   type Manifest,
   producerPrefix,
+  RealClock,
   randomNonce,
   type ToolIdentity,
   type ToolInfo,
@@ -44,6 +48,10 @@ export interface NdnConsumerOptions {
    * Default `0`: one Interest per call. Loss on the native binding is recovered only this way.
    */
   retransmissions?: number;
+  /** Time source of the signed-lifetime check [P-8.7] and of key expiry. Default `RealClock`. */
+  clock?: Clock;
+  /** Clock tolerance of the signed-lifetime check [P-8.6]. Default `DEFAULT_CLOCK_TOLERANCE_MS`. */
+  clockToleranceMs?: number;
 }
 
 /** Outcome of {@link NdnConsumer.call}. */
@@ -84,12 +92,15 @@ function textOf(pkt: NdnData): string {
  * the overlay. A Data that fails verification fails the call closed [P-9.3]: `UNTRUSTED_KEY` when a
  * signing key is not the producer's trusted key, `BAD_SIGNATURE` otherwise, and `NOT_CACHEABLE` for
  * a validly signed `private` Data [P-9.4] (the plain-call retry of [P-5.5] needs the overlay,
- * ADR-026).
+ * ADR-026). A verified Data outside its signed lifetime fails the call closed with `EXPIRED` [P-8.7]:
+ * NFD's CS keeps a Data for its FreshnessPeriod from receipt and never looks at `producedAt`.
  */
 export class NdnConsumer {
   readonly trust: TrustStore;
   readonly producer: string;
   readonly #o: NdnConsumerOptions;
+  readonly #clock: Clock;
+  readonly #tolerance: number;
   #ready?: Promise<{ manifest: Manifest; tools: ToolInfo[] }>;
   readonly #policies = new Map<string, { policy: ToolPolicy; identity: ToolIdentity } | undefined>();
 
@@ -97,6 +108,8 @@ export class NdnConsumer {
     this.#o = opts;
     this.producer = opts.producer;
     this.trust = opts.trust ?? new TrustStore();
+    this.#clock = opts.clock ?? new RealClock();
+    this.#tolerance = clockTolerance(opts.clockToleranceMs);
   }
 
   /**
@@ -138,7 +151,7 @@ export class NdnConsumer {
       const mPkt = await this.#reserved(RESERVED.manifest);
       const manifest = JSON.parse(textOf(mPkt)) as Manifest;
       if (manifest.producer !== this.producer) throw new Error("manifest of another producer");
-      const v = await this.trust.addManifest(manifest);
+      const v = await this.trust.addManifest(manifest, { now: this.#clock.now() });
       if (!v.ok) throw new Error(`manifest rejected: ${v.reason}`);
       await this.#checkReserved(mPkt, manifest);
       const tPkt = await this.#reserved(RESERVED.tools);
@@ -235,7 +248,7 @@ export class NdnConsumer {
       };
     }
     const t0 = performance.now();
-    const verify = await verifyNdnData(answer, this.trust);
+    const verify = await verifyNdnData(answer, this.trust, { now: this.#clock.now() });
     const verifyMs = performance.now() - t0;
     if (!verify.ok || verify.data?.name !== interest.name) {
       // [P-9.3]: a key the trust store does not hold is UNTRUSTED_KEY, any other failure
@@ -254,6 +267,27 @@ export class NdnConsumer {
         verifyMs,
         result: errorResult(code, reason),
         error: { code, message: reason },
+      };
+    }
+    // The shared consumer decision on the IDEM Data inside the NDN packet: name, signature, signed
+    // lifetime and age, on this consumer's clock [P-5.5, P-8.7]. No plain call exists here: a
+    // refusal fails closed.
+    const accepted = await acceptData(verify.data, {
+      trust: this.trust,
+      now: this.#clock.now(),
+      name: interest.name,
+      mustBeFresh: interest.mustBeFresh,
+      ttlMs: this.#policies.get(tool)?.policy.ttlMs ?? Infinity,
+      toleranceMs: this.#tolerance,
+    });
+    if (!accepted.ok) {
+      const code: IdemWireErrorCode = accepted.code === "BAD_MANIFEST" ? "BAD_SIGNATURE" : accepted.code;
+      return {
+        ...base,
+        verify,
+        verifyMs,
+        result: errorResult(code, accepted.reason),
+        error: { code, message: accepted.reason },
       };
     }
     return { ...base, verify, verifyMs, data: verify.data, result: verify.data.content };

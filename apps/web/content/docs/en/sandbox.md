@@ -33,6 +33,8 @@ The edge and the producer are the deployed ones, so they stay as they are. Add a
 
 The edge is shared by everyone on the site. The **visitors** node stands for the others: their calls arrive from it as they happen, and the edge's card lists what the edge saw, yours marked *you*. When one of your calls is answered from the cache, or joins a pending Interest, the log and the card say whether another visitor's call filled it: that answer crossed the network once, for someone else. Only the tool, the first characters of the args digest and how the edge answered are shown, never arguments; private calls carry no digest.
 
+Besides the signature, the page checks the answer's signed lifetime against your browser's clock [P-8.7]. If that clock is ahead by more than the tool's TTL plus 60 seconds, or behind by more than 60 seconds, even a newly signed answer looks expired or dated in the future. The call is then sent again once without caches, and when the second answer fails the same check the call ends in `CLOCK_SKEW` and no content is shown. The remedy is to set the clock; nothing is wrong with the answer.
+
 > [!NOTE]
 > In the deployment the edge's Content Store lives in the memory of one function instance. If your request lands on a different instance, a call you expected to hit will miss. That is the deployment, not the protocol. The edge's card names the instance it heard from, and says so when your calls were answered by another one.
 
@@ -81,6 +83,8 @@ Its most useful view is the **comparison**: the same seeded workload runs once p
 | `mcp-direct` | goes straight to the producer. Nothing is cached |
 | `mcp-local-cache` | each agent remembers its own answers. A repeat by the same agent is local; a repeat by another agent goes to the producer |
 | `idem` | goes through the forwarders: aggregated in a PIT, answered from a CS, or forwarded |
+
+The evaluation has one more baseline, a shared cache at the gateway with no signatures (mode B5). The sandbox does not offer it: its method is in the [Evaluation](/docs/evaluation#modes) and its results are on the [benchmarks](/benchmarks) page.
 
 ### What the settings change {#controls}
 

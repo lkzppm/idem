@@ -58,7 +58,10 @@ Protocol §9.2 and ADR-026. The package wraps `@idem/core` (naming, `Producer`, 
 
 - [ ] Browser: connect the sandbox's `NdnConsumer` to NFD's WebSocket face (or to an in-page forwarder,
   see `experiments/ndn/yanfd-wasm/`); check Safari's mixed-content rules for `ws://localhost` from https
-- [ ] Runnable native producer and consumer (CLI) for Mini-NDN; star and tree topologies, netem
-- [ ] E4: overlay vs native under loss (spec 05); figures from `experiments/results/**` only
+- [ ] Runnable native producer and consumer (CLI) for Mini-NDN; star and tree topologies, netem. Mini-NDN itself was not used: E4 ran on the Docker bench (`experiments/ndn/bench`, star and tree, `tc netem`)
+- [x] E4: overlay vs native under loss (spec 05): full run `experiments/results/e4/20261118T141957Z-de2bcf73` (2026-11-18, 3 seeds)
+- [ ] E4 with at least 10 seeds (about 2.5 h of Docker)
+- [ ] RTT-based retransmission timer for `NdnConsumer` (today it re-expresses after a fixed InterestLifetime)
+- [x] `NdnConsumer` applies the signed lifetime and fails closed with `EXPIRED`, since a native-only consumer has no plain call to retry on [P-8.7] (`e2e.test.ts`, 2026-11-27)
 - [ ] Segmentation (`@ndn/segmented-object`) if any workload result exceeds 8800 bytes
 - [ ] The plain-call retry of [P-5.5] for a native consumer that also has an overlay path

@@ -2,12 +2,12 @@
   "experiment": "e2-agents",
   "kind": "sweep",
   "title": "E2 \u2014 upstream reduction vs. number of agents (W-syn)",
-  "description": "Sweep of the swarm size at the base workload. W-syn: every agent makes callsPerAgent calls to fetch_page with an exponential think time between them; a fraction `overlap` of the calls is drawn from a shared catalog by Zipf(alpha), the rest ask for documents no other call asks for. Same seeds at every point; reductions are paired by seed against B0 (and B1).",
+  "description": "Sweep of the swarm size at the base workload. W-syn: every agent makes callsPerAgent calls to fetch_page with an exponential think time between them; a fraction `overlap` of the calls is drawn from a shared catalog by Zipf(alpha), the rest ask for documents no other call asks for. Same seeds at every point; reductions are paired by seed against B0 (and B1). B5 is plain MCP with one shared exact-match cache at the edge keyed by the arguments as sent, as MCP gateways ship it (ADR-036); it is run on the same seeds.",
   "seeds": {
     "first": 1,
     "count": 30
   },
-  "modes": ["B0", "B1", "B2", "B3", "B4"],
+  "modes": ["B0", "B1", "B2", "B3", "B4", "B5"],
   "sweep": {
     "param": "agents",
     "values": [1, 2, 4, 8, 16, 32]

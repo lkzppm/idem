@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 
-export { type CallOutcome, IdemClient, type IdemClientOptions } from "./client";
+export { type CallError, type CallOutcome, IdemClient, type IdemClientOptions } from "./client";
 export { HttpUpstreamFace, RequestFace } from "./faces";
 export { createGateway, type Gateway, type GatewayOptions, type Upstream } from "./gateway";
 export { createProducerHandler, credentialOf, type ProducerHandlerOptions } from "./producer-handler";

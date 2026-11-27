@@ -73,7 +73,7 @@ interface Interest {
   lifetimeMs: number;    // padrão 10 000: quanto tempo quem pediu espera
   nonce: string;         // 64 bits aleatórios: distingue um laço de um pedido novo
   hopLimit: number;      // padrão 8, decrementado em cada forwarder
-  authContext?: string;  // só no primeiro salto, veja Escopo
+  authContext?: string;  // os remetentes não preenchem: a borda deriva o seu, veja Escopo
 }
 ```
 
@@ -192,7 +192,18 @@ Um Data que fica em um cache e depois é servido a outro não começa do zero. C
 ageMs + (now − receivedAt) < min(freshnessMs, ttlMs)
 ```
 
-`ageMs` é o único campo de um Data que não é assinado, porque cada salto precisa atualizá-lo. O limite com que ele é comparado, `freshnessMs`, é assinado, e `producedAt` também. A página de [Segurança](/docs/security#limits) diz o que decorre de uma idade não assinada.
+`ageMs` é o único campo de um Data que não é assinado, porque cada salto precisa atualizá-lo. Por isso, esta primeira parte do frescor, a idade contada salto a salto, só vale entre nós honestos: ela não pega um nó que declara uma idade menor do que a real.
+
+A segunda parte usa o que é assinado. Todo nó também compara o `producedAt` assinado com o seu próprio relógio. Um Data está fora do seu **tempo de vida assinado** quando qualquer uma das duas linhas vale [P-8.6]:
+
+```
+now − producedAt ≥ min(freshnessMs, ttlMs) + clockToleranceMs    (expirado)
+producedAt − now > clockToleranceMs                              (datado no futuro)
+```
+
+`clockToleranceMs` é uma opção local de cada nó, de 60 segundos por padrão. Ela cobre a diferença entre o relógio do nó e o do produtor, mais o tempo em trânsito. Um forwarder não guarda um Data que está fora do seu tempo de vida assinado, e responde `EXPIRED` a um Interest que pediu Data fresco. Um consumidor também recusa um Data assim, e pergunta de novo uma vez com uma chamada comum [P-8.7].
+
+As duas partes fazem trabalhos diferentes. A idade contada salto a salto não precisa de relógios acertados entre si, e é o que um cache honesto usa para parar de servir na hora. O tempo de vida assinado precisa de relógios que concordem dentro da tolerância, e limita o que um nó desonesto no caminho consegue fazer passar por fresco: nunca mais do que o frescor mais a tolerância. A página de [Segurança](/docs/security#limits) diz o que sobra dentro desse limite e o que um relógio errado causa.
 
 Erros nunca vão para o cache. Um resultado com `isError: true` é assinado com `freshnessMs = 0` [P-5.3], e timeouts e falhas upstream também não são guardados: não existe cache negativo na v1 [P-7.2].
 
@@ -205,7 +216,7 @@ Alguns resultados somente leitura são iguais para todo mundo (uma página públ
 - Data **`public`** pode ser guardado em qualquer Content Store e servido a qualquer um.
 - Data **`private`** só pode ser guardado no primeiro forwarder, a borda, e só em uma partição indexada pelo **contexto de autorização** do consumidor [P-8.3].
 
-O `authContext` é derivado na borda, a partir da credencial do consumidor, por uma função de mão única: um HMAC com um segredo que só a borda conhece [P-8.4]. Ele nunca é a própria credencial, nunca faz parte de um nome e não é repassado além do primeiro salto. A credencial segue até o produtor salto a salto, como um cabeçalho HTTP `Authorization`.
+O `authContext` é derivado na borda, a partir da credencial do consumidor, por uma função de mão única: um HMAC com um segredo que só a borda conhece [P-8.4]. Ele nunca é a própria credencial, nunca faz parte de um nome e não é repassado além do primeiro salto. Um valor que um remetente escreve no campo `authContext` de um Interest é ignorado em todas as faces: a borda sempre deriva o seu. A credencial segue até o produtor salto a salto, como um cabeçalho HTTP `Authorization`.
 
 O PIT segue a mesma partição. Os Interests de dois usuários para o mesmo nome privado compartilham o nome, mas não a entrada do PIT, então a resposta de um nunca é entregue ao outro enquanto os dois esperam. Um Interest privado sem contexto de autorização nunca é agregado e nunca é respondido por um cache.
 

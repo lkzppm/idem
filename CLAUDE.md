@@ -56,7 +56,7 @@ Thesis in one line: _if the question is the same, the answer is the same, and it
 | MCP on Vercel             | `mcp-handler` 2.x                                                      | serves 2026-07-28 natively                  |
 | Validation                | Zod 4.x                                                                | same major as the MCP SDK v2                |
 | Native NDN                | NDNts (`@ndn/*`)                                                       | TypeScript, runs in Node and browser        |
-| Emulation                 | Mini-NDN (Docker) + `tc netem`                                         | `experiments/` only                         |
+| Emulation                 | NFD in Docker (`experiments/ndn/`) + `tc netem`; Mini-NDN not used     | `experiments/` only                         |
 | Web                       | Next.js 16.4.x (>= 16.4.5, security patch) + React 19.2                | App Router                                  |
 | UI                        | Tailwind CSS 4.x, `@xyflow/react` for the topology view                |                                             |
 | Docs                      | In-house Markdown renderer (`apps/web/lib/markdown.tsx`)               | ADR-022; pages from `spec/` + `content/docs/` |
@@ -83,7 +83,7 @@ idem/
     ├── traces/               tool-call traces (JSONL)
     ├── configs/              experiment configs (JSON)
     ├── results/              run outputs (CSV + config + SHA), committed
-    ├── mininet/              Mini-NDN topologies and netem scripts
+    ├── ndn/                  NFD check, Docker bench for E4 (netem), YaNFD on WebAssembly (replaced mininet/)
     └── plots/                Python (uv) scripts that render the figures
 ```
 

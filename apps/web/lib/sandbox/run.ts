@@ -1,14 +1,17 @@
 import { type CsEntry, type Data, entryAge, type ForwarderEvent, type Scope } from "@idem/core";
 import {
+  type SimMode as AnySimMode,
   type AttackRecord,
   defaultConfig,
   type Metrics,
   type SimConfig,
-  type SimMode,
   Simulation,
 } from "@idem/sim";
 import { type Network, producerNodes } from "./network";
 import { type Camera, TopologyScene } from "./scene";
+
+/** The modes the sandbox runs; B5 (`mcp-gateway-cache`) is an evaluation baseline only. */
+type SimMode = Exclude<AnySimMode, "mcp-gateway-cache">;
 
 /** The protocols the editor can compare side by side. */
 export type CompareMode = Network["run"]["compare"][number];

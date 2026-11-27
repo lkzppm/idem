@@ -17,14 +17,15 @@ const read = (name: string): unknown => JSON.parse(readFileSync(join(CONFIGS, na
 const sweep = () => parseExperimentConfig(read("e2-agents.json")) as SweepConfig;
 
 describe("experiment configs", () => {
-  it("names the five modes of spec 05 §1", () => {
-    expect(EVAL_MODE_IDS).toEqual(["B0", "B1", "B2", "B3", "B4"]);
+  it("names the six modes of spec 05 §1", () => {
+    expect(EVAL_MODE_IDS).toEqual(["B0", "B1", "B2", "B3", "B4", "B5"]);
     expect(EVAL_MODE_IDS.map((m) => EVAL_MODES[m].name)).toEqual([
       "mcp-direct",
       "mcp-local-cache",
       "idem",
       "idem-tree",
       "idem-noverify",
+      "mcp-gateway-cache",
     ]);
   });
 
@@ -91,6 +92,12 @@ describe("experiment configs", () => {
     expect(applyParam(base, "csMaxBytes", 0).cs.maxBytes).toBe(0);
     expect(applyParam(base, "lossPct", 5).topology.lossPct).toBe(5);
     expect(applyParam(base, "thinkTimeMs", 0).workload.thinkTimeMs).toBe(0);
+    expect(applyParam(base, "burstSize", 4).workload.burst).toEqual({ size: 4, parallel: true });
+    expect(applyParam(base, "startSpreadMs", 0).workload.startSpreadMs).toBe(0);
+    expect(base.workload.burst).toBeUndefined();
+    expect(base.workload.startSpreadMs).toBeUndefined();
+    expect(() => applyParam(base, "burstSize", 0)).toThrow();
+    expect(() => applyParam(base, "startSpreadMs", -1)).toThrow();
     expect(base.workload.agents).toBe(8);
     expect(base.producer.ttlMs).toBe(60_000);
     expect(() => applyParam(base, "agents", 0)).toThrow();
@@ -101,7 +108,7 @@ describe("experiment configs", () => {
     );
   });
 
-  it("builds B0, B1, B2 and B4 on the star and B3 on the tree, with the same end-to-end delay", () => {
+  it("builds B0, B1, B2, B4 and B5 on the star and B3 on the tree, with the same end-to-end delay", () => {
     const { base } = sweep();
     const oneWay = (mode: (typeof EVAL_MODE_IDS)[number]) => {
       const { topology } = simConfigFor(base, mode);
@@ -119,7 +126,7 @@ describe("experiment configs", () => {
             (hop("regional", "producer") as number);
       return { forwarders: forwarders.length, total };
     };
-    for (const mode of ["B0", "B1", "B2", "B4"] as const)
+    for (const mode of ["B0", "B1", "B2", "B4", "B5"] as const)
       expect(oneWay(mode)).toEqual({ forwarders: 1, total: 45 });
     expect(oneWay("B3")).toEqual({ forwarders: 3, total: 45 });
   });
@@ -132,13 +139,39 @@ describe("experiment configs", () => {
       "idem",
       "idem",
       "idem-noverify",
+      "mcp-gateway-cache",
     ]);
     const cfg = simConfigFor(base, "B0");
+    expect(simConfigFor(base, "B5").producer.signPlainCalls).toBe(false);
+    expect(simConfigFor(base, "B5").processing).toBeUndefined();
     expect(cfg.producer.signPlainCalls).toBe(false);
     expect(cfg.producer.serviceTimeMs.mu).toBeCloseTo(Math.log(150));
     expect(cfg.processing).toBeUndefined();
     const costs = { sizesBytes: [1], canonicalizeUs: [1], nameUs: [1], signUs: [1], verifyUs: [1] };
     expect(simConfigFor(base, "B2", costs).processing).toBe(costs);
     expect(cfg.workload).toMatchObject({ kind: "synthetic", agents: 8, callsPerAgent: 20, overlap: 0.5 });
+    // A config without the W-code fields resolves to a workload without them (today's behaviour).
+    expect("burst" in cfg.workload || "startSpreadMs" in cfg.workload).toBe(false);
+  });
+
+  it("reads the W-code fields of a sweep base and rejects bad ones", () => {
+    const good = read("e2-agents.json") as { base: { workload: object } } & Record<string, unknown>;
+    const withWorkload = (w: Record<string, unknown>) => ({
+      ...good,
+      base: { ...good.base, workload: { ...good.base.workload, ...w } },
+    });
+    const cfg = parseExperimentConfig(
+      withWorkload({ burst: { size: 4, parallel: false }, startSpreadMs: 0 }),
+    ) as SweepConfig;
+    expect(cfg.base.workload.burst).toEqual({ size: 4, parallel: false });
+    expect(simConfigFor(cfg.base, "B2").workload).toMatchObject({
+      burst: { size: 4, parallel: false },
+      startSpreadMs: 0,
+    });
+    expect(() => parseExperimentConfig(withWorkload({ burst: { size: 0, parallel: true } }))).toThrow(
+      /burst.size/,
+    );
+    expect(() => parseExperimentConfig(withWorkload({ burst: { size: 2 } }))).toThrow(/burst.parallel/);
+    expect(() => parseExperimentConfig(withWorkload({ startSpreadMs: -5 }))).toThrow(/startSpreadMs/);
   });
 });

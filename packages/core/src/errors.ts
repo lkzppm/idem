@@ -4,6 +4,8 @@
 export type IdemWireErrorCode =
   | "DIGEST_MISMATCH"
   | "BAD_SIGNATURE"
+  /** Data outside its signed lifetime (either side) at a forwarder, for a fresh Interest [P-8.6]. */
+  | "EXPIRED"
   | "UNTRUSTED_KEY"
   | "NOT_CACHEABLE"
   | "TIMEOUT"
@@ -22,7 +24,12 @@ export type IdemLocalErrorCode =
   | "UNSUPPORTED_SCHEMA"
   | "BAD_POLICY"
   | "BAD_MANIFEST"
-  | "CRYPTO_UNSUPPORTED";
+  | "CRYPTO_UNSUPPORTED"
+  /**
+   * The consumer's verified plain-call retry is still outside its signed lifetime: this node's clock
+   * and the producer's disagree, or a party on the retry's path replays too [P-8.7].
+   */
+  | "CLOCK_SKEW";
 
 /** Every error code IDEM can raise. */
 export type IdemErrorCode = IdemWireErrorCode | IdemLocalErrorCode;

@@ -74,7 +74,14 @@ export function validateConfig(cfg: SimConfig): ResolvedProducer[] {
   const byName = new Map(producers.map((p) => [p.name, p]));
 
   const w = cfg.workload;
-  if (w.kind === "trace") {
+  if (w.kind === "synthetic") {
+    if (w.burst !== undefined) {
+      finite(w.burst.size, "workload.burst.size", { min: 1, int: true });
+      if (w.burst.parallel !== undefined && typeof w.burst.parallel !== "boolean")
+        throw new SimConfigError("workload.burst.parallel", "must be a boolean");
+    }
+    if (w.startSpreadMs !== undefined) finite(w.startSpreadMs, "workload.startSpreadMs", { min: 0 });
+  } else if (w.kind === "trace") {
     w.records.forEach((r, i) => {
       if (r.producer !== undefined && !byName.has(r.producer))
         throw new SimConfigError(`workload.records[${i}].producer`, `unknown producer "${r.producer}"`);

@@ -1,6 +1,14 @@
 "use client";
 
-import { argsDigestOf, type Data, type JsonValue, jcs, parseName, verifyData } from "@idem/core";
+import {
+  argsDigestOf,
+  type Data,
+  DEFAULT_CLOCK_TOLERANCE_MS,
+  type JsonValue,
+  jcs,
+  parseName,
+  verifyData,
+} from "@idem/core";
 import { type CallOutcome, IdemClient } from "@idem/gateway";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocale, useMessages } from "@/lib/i18n/client";
@@ -177,6 +185,19 @@ function pathOf(r: Row): Path | undefined {
   return "producer";
 }
 
+/** The protocol's clock tolerance [P-8.6], as the clock-skew notices say it. */
+const TOLERANCE = `${DEFAULT_CLOCK_TOLERANCE_MS / 1000} s`;
+
+/**
+ * Was the first answer of a retried call tampered with? A retry follows either a bad signature
+ * [P-5.5] or an answer outside its signed lifetime [P-8.7]; only the first is a tamper. The outcome
+ * does not say which, so a retry is drawn as tampered only when a forwarder reported `verify_fail`
+ * or the call came from the tamper attack's own client.
+ */
+function tamperedRetry(out: CallOutcome, fromAttack: boolean): boolean {
+  return out.retried && (fromAttack || out.trace.some((h) => h.events.some((e) => e.kind === "verify_fail")));
+}
+
 function resultText(out: CallOutcome | undefined): string {
   const c = out?.result?.content?.[0] as { text?: unknown } | undefined;
   return typeof c?.text === "string" ? c.text : out ? JSON.stringify(out.result).slice(0, 400) : "";
@@ -320,7 +341,14 @@ export function LiveMode() {
 
   /** Replay a returned trace on the canvas, starting at the edge. */
   const animate = useCallback(
-    (agent: string, out: CallOutcome | undefined, from: number, kind: "idem" | "call", failed = false) => {
+    (
+      agent: string,
+      out: CallOutcome | undefined,
+      from: number,
+      kind: "idem" | "call",
+      failed = false,
+      fromAttack = false,
+    ) => {
       let at = Math.max(performance.now(), from);
       const hop = (
         a: string,
@@ -355,7 +383,7 @@ export function LiveMode() {
         hop("edge", "producer", req, { label });
         flashAt("producer", "produce");
         hop("producer", "edge", res, { label });
-        hop("edge", agent, res, { label, tampered: out.retried });
+        hop("edge", agent, res, { label, tampered: tamperedRetry(out, fromAttack) });
       }
       if (out.retried) {
         flashAt(agent, "fail");
@@ -363,6 +391,8 @@ export function LiveMode() {
         hop("edge", "producer", "call");
         hop("producer", "edge", "result");
         hop("edge", agent, "result");
+        // The retry was refused too (CLOCK_SKEW, or a retry that is not genuine).
+        if (out.error) flashAt(agent, "fail");
       }
     },
     [scene],
@@ -446,7 +476,9 @@ export function LiveMode() {
           setTimeout(() => scene.flash(VISITORS, "cs"), HOP_MS);
           void t;
         }
-        animate(agent, out, started + HOP_MS, out.via === "idem" ? "idem" : "call");
+        // The tamper attack brings its own client; every other call uses the agent's.
+        const fromAttack = client !== clientMap.current.get(agentIndex);
+        animate(agent, out, started + HOP_MS, out.via === "idem" ? "idem" : "call", false, fromAttack);
         observe(done);
       } catch (e) {
         done = { ...done, thrown: e instanceof Error ? e.message : String(e) };
@@ -568,18 +600,22 @@ export function LiveMode() {
       }),
     });
     const r = await callOne(first, "fetch_page", { url: DEFAULT_ARG.fetch_page }, evil);
-    const ok = r.out?.retried === true && r.out.verify?.ok === true;
+    // CLOCK_SKEW keeps verify.ok true: the retry is genuine but outside its lifetime by this clock.
+    const ok = r.out?.retried === true && r.out.verify?.ok === true && !r.out.error;
+    const skew = r.out?.error?.code === "CLOCK_SKEW";
     report({
       id: `live-${r.id}`,
       title: tl.attack.tamper,
       ok,
       detail: ok
         ? tl.attackResult.tamperOk
-        : r.thrown
-          ? tl.attackResult.failed(r.thrown)
-          : tl.attackResult.unexpected(
-              `retried=${String(r.out?.retried)}, verify=${String(r.out?.verify?.ok)}`,
-            ),
+        : skew
+          ? tl.attackResult.tamperClock(TOLERANCE)
+          : r.thrown
+            ? tl.attackResult.failed(r.thrown)
+            : tl.attackResult.unexpected(
+                `retried=${String(r.out?.retried)}, verify=${String(r.out?.verify?.ok)}`,
+              ),
     });
   }, [origin, liveFetch, callOne, report, tl]);
 
@@ -856,7 +892,7 @@ export function LiveMode() {
         {sel ? <LiveInspector key={sel.id} row={sel} labels={tl} /> : <Empty>{tl.inspector.empty}</Empty>}
       </Slot>
       <Slot name="win:metrics">
-        <LiveMetrics rows={rows} labels={tl.metrics} />
+        <LiveMetrics rows={rows} labels={tl.metrics} skew={tl.clockSkew(TOLERANCE)} />
       </Slot>
       <Slot name="win:compare">
         <LiveCompare rows={rows} labels={tl.compare} />
@@ -1000,7 +1036,9 @@ function servedBy(r: Row, s: LiveStrings["served"]): { text: string; tone: strin
   if (r.thrown) return { text: s.network, tone: "text-fg" };
   const out = r.out;
   if (!out) return { text: s.inFlight, tone: "text-faint" };
-  if (out.error && !out.retried) return { text: out.error.code, tone: "text-fg" };
+  // A retried call can still end in an error: CLOCK_SKEW keeps verify.ok true, so check the error first.
+  if (out.error)
+    return { text: out.error.code === "CLOCK_SKEW" ? s.clockSkew : out.error.code, tone: "text-fg" };
   if (out.via === "call") return { text: out.retried ? s.retry : s.plain, tone: "text-muted" };
   const p = pathOf(r);
   let text = s.producer;
@@ -1314,7 +1352,7 @@ function LiveInspector({ row, labels }: { row: Row; labels: LiveStrings }) {
   );
 }
 
-function LiveMetrics({ rows, labels }: { rows: Row[]; labels: LiveStrings["metrics"] }) {
+function LiveMetrics({ rows, labels, skew }: { rows: Row[]; labels: LiveStrings["metrics"]; skew: string }) {
   const done = rows.filter((r) => r.out || r.thrown);
   const by = (p: Path) => done.filter((r) => pathOf(r) === p).length;
   const cs = by("cs");
@@ -1340,6 +1378,9 @@ function LiveMetrics({ rows, labels }: { rows: Row[]; labels: LiveStrings["metri
         <Stat label={labels.p95} value={fmtMs(q.p95)} />
       </div>
       {done.length > 0 && <p className="obs-win-foot text-fg">{labels.saved(saved, done.length)}</p>}
+      {done.some((r) => r.out?.error?.code === "CLOCK_SKEW") && (
+        <p className="obs-win-foot text-fg">{skew}</p>
+      )}
       <p className="obs-win-foot">{labels.note}</p>
     </div>
   );

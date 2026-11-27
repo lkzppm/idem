@@ -1,0 +1,50 @@
+{
+  "experiment": "e2-surface",
+  "kind": "sweep",
+  "title": "E2 \u2014 upstream calls vs. surface variation of the arguments (W-syn, H5)",
+  "description": "Sweep of the fraction of URLs written in an equivalent but different form (upper-case host, default port, reordered query, fragment) at the base workload. It isolates what producer-declared canonicalization adds over B5, the shared exact-match cache at the gateway keyed by the arguments as sent (ADR-036): B5 sees two spellings as two keys, IDEM's name sees one. At 0 every repeated call is spelled the same way, so B5 and B2 can differ only by in-flight aggregation (B5 sends identical calls that are in flight at the same time upstream; the PIT absorbs them). B1 keys on the canonical name, as in every sweep. Same seeds at every point; reductions are paired by seed against B0, B1 and B5.",
+  "seeds": {
+    "first": 1,
+    "count": 30
+  },
+  "modes": ["B0", "B1", "B5", "B2"],
+  "sweep": {
+    "param": "surfaceVariation",
+    "values": [0, 0.1, 0.3, 0.5, 1]
+  },
+  "base": {
+    "workload": {
+      "agents": 8,
+      "callsPerAgent": 20,
+      "catalogSize": 50,
+      "zipfAlpha": 0.8,
+      "overlap": 0.5,
+      "thinkTimeMs": 2000,
+      "surfaceVariation": 0.3,
+      "privateFraction": 0,
+      "sideEffectFraction": 0
+    },
+    "topology": {
+      "agentLinkMs": 5,
+      "producerLinkMs": 40,
+      "lossPct": 0,
+      "tree": {
+        "edges": 2,
+        "coreLinkMs": 10,
+        "producerLinkMs": 30
+      }
+    },
+    "producer": {
+      "serviceMedianMs": 150,
+      "serviceSigma": 0.5,
+      "ttlMs": 60000,
+      "pageBytesMedian": 6144
+    },
+    "cs": {
+      "maxBytes": 8388608,
+      "policy": "lru"
+    },
+    "interestLifetimeMs": 10000
+  },
+  "processing": "processing.json"
+}

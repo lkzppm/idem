@@ -19,7 +19,7 @@ done
 pnpm --silent sim -- calibrate --from e1-node --out experiments/configs/processing.json
 pnpm --silent exec biome format --write experiments/configs/processing.json >/dev/null # keep `pnpm lint` green
 
-for sweep in e2-agents e2-overlap e2-ttl e2-cs-size e2-think-time e2-mixed; do
+for sweep in e2-agents e2-overlap e2-ttl e2-cs-size e2-think-time e2-mixed e2-surface e2-code-burst e2-code-sync; do
   pnpm --silent sim -- --config "experiments/configs/$sweep.json" --quiet
 done
 pnpm --silent sim -- --config experiments/configs/e5-safety.json --quiet

@@ -40,6 +40,13 @@ export interface Metrics {
   lateServes: number;
   /** Largest `now − producedAt − min(freshnessMs, ttlMs)` among late serves, in ms (0 if none). */
   maxLateMs: number;
+  /** B5 only: calls answered from an edge's gateway cache (`mcp-gateway-cache`, ADR-036). */
+  gatewayCacheHits: number;
+  /**
+   * B5 only: cacheable calls that missed the gateway cache while an identical call was already
+   * upstream, so they went upstream too (no coalescing). What a PIT would have aggregated.
+   */
+  gatewayInflightDuplicates: number;
 }
 
 const KINDS: ForwarderEventKind[] = [
@@ -79,6 +86,8 @@ export class MetricsCollector {
   lateServes = 0;
   maxLateMs = 0;
   localCacheHits = 0;
+  gatewayCacheHits = 0;
+  gatewayInflightDuplicates = 0;
   staleServes = 0;
   retries = 0;
   consumerVerifyFailures = 0;
@@ -130,6 +139,16 @@ export class MetricsCollector {
     this.retries += Math.max(0, r.attempts - 1);
   }
 
+  /** A call answered from a gateway cache (B5). */
+  gatewayHit(): void {
+    this.gatewayCacheHits++;
+  }
+
+  /** A cacheable call that missed a gateway cache (B5); `inFlight`: an identical one was upstream. */
+  gatewayMiss(inFlight: boolean): void {
+    if (inFlight) this.gatewayInflightDuplicates++;
+  }
+
   consumerVerifyFail(): void {
     this.consumerVerifyFailures++;
   }
@@ -169,6 +188,8 @@ export class MetricsCollector {
       csEvictions: this.counts.cs_evict,
       lateServes: this.lateServes,
       maxLateMs: this.maxLateMs,
+      gatewayCacheHits: this.gatewayCacheHits,
+      gatewayInflightDuplicates: this.gatewayInflightDuplicates,
     };
   }
 }

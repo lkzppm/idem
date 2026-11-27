@@ -16,6 +16,7 @@ export const results = defineMessages(
       native: "Native NDN",
       verdicts: "Verdicts",
       redundancy: "Redundancy",
+      gateway: "Shared cache",
       latency: "Latency",
       sensitivity: "Sensitivity",
       cost: "Cost",
@@ -112,10 +113,10 @@ export const results = defineMessages(
     },
     hyp: {
       title: "The hypotheses",
-      question: "Do the four hypotheses the project stated before running anything hold?",
+      question: "Do the hypotheses the project stated before running the experiments that test them hold?",
       verdict: (o: { supported: number; partly: number; refuted: number; pending: number }) =>
         `${o.supported} supported, ${o.partly} partly supported, ${o.refuted} refuted and ${o.pending} not evaluated, by the rules written next to each.`,
-      lead: "The project stated four falsifiable hypotheses before any experiment ran. The verdicts are computed from the data, with the rule given next to each.",
+      lead: "The project stated four falsifiable hypotheses before any experiment ran, and two more, H5 and H6, with their rules, before the sweeps and attacks that test them ran. The verdicts are computed from the data, with the rule given next to each.",
       h1: {
         claim:
           "On swarm workloads with cross-agent overlap, IDEM reduces the calls reaching the producer compared with direct MCP and with a per-agent local cache.",
@@ -147,8 +148,8 @@ export const results = defineMessages(
         privateClean: (o: { trials: string; variants: number }) =>
           `Private results served to another context: 0 of ${o.trials} trials (${o.variants} variants).`,
         privateLeak: (o: { accepted: string; trials: string; variants: number; leaking: string }) =>
-          `Private results served to another context: ${o.accepted} of ${o.trials} trials (${o.variants} variants), all in ${o.leaking}, where the attacker already knows the victim's authContext.`,
-        rule: "Rule: zero accepted in both groups. Replaying expired Data is outside this hypothesis: it is a documented limit of v1 (ADR-025), measured under Safety.",
+          `Private results served to another context: ${o.accepted} of ${o.trials} trials (${o.variants} variants), in ${o.leaking}.`,
+        rule: "Rule: zero accepted in both groups. Replays of genuine Data belong to neither group: a replay outside the signed lifetime is a claim of its own [P-8.6, P-8.7] and a replay inside the clock tolerance a documented limit (ADR-034), both measured under Safety.",
       },
       h4: {
         claim:
@@ -156,6 +157,33 @@ export const results = defineMessages(
         ran: "E4 has run and is shown first on this page. This page encodes no rule for H4, so it states no verdict.",
         evidence:
           "Needs the network emulation (E4), which has not run. The E2 sweeps ran without loss, so nothing here speaks to recovery.",
+      },
+      h5: {
+        claim:
+          "Against a shared exact-match cache at the gateway with no signatures, no producer-declared canonicalization and no in-flight aggregation (B5): (a) IDEM sends fewer calls upstream when arguments vary in surface form or identical calls are in flight at the same time, and the same number when neither happens; (b) a result altered at the cache or on the path to it is accepted by B5's consumers and rejected by IDEM's.",
+        surface: (o: { above: number; points: number; top: string; vsB5: string; ci: string }) =>
+          `Surface variation: B2's reduction against B5 is above zero at ${o.above} of ${o.points} points; ${o.vsB5} (±${o.ci} points) with ${o.top} of the URLs in an equivalent form.`,
+        inflight: (o: { above: number; points: number; neither: number; neitherAgree: number }) =>
+          `Identical calls in flight, no surface variation: B5 sent duplicates upstream at ${o.points} points and B2's reduction against it is above zero at ${o.above} of them. ${o.neither === 0 ? "No point was free of duplicates, so the half of the rule about sending the same number was not exercised." : `At the ${o.neither} points with no duplicates, it is neither above nor below zero at ${o.neitherAgree}.`}`,
+        unclassified: (n: number) =>
+          `${n} ${n === 1 ? "point has" : "points have"} a positive mean of duplicates whose interval reaches zero; the rule names no expectation for ${n === 1 ? "it" : "them"}, so ${n === 1 ? "it is" : "they are"} not evaluated.`,
+        attacks: (o: { holding: number; pairs: number }) =>
+          `Altered results: in ${o.holding} of ${o.pairs} attack pairs the unsigned cache accepted the attack in at least one trial and IDEM in none (the table under Safety).`,
+        rule: "Rule (a): above zero at every surface variation above 0 and at every surface-0 point where B5 had duplicates in flight; neither above nor below zero where it had none. Rule (b): each baseline attack accepted at least once, its IDEM mirror never. H5 needs both.",
+      },
+      h6: {
+        claim:
+          "When agents issue their calls from code in bursts instead of one per model turn (W-code), the share of cacheable requests absorbed by PIT aggregation grows with the burst size and with how closely the agents' starts coincide, and IDEM's upstream reduction over B5 grows with it.",
+        trend: (o: { what: string; from: string; to: string; grows: boolean }) =>
+          `${o.what}: from ${o.from} to ${o.to}${o.grows ? "" : ", which does not meet the rule"}.`,
+        what: {
+          "e2-code-burst/pit_aggregation_ratio": "PIT aggregation as the burst grows",
+          "e2-code-burst/upstream_reduction_vs_b5": "Reduction against B5 as the burst grows",
+          "e2-code-sync/pit_aggregation_ratio": "PIT aggregation as the start window shrinks",
+          "e2-code-sync/upstream_reduction_vs_b5": "Reduction against B5 as the start window shrinks",
+        } as Record<string, string>,
+        rule: (o: { grows: number; all: number }) =>
+          `Rule: a metric grows when its two ends are apart (95% intervals that do not overlap) in the stated direction and no consecutive pair of points is apart the other way. ${o.grows} of ${o.all} grow; H6 needs all of them.`,
       },
     },
     native: {
@@ -253,6 +281,7 @@ export const results = defineMessages(
       B2: "IDEM",
       B3: "IDEM, two tiers",
       B4: "IDEM, no verify at forwarders",
+      B5: "shared gateway cache, unsigned",
       N2: "IDEM on native NDN",
       N3: "IDEM on native NDN, two tiers",
       bound: "perfect shared cache",
@@ -262,6 +291,7 @@ export const results = defineMessages(
         B2: "Agents → one edge forwarder (PIT and Content Store) → producer. Every hop and every agent verifies.",
         B3: "Agents → two edges → one regional forwarder → producer, with the same end-to-end delay as B2.",
         B4: "B2 with verification before caching switched off at the forwarder, only to isolate what it costs.",
+        B5: "Plain MCP with one response cache at the edge shared by all agents, as MCP gateways ship it: keyed by tool and the arguments as sent (key order aside), the manifest's TTL and the Content Store's byte budget. No signatures, no producer-declared canonicalization, no aggregation of identical calls in flight (ADR-036).",
         N2: "B2's star on native NDN: agents → one edge NFD → producer, Interests and signed Data over UDP faces, no HTTP.",
         N3: "B3's tree on native NDN: agents → two edge NFDs → one regional NFD → producer.",
       },
@@ -288,12 +318,12 @@ export const results = defineMessages(
     redundancy: {
       title: "Calls that never reach the producer",
       question: "How many tool calls does sharing keep from reaching the producer?",
-      verdict: (o: { agents: string; b2: string; ci: string; b1: string }) =>
-        `At ${o.agents} agents and overlap 0.5, IDEM sent ${o.b2} (±${o.ci} points) fewer calls to the producer than direct MCP; per-agent caches, ${o.b1}.`,
+      verdict: (o: { agents: string; b2: string; ci: string; b1: string; b5: string }) =>
+        `At ${o.agents} agents and overlap 0.5, IDEM sent ${o.b2} (±${o.ci} points) fewer calls to the producer than direct MCP; per-agent caches, ${o.b1}; the shared gateway cache, ${o.b5}.`,
       lead: "Upstream reduction is the share of tool calls that did not reach the producer, relative to direct MCP on the same workload and seed. The workload is synthetic (W-syn): every agent makes 20 calls with a think time between them, and a fraction of them, the overlap, is drawn from a catalog the whole swarm shares.",
       agents: {
         title: "Upstream reduction as the swarm grows",
-        desc: "Line chart of upstream reduction against direct MCP for 1 to 32 agents. The per-agent cache stays near 9 percent; IDEM grows with the swarm and follows the perfect shared cache.",
+        desc: "Line chart of upstream reduction against direct MCP as the number of agents grows, one line each for the per-agent cache, the shared gateway cache, IDEM and IDEM on two tiers, and the perfect shared cache as a dotted line.",
         x: "agents",
         y: "upstream reduction",
         caption:
@@ -302,22 +332,122 @@ export const results = defineMessages(
       },
       overlap: {
         title: "Upstream reduction as agents ask for more of the same",
-        desc: "Line chart of upstream reduction against direct MCP for overlap from 0 to 1 at 8 agents. With no overlap every mode is at zero; IDEM grows faster than the per-agent cache.",
+        desc: "Line chart of upstream reduction against direct MCP as the cross-agent overlap grows, one line each for the per-agent cache, the shared gateway cache, IDEM and IDEM on two tiers, and the perfect shared cache as a dotted line.",
         x: "cross-agent overlap",
         y: "upstream reduction",
         caption: "W-syn at 8 agents. Whiskers: 95% confidence interval.",
       },
       pit: (o: { base: string; shortest: string; think: string }) =>
-        `Nearly all of the reduction is the Content Store. PIT aggregation, two identical requests in flight at once, happened for at most ${o.base} of the Interests in the swarm sweep, and for ${o.shortest} at the shortest think time tested (${o.think}). This workload has no burst in which many agents ask for one new thing at the same instant, which is where aggregation would matter.`,
+        `Nearly all of the reduction is the Content Store. PIT aggregation, two identical requests in flight at once, happened for at most ${o.base} of the Interests in the swarm sweep, and for ${o.shortest} at the shortest think time tested (${o.think}). W-syn has no burst in which many agents ask for one new thing at the same instant, which is where aggregation would matter; the code-driven sweeps under Shared cache add those bursts.`,
       bytes: (o: { one: string; b1: string; base: string; calls: string }) =>
         `Bytes on the producer link fall less than calls do, because an Interest and its signed Data are larger than a plain call and its result. With one agent B2 saves ${o.one} of the bytes where B1 saves ${o.b1}; at the base point it saves ${o.base} of the bytes for ${o.calls} of the calls.`,
+      vsB5: (o: { agents: string; surface: string; gap: string }) =>
+        `Against the shared gateway cache (B5) at the same point, where ${o.surface} of the URLs are written in an equivalent form, ${o.gap}. What that difference is made of is taken apart under Shared cache.`,
       columns: {
         vsB0: "vs. B0",
         vsB1: "vs. B1",
+        vsB5: "vs. B5",
         bound: "bound",
         hit: "CS hit ratio",
         pit: "PIT aggregation",
         bytes: "bytes vs. B0",
+      },
+    },
+    gateway: {
+      title: "Against a shared gateway cache",
+      question:
+        "What does IDEM add over one shared, unsigned cache at the gateway, and where does it add nothing?",
+      lead: "B5 is plain MCP with one cache at the edge shared by every agent, keyed by tool and the arguments as sent, the way MCP gateways ship response caching (ADR-036). It has the same TTL and byte budget as IDEM's Content Store. What it lacks is names built from producer-declared canonical arguments, aggregation of identical calls in flight, and signatures. The three sweeps here take the first two apart; the signatures are under Safety.",
+      verdict: (o: {
+        zeroValue: string;
+        b5zero: string;
+        b2zero: string;
+        zero: string;
+        topValue: string;
+        top: string;
+        burstValue: string;
+        burst: string;
+      }) =>
+        `At surface variation ${o.zeroValue}, where B5 removed ${o.b5zero} of the calls against direct MCP and IDEM ${o.b2zero}, ${o.zero}; at ${o.topValue}, ${o.top}; with bursts of ${o.burstValue} calls sent at once, ${o.burst}.`,
+      gap: (o: { side: "above" | "below" | "none"; value: string; ci: string }) =>
+        o.side === "above"
+          ? `IDEM sent ${o.value} (±${o.ci} points) fewer calls upstream than B5`
+          : o.side === "below"
+            ? `IDEM sent ${o.value} (±${o.ci} points) more calls upstream than B5`
+            : `IDEM sent as many calls upstream as B5 within the 95% interval (${o.value} ± ${o.ci} points)`,
+      surface: {
+        title: "Upstream reduction as arguments vary in spelling",
+        desc: "Line chart of upstream reduction against direct MCP as a growing share of the URLs is written in an equivalent form, one line each for the per-agent cache, the shared gateway cache and IDEM, and the perfect shared cache as a dotted line.",
+        x: "URLs written in an equivalent form",
+        caption: (o: { agents: string; overlap: string }) =>
+          `W-syn at ${o.agents} agents, overlap ${o.overlap}. Whiskers: 95% confidence interval. The halftone area is what IDEM adds over the shared gateway cache.`,
+        reading: (o: {
+          zero: string;
+          b5zero: string;
+          b2zero: string;
+          bound: string;
+          gap: string;
+          top: string;
+          b5top: string;
+          b2top: string;
+          gapTop: string;
+        }) =>
+          `With every repeat spelled the same way (${o.zero}), the shared gateway cache removed ${o.b5zero} of the calls against direct MCP and IDEM ${o.b2zero}, against a bound of ${o.bound}. There the two can differ only by identical calls in flight at the same time: B2's reduction against B5 is ${o.gap}. B5 keys on the arguments as sent, so an equivalent spelling is a miss for it, while IDEM's producer-declared canonicalization gives it the same name. With ${o.top} of the URLs in an equivalent form, B5 removed ${o.b5top} and IDEM ${o.b2top}; against B5, ${o.gapTop}.`,
+      },
+      burst: {
+        title: "Upstream reduction as code sends calls in bursts",
+        desc: "Line chart of upstream reduction against direct MCP as the number of calls an agent's code sends at once per step grows, one line each for the per-agent cache, the shared gateway cache and IDEM, and the perfect shared cache as a dotted line.",
+        x: "calls sent at once per step",
+        caption: (o: { agents: string; calls: string; spread: string }) =>
+          `W-code: ${o.agents} agents × ${o.calls} calls, no surface variation, agents start within ${o.spread}. Whiskers: 95% confidence interval. The halftone area is what IDEM adds over the shared gateway cache.`,
+        reading: (o: {
+          one: string;
+          dupOne: string;
+          pitOne: string;
+          gapOne: string;
+          top: string;
+          dupTop: string;
+          pitTop: string;
+          gapTop: string;
+        }) =>
+          `With ${o.one} call per step, B5 sent ${o.dupOne} calls per run upstream while an identical one was already on its way there, IDEM's PIT absorbed ${o.pitOne} of the cacheable requests, and B2's reduction against B5 was ${o.gapOne}. With ${o.top} calls sent at once, B5 sent ${o.dupTop} such duplicates per run, the PIT absorbed ${o.pitTop}, and the reduction against B5 was ${o.gapTop}. A cache that does not coalesce sends each of these duplicates upstream; a PIT answers them with the call already in flight.`,
+      },
+      sync: {
+        title: "Upstream reduction as the agents start closer together",
+        desc: "Line chart of upstream reduction against direct MCP as the window in which the agents start shrinks, one line each for the per-agent cache, the shared gateway cache and IDEM, and the perfect shared cache as a dotted line.",
+        x: "window in which the agents start",
+        within: (d: string) => `within ${d}`,
+        instant: "at the same instant",
+        caption: (o: { agents: string; calls: string; burst: string }) =>
+          `W-code: ${o.agents} agents × ${o.calls} calls in bursts of ${o.burst} sent at once, no surface variation. Whiskers: 95% confidence interval. The halftone area is what IDEM adds over the shared gateway cache.`,
+        reading: (o: {
+          wide: string;
+          dupWide: string;
+          pitWide: string;
+          gapWide: string;
+          narrow: string;
+          dupNarrow: string;
+          pitNarrow: string;
+          gapNarrow: string;
+        }) =>
+          `When the agents start within ${o.wide}, B5 sent ${o.dupWide} duplicates per run upstream while an identical call was in flight, IDEM's PIT absorbed ${o.pitWide} of the cacheable requests, and B2's reduction against B5 was ${o.gapWide}. When they start ${o.narrow}, as sub-agents an orchestrator spawns together: ${o.dupNarrow} duplicates, ${o.pitNarrow} absorbed, and ${o.gapNarrow} against B5.`,
+      },
+      chart: {
+        tabs: "Metric",
+        reduction: { tab: "Upstream reduction" },
+        pit: {
+          tab: "Absorbed in flight (B2)",
+          title: "Requests the PIT absorbed",
+          desc: "Line chart of the share of cacheable requests at the edge that IDEM's PIT aggregated with an identical request already in flight, along the sweep.",
+          y: "PIT aggregation ratio",
+        },
+        dup: {
+          tab: "Duplicates upstream (B5)",
+          title: "Duplicates the gateway cache sent upstream",
+          desc: "Line chart of the calls per run that missed the shared gateway cache while an identical call was already upstream, and so went upstream too, along the sweep.",
+          y: "duplicates per run",
+        },
+        columns: { vsB5: "B2 vs. B5", pit: "PIT aggregation (B2)", dup: "duplicates per run (B5)" },
       },
     },
     latency: {
@@ -329,15 +459,15 @@ export const results = defineMessages(
         `Latency is what the agent observes per call on the virtual clock: ${o.agent} to the edge, ${o.producer} on to the producer, each way, and a log-normal service time with a median of ${o.service}. In the IDEM modes the clock is also charged for the CPU work measured in E1.`,
       cdf: {
         title: "Latency of every call",
-        desc: "Cumulative distribution of per-call latency for direct MCP, per-agent cache and IDEM. IDEM answers a share of the calls in about 10 milliseconds, then follows the same curve as the others.",
+        desc: "Cumulative distribution of per-call latency, one curve each for direct MCP, the per-agent cache, the shared gateway cache, IDEM and IDEM on two tiers. A cached call returns in a few milliseconds, so each caching mode starts with a step on the left.",
         x: "latency per call (ms)",
         y: "share of calls",
-        caption: (o: { agents: string; hit: string; local: string }) =>
-          `All calls at ${o.agents} agents, pooled over seeds, up to the 99th percentile. The step on the left is the share a cache answered: ${o.hit} at the edge for B2, ${o.local} locally for B1. A miss costs the same in every mode.`,
+        caption: (o: { agents: string; hit: string; local: string; gateway: string }) =>
+          `All calls at ${o.agents} agents, pooled over seeds, up to the 99th percentile. The step on the left is the share a cache answered: ${o.hit} at the edge for B2, ${o.gateway} at the gateway for B5, ${o.local} locally for B1. A miss costs the same in every mode, but in the IDEM modes it also pays the CPU charged below.`,
       },
       delta: {
         title: "Change of the median against direct MCP",
-        desc: "Line chart of the change in median latency against direct MCP, paired by seed, for 1 to 32 agents. The per-agent cache stays near minus 9 milliseconds; IDEM falls further as the swarm grows.",
+        desc: "Line chart of the change in median latency against direct MCP, paired by seed, as the number of agents grows, one line each for the per-agent cache, the shared gateway cache, IDEM and IDEM on two tiers.",
         x: "agents",
         y: "median − B0 (ms)",
         caption: "Per-run median latency minus the same seed's B0. Whiskers: 95% confidence interval.",
@@ -440,7 +570,7 @@ export const results = defineMessages(
       verdict: (o: { stopped: string; expected: string; findings: number; limits: number }) =>
         `${o.stopped} of ${o.expected} attack variants the protocol must stop were stopped in every trial; ${o.findings} open ${o.findings === 1 ? "finding" : "findings"}, ${o.limits} documented ${o.limits === 1 ? "limit" : "limits"} measured.`,
       lead: (o: { trials: string; variants: number }) =>
-        `${o.variants} attack variants, ${o.trials} trials each, against the real forwarder, producer, trust store and verifier of @idem/core on a virtual clock. Each trial builds a fresh world from its seed and is judged on ground truth: a variant counts as rejected only if no victim accepted forged, foreign or expired content and no cache kept any.`,
+        `${o.variants} attack variants, ${o.trials} trials each, against the real forwarder, producer, trust store and verifier of @idem/core on a virtual clock. Each trial builds a fresh world from its seed and is judged on ground truth: a variant counts as rejected only if no victim accepted forged, foreign or out-of-lifetime content and no cache kept any.`,
       findings: {
         title: (n: number) =>
           n === 1
@@ -449,10 +579,7 @@ export const results = defineMessages(
         lead: "The protocol claims to stop this. The engine did not. It is reported as found; nothing was changed in the engine to hide it.",
         every: (accepted: string, trials: string) => `accepted in ${accepted} of ${trials} trials`,
         none: "Every variant the protocol claims to stop was stopped in every trial.",
-        text: {
-          "private/authcontext-known":
-            "The core forwarder trusts an authContext that already sits in an Interest arriving on a consumer face, so an attacker who knows the victim's value reads the victim's partition. That value is an HMAC the edge derives and never sends to anyone, and the HTTP gateway drops the field from incoming Interests; the engine itself does not. Open: ADR-023, question Q7.",
-        } as Record<string, string>,
+        text: {} as Record<string, string>,
       },
       limits: {
         title: "Documented limits of v1",
@@ -460,10 +587,10 @@ export const results = defineMessages(
         every: (accepted: string, trials: string) => `accepted in ${accepted} of ${trials} trials`,
         leaked: (accepted: string, trials: string) => `inferred correctly in ${accepted} of ${trials} trials`,
         text: {
-          "replay/expired@upstream":
-            "Stale replay. A party on the producer link records a genuine Data and, after its freshness has run out, substitutes it for the producer's new answer. The signature is valid and nothing compares the signed producedAt with a clock, so the edge verifies it, caches it as fresh and serves it. An honest cache never serves expired Data (replay/expired-cache below), and a party off the path cannot inject any. ADR-025 states the limit and records the rule that would close it.",
-          "replay/expired@last-hop":
-            "The same replay on the agent's own link passes the consumer's verification: a signature says who produced the Data, not that it is still current (ADR-025).",
+          "replay/in-tolerance@upstream":
+            "Bounded staleness. A party on the producer link substitutes a genuine Data whose freshness has run out but which is still inside the clock tolerance. The signed lifetime [P-8.6] is freshness plus that tolerance, so the edge accepts it, by design: the tolerance is what lets nodes with clocks a little apart agree. The suite also checks the bound: a consumer asking once the copy is outside its lifetime gets a fresh answer. Older replays are refused (replay/expired@upstream). ADR-034.",
+          "replay/in-tolerance@last-hop":
+            "The same replay on the agent's own link, inside the tolerance, passes the consumer's check for the same reason; one older than freshness plus the tolerance is refused (replay/expired@last-hop). ADR-034.",
           "timing/cache-probe":
             "Timing. A fast answer reveals that someone asked for that public name before. Open question Q3 lists it as an accepted risk, with no defence in v1.",
         } as Record<string, string>,
@@ -481,7 +608,7 @@ export const results = defineMessages(
       attack: {
         tamper: "Tamper: Data changed in flight",
         forge: "Forge: a name that does not match its arguments",
-        replay: "Replay: a genuine Data shown again after it expired",
+        replay: "Replay: a genuine Data shown again late, or dated ahead of the clock",
         private: "Private: asking across authorization contexts",
         poison: "Poison: Data signed by a key outside the manifest",
         timing: "Timing: the side channel of open question Q3",
@@ -491,7 +618,11 @@ export const results = defineMessages(
         "agent link": "agent link",
         consumer: "consumer",
         "forwarder (malicious)": "malicious forwarder",
+        "regional forwarder (malicious)": "malicious regional forwarder",
         "none (honest path)": "nobody (honest path)",
+        "gateway cache (B5)": "the gateway's cache (B5)",
+        "producer link (B5)": "producer link (B5)",
+        "consumer (B5)": "consumer (B5)",
       } as Record<string, string>,
       what: {
         "tamper/content@upstream": "Rewrites the result text between the producer and the edge.",
@@ -508,8 +639,24 @@ export const results = defineMessages(
         "forge/args-swap@producer":
           "A forwarder that skips its check passes the mismatched Interest to the producer.",
         "replay/expired-cache": "Asks again after the cached copy expired; the edge must not serve it.",
-        "replay/expired@upstream": "Substitutes a recorded, expired Data for the producer's new answer.",
-        "replay/expired@last-hop": "Answers the victim's Interest with an expired Data it once fetched.",
+        "replay/expired@upstream":
+          "Substitutes a recorded Data, older than its freshness plus the clock tolerance, for the producer's new answer.",
+        "replay/expired@last-hop":
+          "Answers the victim's Interest with a Data it once fetched, older than its freshness plus the clock tolerance.",
+        "replay/in-tolerance@upstream":
+          "Substitutes a recorded Data past its freshness but inside the clock tolerance for the producer's new answer.",
+        "replay/in-tolerance@last-hop":
+          "Answers the victim's Interest with a Data past its freshness but inside the clock tolerance.",
+        "replay/understated-age@core":
+          "A malicious regional forwarder hands the edge an old Data with its ageMs set back to look fresh.",
+        "replay/future-dated@upstream":
+          "Offers a genuine Data whose signed producedAt lies beyond the clock tolerance in the future.",
+        "baseline/tamper-cache@edge":
+          "Rewrites a stored result in the gateway's cache; every later user of that call is served the altered text.",
+        "baseline/tamper@upstream":
+          "Rewrites the result between the producer and the gateway, which caches it and serves it to later users.",
+        "baseline/private-miskeyed@edge":
+          "Asks for the per-user tool right after another user's result was cached at the gateway.",
         "replay/unsolicited@consumer-face": "Pushes an old genuine Data into the edge from a consumer face.",
         "private/sequential": "Asks for the private name right after another user's result was cached.",
         "private/concurrent": "Asks for the private name while another user's Interest is pending.",
@@ -534,7 +681,26 @@ export const results = defineMessages(
           "knows the victim's authContext, a value the edge derives and never sends to anyone.",
         "poison/other-producer@upstream": "is itself a producer every node trusts, for its own names.",
         "timing/cache-probe": "can time its own requests.",
+        "replay/future-dated@upstream":
+          "holds a genuine Data the producer signed with a producedAt hours ahead (a producer clock glitch).",
+        "baseline/tamper-cache@edge":
+          "controls the gateway's cache store: a compromised, buggy or malicious gateway or cache backend.",
+        "baseline/tamper@upstream":
+          "controls the link between the gateway and the producer: no TLS on that hop, or a compromised hop on it.",
+        "baseline/private-miskeyed@edge":
+          "is a second user of a gateway whose operator listed the per-user tool as cacheable without a per-credential partition, keyed on tool and arguments (a misconfiguration).",
       } as Record<string, string>,
+      baseline: {
+        title: "The same attacks on the shared gateway cache (B5)",
+        lead: "Three attacks of the suite, run again against B5: plain MCP clients, the same producer answering as a plain MCP server, and the shared cache at the edge. Each row sits beside the IDEM variant it mirrors, with both counts from the same run.",
+        columns: { attack: "Attack on B5", b5: "Accepted by B5", idem: "The same attack on IDEM" },
+        pair: (o: { holding: number; pairs: number }) =>
+          `In ${o.holding} of ${o.pairs} pairs the unsigned cache accepted the attack in at least one trial and IDEM in none.`,
+        reading:
+          "This is the outcome to expect: a cache that keeps no signature has nothing to check a result against, and a cache keyed on tool and arguments has no notion of whose result it holds. The rows are not a finding about any product. They put a number on what the signature and the authorization partition buy against the same attack; they do not measure how often a gateway is compromised or misconfigured. A gateway that adds the caller's token to its key, as FastMCP does, would not leak the private result, and would share nothing between users either.",
+        accepted: (accepted: string, trials: string) => `${accepted} of ${trials} trials`,
+        missing: "not in this run",
+      },
     },
     method: {
       title: "Method",
@@ -575,17 +741,17 @@ export const results = defineMessages(
           `charged in the IDEM modes from the medians of ${n} E1 runs; the baselines are charged nothing`,
       },
       notRunTitle: "Not run",
-      notRun: [
-        "E3, real-agent traces: needs a budgeted LLM swarm. Until it runs, the workload is synthetic and no trace is replayed.",
-        "E4, network emulation: needs Docker and Mini-NDN. Hypothesis H4 waits for it.",
-        "E1 in a browser: the Playwright half of the microbenchmarks.",
-      ],
+      notRun: {
+        e3: "E3, real-agent traces: needs a budgeted LLM swarm. Until it runs, the workload is synthetic and no trace is replayed.",
+        e4: "E4, network emulation: needs Docker. Hypothesis H4 waits for it.",
+        browser: "E1 in a browser: the Playwright half of the microbenchmarks.",
+      },
       reproduceTitle: "Reproduce",
       reproduce:
         "One command reruns E1, E2 and E5 from a clean checkout and regenerates this page's data. The simulations are deterministic for their seeds; E1 depends on the machine.",
       runsTitle: "Runs behind this page",
       runsLead: (digest: string) =>
-        `The checkout is not a git repository yet, so each run records a SHA-256 digest of the package sources (tests excluded) in place of a commit. This page's data was exported at source digest ${digest}.`,
+        `Each run records the commit it ran at (with -dirty for local changes) and a SHA-256 digest of the package sources, tests excluded, so a run names its code even without git. This page's data was exported at source digest ${digest}.`,
       runs: {
         experiment: "Experiment",
         id: "Run id",
@@ -608,6 +774,7 @@ export const results = defineMessages(
       native: "NDN nativo",
       verdicts: "Veredictos",
       redundancy: "Redundância",
+      gateway: "Cache compartilhado",
       latency: "Latência",
       sensitivity: "Sensibilidade",
       cost: "Custo",
@@ -706,10 +873,11 @@ export const results = defineMessages(
     },
     hyp: {
       title: "As hipóteses",
-      question: "As quatro hipóteses que o projeto enunciou antes de executar qualquer coisa se sustentam?",
+      question:
+        "As hipóteses que o projeto enunciou antes de executar os experimentos que as testam se sustentam?",
       verdict: (o: { supported: number; partly: number; refuted: number; pending: number }) =>
         `${o.supported} sustentadas, ${o.partly} sustentadas em parte, ${o.refuted} refutadas e ${o.pending} não avaliadas, pelas regras escritas ao lado de cada uma.`,
-      lead: "O projeto enunciou quatro hipóteses falseáveis antes de qualquer experimento. Os veredictos são calculados a partir dos dados, com a regra ao lado de cada um.",
+      lead: "O projeto enunciou quatro hipóteses falseáveis antes de qualquer experimento, e mais duas, H5 e H6, com as suas regras, antes das varreduras e dos ataques que as testam. Os veredictos são calculados a partir dos dados, com a regra ao lado de cada um.",
       h1: {
         claim:
           "Em cargas de enxame com sobreposição entre agentes, o IDEM reduz as chamadas que chegam ao produtor em comparação com MCP direto e com um cache local por agente.",
@@ -741,8 +909,8 @@ export const results = defineMessages(
         privateClean: (o: { trials: string; variants: number }) =>
           `Resultados privados servidos a outro contexto: 0 de ${o.trials} tentativas (${o.variants} variantes).`,
         privateLeak: (o: { accepted: string; trials: string; variants: number; leaking: string }) =>
-          `Resultados privados servidos a outro contexto: ${o.accepted} de ${o.trials} tentativas (${o.variants} variantes), todas em ${o.leaking}, em que o atacante já conhece o authContext da vítima.`,
-        rule: "Regra: zero aceitos nos dois grupos. Repetir Data expirado está fora desta hipótese: é um limite documentado da v1 (ADR-025), medido em Segurança.",
+          `Resultados privados servidos a outro contexto: ${o.accepted} de ${o.trials} tentativas (${o.variants} variantes), em ${o.leaking}.`,
+        rule: "Regra: zero aceitos nos dois grupos. A repetição de Data genuíno não entra em nenhum dos dois: uma repetição fora do tempo de vida assinado é uma afirmação à parte [P-8.6, P-8.7] e uma repetição dentro da tolerância de relógio é um limite documentado (ADR-034), ambas medidas em Segurança.",
       },
       h4: {
         claim:
@@ -750,6 +918,33 @@ export const results = defineMessages(
         ran: "O E4 foi executado e aparece primeiro nesta página. Esta página não codifica regra para a H4, então não afirma veredicto.",
         evidence:
           "Depende da emulação de rede (E4), que não foi executada. As varreduras do E2 rodaram sem perda, então nada aqui fala de recuperação.",
+      },
+      h5: {
+        claim:
+          "Contra um cache compartilhado de correspondência exata no gateway, sem assinaturas, sem canonicalização declarada pelo produtor e sem agregação em trânsito (B5): (a) o IDEM envia menos chamadas ao produtor quando os argumentos variam na forma escrita ou quando chamadas idênticas estão em trânsito ao mesmo tempo, e o mesmo número quando nenhuma das duas coisas acontece; (b) um resultado alterado no cache ou no caminho até ele é aceito pelos consumidores do B5 e rejeitado pelos do IDEM.",
+        surface: (o: { above: number; points: number; top: string; vsB5: string; ci: string }) =>
+          `Variação de grafia: a redução do B2 contra o B5 fica acima de zero em ${o.above} de ${o.points} pontos; ${o.vsB5} (±${o.ci} pontos) com ${o.top} das URLs escritas em uma forma equivalente.`,
+        inflight: (o: { above: number; points: number; neither: number; neitherAgree: number }) =>
+          `Chamadas idênticas em trânsito, sem variação de grafia: o B5 enviou duplicatas ao produtor em ${o.points} pontos, e a redução do B2 contra ele fica acima de zero em ${o.above} deles. ${o.neither === 0 ? "Nenhum ponto ficou sem duplicatas, então a metade da regra sobre enviar o mesmo número não foi exercitada." : `Nos ${o.neither} pontos sem duplicatas, ela não fica nem acima nem abaixo de zero em ${o.neitherAgree}.`}`,
+        unclassified: (n: number) =>
+          `${n} ${n === 1 ? "ponto tem" : "pontos têm"} média positiva de duplicatas com intervalo que chega a zero; a regra não diz o que esperar ${n === 1 ? "dele, então ele não é avaliado" : "deles, então eles não são avaliados"}.`,
+        attacks: (o: { holding: number; pairs: number }) =>
+          `Resultados alterados: em ${o.holding} de ${o.pairs} pares de ataque o cache sem assinatura aceitou o ataque em pelo menos uma tentativa e o IDEM em nenhuma (a tabela em Segurança).`,
+        rule: "Regra (a): acima de zero em toda variação de grafia acima de 0 e em todo ponto sem variação em que o B5 teve duplicatas em trânsito; nem acima nem abaixo de zero onde não teve nenhuma. Regra (b): cada ataque de linha de base aceito pelo menos uma vez, o seu espelho no IDEM nunca. A H5 precisa das duas.",
+      },
+      h6: {
+        claim:
+          "Quando os agentes emitem as chamadas a partir de código, em rajadas, em vez de uma por turno do modelo (W-code), a parcela das requisições cacheáveis absorvida pela agregação na PIT cresce com o tamanho da rajada e com o quanto os inícios dos agentes coincidem, e a redução do IDEM sobre o B5 cresce junto.",
+        trend: (o: { what: string; from: string; to: string; grows: boolean }) =>
+          `${o.what}: de ${o.from} para ${o.to}${o.grows ? "" : ", o que não atende à regra"}.`,
+        what: {
+          "e2-code-burst/pit_aggregation_ratio": "Agregação na PIT conforme a rajada cresce",
+          "e2-code-burst/upstream_reduction_vs_b5": "Redução contra o B5 conforme a rajada cresce",
+          "e2-code-sync/pit_aggregation_ratio": "Agregação na PIT conforme a janela de início encolhe",
+          "e2-code-sync/upstream_reduction_vs_b5": "Redução contra o B5 conforme a janela de início encolhe",
+        } as Record<string, string>,
+        rule: (o: { grows: number; all: number }) =>
+          `Regra: uma métrica cresce quando os seus dois extremos estão separados (intervalos de 95% que não se sobrepõem) no sentido indicado e nenhum par de pontos consecutivos está separado no sentido oposto. ${o.grows} de ${o.all} crescem; a H6 precisa de todas.`,
       },
     },
     native: {
@@ -848,6 +1043,7 @@ export const results = defineMessages(
       B2: "IDEM",
       B3: "IDEM, dois níveis",
       B4: "IDEM, sem verificar nos forwarders",
+      B5: "cache compartilhado no gateway, sem assinatura",
       N2: "IDEM em NDN nativo",
       N3: "IDEM em NDN nativo, dois níveis",
       bound: "cache compartilhado perfeito",
@@ -857,6 +1053,7 @@ export const results = defineMessages(
         B2: "Agentes → um forwarder de borda (PIT e Content Store) → produtor. Cada salto e cada agente verifica.",
         B3: "Agentes → duas bordas → um forwarder regional → produtor, com o mesmo atraso fim a fim do B2.",
         B4: "B2 com a verificação antes do cache desligada no forwarder, só para isolar o que ela custa.",
+        B5: "MCP comum com um cache de respostas na borda compartilhado por todos os agentes, como os gateways MCP o oferecem: chave pela ferramenta e pelos argumentos como enviados (fora a ordem das chaves), o TTL do manifesto e o orçamento em bytes do Content Store. Sem assinaturas, sem canonicalização declarada pelo produtor, sem agregação de chamadas idênticas em trânsito (ADR-036).",
         N2: "A estrela do B2 em NDN nativo: agentes → um NFD de borda → produtor, Interests e Data assinados sobre faces UDP, sem HTTP.",
         N3: "A árvore do B3 em NDN nativo: agentes → dois NFDs de borda → um NFD regional → produtor.",
       },
@@ -883,12 +1080,12 @@ export const results = defineMessages(
     redundancy: {
       title: "Chamadas que nunca chegam ao produtor",
       question: "Quantas chamadas de ferramenta o compartilhamento impede de chegar ao produtor?",
-      verdict: (o: { agents: string; b2: string; ci: string; b1: string }) =>
-        `Com ${o.agents} agentes e sobreposição 0,5, o IDEM enviou ${o.b2} (±${o.ci} pontos) menos chamadas ao produtor do que o MCP direto; os caches por agente, ${o.b1}.`,
+      verdict: (o: { agents: string; b2: string; ci: string; b1: string; b5: string }) =>
+        `Com ${o.agents} agentes e sobreposição 0,5, o IDEM enviou ${o.b2} (±${o.ci} pontos) menos chamadas ao produtor do que o MCP direto; os caches por agente, ${o.b1}; o cache compartilhado no gateway, ${o.b5}.`,
       lead: "A redução a montante é a parcela das chamadas de ferramenta que não chegou ao produtor, em relação ao MCP direto na mesma carga e semente. A carga é sintética (W-syn): cada agente faz 20 chamadas com um tempo de reflexão entre elas, e uma fração delas, a sobreposição, é sorteada de um catálogo que o enxame inteiro compartilha.",
       agents: {
         title: "Redução a montante conforme o enxame cresce",
-        desc: "Gráfico de linhas da redução a montante contra MCP direto para 1 a 32 agentes. O cache por agente fica perto de 9 por cento; o IDEM cresce com o enxame e acompanha o cache compartilhado perfeito.",
+        desc: "Gráfico de linhas da redução a montante contra MCP direto conforme o número de agentes cresce, uma linha para o cache por agente, o cache compartilhado no gateway, o IDEM e o IDEM em dois níveis, e o cache compartilhado perfeito como linha pontilhada.",
         x: "agentes",
         y: "redução a montante",
         caption:
@@ -897,22 +1094,122 @@ export const results = defineMessages(
       },
       overlap: {
         title: "Redução a montante conforme os agentes pedem mais do mesmo",
-        desc: "Gráfico de linhas da redução a montante contra MCP direto para sobreposição de 0 a 1 com 8 agentes. Sem sobreposição todos os modos ficam em zero; o IDEM cresce mais rápido que o cache por agente.",
+        desc: "Gráfico de linhas da redução a montante contra MCP direto conforme a sobreposição entre agentes cresce, uma linha para o cache por agente, o cache compartilhado no gateway, o IDEM e o IDEM em dois níveis, e o cache compartilhado perfeito como linha pontilhada.",
         x: "sobreposição entre agentes",
         y: "redução a montante",
         caption: "W-syn com 8 agentes. Hastes: intervalo de confiança de 95%.",
       },
       pit: (o: { base: string; shortest: string; think: string }) =>
-        `Quase toda a redução vem do Content Store. A agregação na PIT, dois pedidos idênticos em trânsito ao mesmo tempo, ocorreu em no máximo ${o.base} dos Interests na varredura do enxame, e em ${o.shortest} no menor tempo de reflexão testado (${o.think}). Esta carga não tem uma rajada em que muitos agentes pedem a mesma coisa nova no mesmo instante, que é onde a agregação pesaria.`,
+        `Quase toda a redução vem do Content Store. A agregação na PIT, dois pedidos idênticos em trânsito ao mesmo tempo, ocorreu em no máximo ${o.base} dos Interests na varredura do enxame, e em ${o.shortest} no menor tempo de reflexão testado (${o.think}). A W-syn não tem uma rajada em que muitos agentes pedem a mesma coisa nova no mesmo instante, que é onde a agregação pesaria; as varreduras de chamadas feitas por código, em Cache compartilhado, acrescentam essas rajadas.`,
       bytes: (o: { one: string; b1: string; base: string; calls: string }) =>
         `Os bytes no enlace do produtor caem menos do que as chamadas, porque um Interest e o seu Data assinado são maiores que uma chamada comum e o seu resultado. Com um agente, o B2 economiza ${o.one} dos bytes onde o B1 economiza ${o.b1}; no ponto base, economiza ${o.base} dos bytes para ${o.calls} das chamadas.`,
+      vsB5: (o: { agents: string; surface: string; gap: string }) =>
+        `Contra o cache compartilhado no gateway (B5) no mesmo ponto, em que ${o.surface} das URLs estão escritas em uma forma equivalente, ${o.gap}. Do que essa diferença é feita é separado em Cache compartilhado.`,
       columns: {
         vsB0: "vs. B0",
         vsB1: "vs. B1",
+        vsB5: "vs. B5",
         bound: "limite",
         hit: "taxa de acerto no CS",
         pit: "agregação na PIT",
         bytes: "bytes vs. B0",
+      },
+    },
+    gateway: {
+      title: "Contra um cache compartilhado no gateway",
+      question:
+        "O que o IDEM acrescenta a um cache compartilhado e sem assinatura no gateway, e onde não acrescenta nada?",
+      lead: "O B5 é MCP comum com um cache na borda compartilhado por todos os agentes, com a ferramenta e os argumentos como enviados por chave, do jeito que os gateways MCP oferecem cache de respostas (ADR-036). Ele tem o mesmo TTL e o mesmo orçamento em bytes do Content Store do IDEM. O que lhe falta são nomes feitos de argumentos canônicos declarados pelo produtor, a agregação de chamadas idênticas em trânsito e as assinaturas. As três varreduras daqui separam as duas primeiras coisas; as assinaturas estão em Segurança.",
+      verdict: (o: {
+        zeroValue: string;
+        b5zero: string;
+        b2zero: string;
+        zero: string;
+        topValue: string;
+        top: string;
+        burstValue: string;
+        burst: string;
+      }) =>
+        `Com variação de grafia de ${o.zeroValue}, em que o B5 eliminou ${o.b5zero} das chamadas em relação ao MCP direto e o IDEM ${o.b2zero}, ${o.zero}; com ${o.topValue}, ${o.top}; com rajadas de ${o.burstValue} chamadas enviadas de uma vez, ${o.burst}.`,
+      gap: (o: { side: "above" | "below" | "none"; value: string; ci: string }) =>
+        o.side === "above"
+          ? `o IDEM enviou ${o.value} (±${o.ci} pontos) menos chamadas ao produtor do que o B5`
+          : o.side === "below"
+            ? `o IDEM enviou ${o.value} (±${o.ci} pontos) mais chamadas ao produtor do que o B5`
+            : `o IDEM enviou tantas chamadas ao produtor quanto o B5, dentro do intervalo de 95% (${o.value} ± ${o.ci} pontos)`,
+      surface: {
+        title: "Redução a montante conforme os argumentos variam na grafia",
+        desc: "Gráfico de linhas da redução a montante contra MCP direto conforme cresce a parcela das URLs escritas em uma forma equivalente, uma linha para o cache por agente, o cache compartilhado no gateway e o IDEM, e o cache compartilhado perfeito como linha pontilhada.",
+        x: "URLs escritas em uma forma equivalente",
+        caption: (o: { agents: string; overlap: string }) =>
+          `W-syn com ${o.agents} agentes, sobreposição ${o.overlap}. Hastes: intervalo de confiança de 95%. A área em retícula é o que o IDEM acrescenta ao cache compartilhado no gateway.`,
+        reading: (o: {
+          zero: string;
+          b5zero: string;
+          b2zero: string;
+          bound: string;
+          gap: string;
+          top: string;
+          b5top: string;
+          b2top: string;
+          gapTop: string;
+        }) =>
+          `Com toda repetição escrita do mesmo jeito (${o.zero}), o cache compartilhado no gateway eliminou ${o.b5zero} das chamadas em relação ao MCP direto e o IDEM ${o.b2zero}, diante de um limite de ${o.bound}. Ali os dois só podem diferir por chamadas idênticas em trânsito ao mesmo tempo: a redução do B2 contra o B5 é ${o.gap}. O B5 usa os argumentos como enviados por chave, então uma grafia equivalente é uma falta para ele, enquanto a canonicalização declarada pelo produtor dá a ela o mesmo nome no IDEM. Com ${o.top} das URLs em uma forma equivalente, o B5 eliminou ${o.b5top} e o IDEM ${o.b2top}; contra o B5, ${o.gapTop}.`,
+      },
+      burst: {
+        title: "Redução a montante conforme o código envia chamadas em rajadas",
+        desc: "Gráfico de linhas da redução a montante contra MCP direto conforme cresce o número de chamadas que o código de um agente envia de uma vez por passo, uma linha para o cache por agente, o cache compartilhado no gateway e o IDEM, e o cache compartilhado perfeito como linha pontilhada.",
+        x: "chamadas enviadas de uma vez por passo",
+        caption: (o: { agents: string; calls: string; spread: string }) =>
+          `W-code: ${o.agents} agentes × ${o.calls} chamadas, sem variação de grafia, agentes começam dentro de ${o.spread}. Hastes: intervalo de confiança de 95%. A área em retícula é o que o IDEM acrescenta ao cache compartilhado no gateway.`,
+        reading: (o: {
+          one: string;
+          dupOne: string;
+          pitOne: string;
+          gapOne: string;
+          top: string;
+          dupTop: string;
+          pitTop: string;
+          gapTop: string;
+        }) =>
+          `Com ${o.one} chamada por passo, o B5 enviou ao produtor ${o.dupOne} chamadas por execução enquanto uma idêntica já estava a caminho de lá, a PIT do IDEM absorveu ${o.pitOne} das requisições cacheáveis e a redução do B2 contra o B5 foi de ${o.gapOne}. Com ${o.top} chamadas enviadas de uma vez, o B5 enviou ${o.dupTop} duplicatas dessas por execução, a PIT absorveu ${o.pitTop} e a redução contra o B5 foi de ${o.gapTop}. Um cache que não agrega envia cada uma dessas duplicatas ao produtor; uma PIT as responde com a chamada que já está em trânsito.`,
+      },
+      sync: {
+        title: "Redução a montante conforme os agentes começam mais juntos",
+        desc: "Gráfico de linhas da redução a montante contra MCP direto conforme encolhe a janela em que os agentes começam, uma linha para o cache por agente, o cache compartilhado no gateway e o IDEM, e o cache compartilhado perfeito como linha pontilhada.",
+        x: "janela em que os agentes começam",
+        within: (d: string) => `dentro de ${d}`,
+        instant: "no mesmo instante",
+        caption: (o: { agents: string; calls: string; burst: string }) =>
+          `W-code: ${o.agents} agentes × ${o.calls} chamadas em rajadas de ${o.burst} enviadas de uma vez, sem variação de grafia. Hastes: intervalo de confiança de 95%. A área em retícula é o que o IDEM acrescenta ao cache compartilhado no gateway.`,
+        reading: (o: {
+          wide: string;
+          dupWide: string;
+          pitWide: string;
+          gapWide: string;
+          narrow: string;
+          dupNarrow: string;
+          pitNarrow: string;
+          gapNarrow: string;
+        }) =>
+          `Quando os agentes começam dentro de ${o.wide}, o B5 enviou ao produtor ${o.dupWide} duplicatas por execução enquanto uma chamada idêntica estava em trânsito, a PIT do IDEM absorveu ${o.pitWide} das requisições cacheáveis e a redução do B2 contra o B5 foi de ${o.gapWide}. Quando começam ${o.narrow}, como subagentes que um orquestrador cria juntos: ${o.dupNarrow} duplicatas, ${o.pitNarrow} absorvidas e ${o.gapNarrow} contra o B5.`,
+      },
+      chart: {
+        tabs: "Métrica",
+        reduction: { tab: "Redução a montante" },
+        pit: {
+          tab: "Absorvidas em trânsito (B2)",
+          title: "Requisições que a PIT absorveu",
+          desc: "Gráfico de linhas da parcela das requisições cacheáveis na borda que a PIT do IDEM agregou a uma requisição idêntica já em trânsito, ao longo da varredura.",
+          y: "taxa de agregação na PIT",
+        },
+        dup: {
+          tab: "Duplicatas ao produtor (B5)",
+          title: "Duplicatas que o cache do gateway enviou ao produtor",
+          desc: "Gráfico de linhas das chamadas por execução que faltaram no cache compartilhado do gateway enquanto uma chamada idêntica já estava a caminho do produtor, e por isso foram também, ao longo da varredura.",
+          y: "duplicatas por execução",
+        },
+        columns: { vsB5: "B2 vs. B5", pit: "agregação na PIT (B2)", dup: "duplicatas por execução (B5)" },
       },
     },
     latency: {
@@ -924,15 +1221,15 @@ export const results = defineMessages(
         `Latência é o que o agente observa por chamada no relógio virtual: ${o.agent} até a borda, mais ${o.producer} até o produtor, em cada sentido, e um tempo de serviço log-normal com mediana de ${o.service}. Nos modos IDEM o relógio também é cobrado pelo trabalho de CPU medido no E1.`,
       cdf: {
         title: "Latência de cada chamada",
-        desc: "Distribuição acumulada da latência por chamada para MCP direto, cache por agente e IDEM. O IDEM responde uma parcela das chamadas em cerca de 10 milissegundos e depois segue a mesma curva dos demais.",
+        desc: "Distribuição acumulada da latência por chamada, uma curva para MCP direto, o cache por agente, o cache compartilhado no gateway, o IDEM e o IDEM em dois níveis. Uma chamada em cache volta em poucos milissegundos, então cada modo com cache começa com um degrau à esquerda.",
         x: "latência por chamada (ms)",
         y: "parcela das chamadas",
-        caption: (o: { agents: string; hit: string; local: string }) =>
-          `Todas as chamadas com ${o.agents} agentes, somadas entre sementes, até o percentil 99. O degrau à esquerda é a parcela que um cache respondeu: ${o.hit} na borda para o B2, ${o.local} localmente para o B1. Uma falta custa o mesmo em todos os modos.`,
+        caption: (o: { agents: string; hit: string; local: string; gateway: string }) =>
+          `Todas as chamadas com ${o.agents} agentes, somadas entre sementes, até o percentil 99. O degrau à esquerda é a parcela que um cache respondeu: ${o.hit} na borda para o B2, ${o.gateway} no gateway para o B5, ${o.local} localmente para o B1. Uma falta custa o mesmo em todos os modos, mas nos modos IDEM paga também a CPU cobrada abaixo.`,
       },
       delta: {
         title: "Variação da mediana em relação ao MCP direto",
-        desc: "Gráfico de linhas da variação da latência mediana contra MCP direto, pareada por semente, para 1 a 32 agentes. O cache por agente fica perto de menos 9 milissegundos; o IDEM cai mais conforme o enxame cresce.",
+        desc: "Gráfico de linhas da variação da latência mediana contra MCP direto, pareada por semente, conforme o número de agentes cresce, uma linha para o cache por agente, o cache compartilhado no gateway, o IDEM e o IDEM em dois níveis.",
         x: "agentes",
         y: "mediana − B0 (ms)",
         caption:
@@ -1036,7 +1333,7 @@ export const results = defineMessages(
       verdict: (o: { stopped: string; expected: string; findings: number; limits: number }) =>
         `${o.stopped} de ${o.expected} variantes de ataque que o protocolo deve barrar foram barradas em todas as tentativas; ${o.findings} ${o.findings === 1 ? "achado em aberto" : "achados em aberto"}, ${o.limits} ${o.limits === 1 ? "limite documentado medido" : "limites documentados medidos"}.`,
       lead: (o: { trials: string; variants: number }) =>
-        `${o.variants} variantes de ataque, ${o.trials} tentativas cada, contra o forwarder, o produtor, o trust store e o verificador reais de @idem/core em um relógio virtual. Cada tentativa constrói um mundo novo a partir da sua semente e é julgada pelo que de fato aconteceu: uma variante só conta como rejeitada se nenhuma vítima aceitou conteúdo forjado, alheio ou expirado e nenhum cache guardou algum.`,
+        `${o.variants} variantes de ataque, ${o.trials} tentativas cada, contra o forwarder, o produtor, o trust store e o verificador reais de @idem/core em um relógio virtual. Cada tentativa constrói um mundo novo a partir da sua semente e é julgada pelo que de fato aconteceu: uma variante só conta como rejeitada se nenhuma vítima aceitou conteúdo forjado, alheio ou fora do tempo de vida e nenhum cache guardou algum.`,
       findings: {
         title: (n: number) =>
           n === 1
@@ -1045,10 +1342,7 @@ export const results = defineMessages(
         lead: "O protocolo afirma barrar isto. O motor não barrou. Está relatado como encontrado; nada foi alterado no motor para escondê-lo.",
         every: (accepted: string, trials: string) => `aceita em ${accepted} de ${trials} tentativas`,
         none: "Toda variante que o protocolo afirma barrar foi barrada em todas as tentativas.",
-        text: {
-          "private/authcontext-known":
-            "O forwarder do núcleo confia em um authContext que já vem dentro de um Interest recebido em uma face de consumidor, então um atacante que conhece o valor da vítima lê a partição dela. Esse valor é um HMAC que a borda deriva e nunca envia a ninguém, e o gateway HTTP descarta o campo dos Interests que recebe; o motor em si não descarta. Em aberto: ADR-023, questão Q7.",
-        } as Record<string, string>,
+        text: {} as Record<string, string>,
       },
       limits: {
         title: "Limites documentados da v1",
@@ -1057,10 +1351,10 @@ export const results = defineMessages(
         leaked: (accepted: string, trials: string) =>
           `inferência correta em ${accepted} de ${trials} tentativas`,
         text: {
-          "replay/expired@upstream":
-            "Repetição de dado vencido. Alguém no enlace do produtor grava um Data genuíno e, depois que o frescor dele acabou, coloca-o no lugar da resposta nova do produtor. A assinatura é válida e nada compara o producedAt assinado com um relógio, então a borda o verifica, guarda como fresco e serve. Um cache honesto nunca serve Data expirado (replay/expired-cache, abaixo), e quem está fora do caminho não consegue injetar nenhum. O ADR-025 declara o limite e registra a regra que o fecharia.",
-          "replay/expired@last-hop":
-            "A mesma repetição no enlace do próprio agente passa pela verificação do consumidor: a assinatura diz quem produziu o Data, não que ele ainda é atual (ADR-025).",
+          "replay/in-tolerance@upstream":
+            "Desatualização limitada. Alguém no enlace do produtor coloca no lugar da resposta nova um Data genuíno cujo frescor acabou, mas que ainda está dentro da tolerância de relógio. O tempo de vida assinado [P-8.6] é o frescor mais essa tolerância, então a borda o aceita, por projeto: a tolerância é o que permite que nós com relógios um pouco diferentes concordem. A suíte também verifica o limite: um consumidor que pede quando a cópia já está fora do tempo de vida recebe uma resposta nova. Repetições mais antigas são recusadas (replay/expired@upstream). ADR-034.",
+          "replay/in-tolerance@last-hop":
+            "A mesma repetição no enlace do próprio agente, dentro da tolerância, passa pela checagem do consumidor pelo mesmo motivo; uma mais antiga que o frescor mais a tolerância é recusada (replay/expired@last-hop). ADR-034.",
           "timing/cache-probe":
             "Tempo. Uma resposta rápida revela que alguém já pediu aquele nome público. A questão em aberto Q3 lista isso como risco aceito, sem defesa na v1.",
         } as Record<string, string>,
@@ -1078,7 +1372,7 @@ export const results = defineMessages(
       attack: {
         tamper: "Adulteração: Data alterado em trânsito",
         forge: "Forja: um nome que não corresponde aos argumentos",
-        replay: "Repetição: um Data genuíno reapresentado depois de expirar",
+        replay: "Repetição: um Data genuíno reapresentado tarde, ou datado à frente do relógio",
         private: "Privado: pedidos entre contextos de autorização",
         poison: "Envenenamento: Data assinado por chave fora do manifesto",
         timing: "Tempo: o canal lateral da questão em aberto Q3",
@@ -1088,7 +1382,11 @@ export const results = defineMessages(
         "agent link": "enlace do agente",
         consumer: "consumidor",
         "forwarder (malicious)": "forwarder malicioso",
+        "regional forwarder (malicious)": "forwarder regional malicioso",
         "none (honest path)": "ninguém (caminho honesto)",
+        "gateway cache (B5)": "o cache do gateway (B5)",
+        "producer link (B5)": "enlace do produtor (B5)",
+        "consumer (B5)": "consumidor (B5)",
       } as Record<string, string>,
       what: {
         "tamper/content@upstream": "Reescreve o texto do resultado entre o produtor e a borda.",
@@ -1105,8 +1403,24 @@ export const results = defineMessages(
           "Um forwarder que pula a sua checagem repassa o Interest inconsistente ao produtor.",
         "replay/expired-cache":
           "Pede de novo depois que a cópia em cache expirou; a borda não pode servi-la.",
-        "replay/expired@upstream": "Coloca um Data gravado e expirado no lugar da resposta nova do produtor.",
-        "replay/expired@last-hop": "Responde ao Interest da vítima com um Data expirado que buscou antes.",
+        "replay/expired@upstream":
+          "Coloca no lugar da resposta nova do produtor um Data gravado, mais antigo que o seu frescor mais a tolerância de relógio.",
+        "replay/expired@last-hop":
+          "Responde ao Interest da vítima com um Data que buscou antes, mais antigo que o seu frescor mais a tolerância de relógio.",
+        "replay/in-tolerance@upstream":
+          "Coloca no lugar da resposta nova do produtor um Data gravado, com o frescor vencido mas dentro da tolerância de relógio.",
+        "replay/in-tolerance@last-hop":
+          "Responde ao Interest da vítima com um Data de frescor vencido, mas dentro da tolerância de relógio.",
+        "replay/understated-age@core":
+          "Um forwarder regional malicioso entrega à borda um Data antigo com o ageMs reduzido para parecer fresco.",
+        "replay/future-dated@upstream":
+          "Oferece um Data genuíno cujo producedAt assinado está no futuro, além da tolerância de relógio.",
+        "baseline/tamper-cache@edge":
+          "Reescreve um resultado guardado no cache do gateway; todo usuário seguinte daquela chamada recebe o texto alterado.",
+        "baseline/tamper@upstream":
+          "Reescreve o resultado entre o produtor e o gateway, que o guarda e o serve aos usuários seguintes.",
+        "baseline/private-miskeyed@edge":
+          "Pede a ferramenta por usuário logo depois que o resultado de outro usuário foi guardado no gateway.",
         "replay/unsolicited@consumer-face":
           "Empurra um Data genuíno antigo para a borda a partir de uma face de consumidor.",
         "private/sequential":
@@ -1138,7 +1452,26 @@ export const results = defineMessages(
         "poison/other-producer@upstream":
           "é ele mesmo um produtor em que todo nó confia, para os seus próprios nomes.",
         "timing/cache-probe": "consegue cronometrar os próprios pedidos.",
+        "replay/future-dated@upstream":
+          "tem um Data genuíno que o produtor assinou com um producedAt horas à frente (uma falha no relógio do produtor).",
+        "baseline/tamper-cache@edge":
+          "controla o armazenamento do cache do gateway: um gateway ou backend de cache comprometido, com defeito ou malicioso.",
+        "baseline/tamper@upstream":
+          "controla o enlace entre o gateway e o produtor: sem TLS nesse trecho, ou com um salto comprometido nele.",
+        "baseline/private-miskeyed@edge":
+          "é um segundo usuário de um gateway cujo operador listou a ferramenta por usuário como cacheável sem partição por credencial, com ferramenta e argumentos por chave (uma configuração errada).",
       } as Record<string, string>,
+      baseline: {
+        title: "Os mesmos ataques contra o cache compartilhado no gateway (B5)",
+        lead: "Três ataques da suíte, executados de novo contra o B5: clientes MCP comuns, o mesmo produtor respondendo como um servidor MCP comum e o cache compartilhado na borda. Cada linha fica ao lado da variante do IDEM que ela espelha, com as duas contagens da mesma execução.",
+        columns: { attack: "Ataque ao B5", b5: "Aceito pelo B5", idem: "O mesmo ataque ao IDEM" },
+        pair: (o: { holding: number; pairs: number }) =>
+          `Em ${o.holding} de ${o.pairs} pares o cache sem assinatura aceitou o ataque em pelo menos uma tentativa e o IDEM em nenhuma.`,
+        reading:
+          "Este é o resultado esperado: um cache que não guarda assinatura não tem contra o que conferir um resultado, e um cache com ferramenta e argumentos por chave não sabe de quem é o resultado que guarda. As linhas não são um achado sobre nenhum produto. Elas dão um número ao que a assinatura e a partição por autorização compram contra o mesmo ataque; não medem com que frequência um gateway é comprometido ou mal configurado. Um gateway que acrescenta o token de quem chama à chave, como o FastMCP faz, não vazaria o resultado privado, e também não compartilharia nada entre usuários.",
+        accepted: (accepted: string, trials: string) => `${accepted} de ${trials} tentativas`,
+        missing: "não está nesta execução",
+      },
     },
     method: {
       title: "Método",
@@ -1179,17 +1512,17 @@ export const results = defineMessages(
           `cobrado nos modos IDEM a partir das medianas de ${n} execuções do E1; as linhas de base não são cobradas`,
       },
       notRunTitle: "Não executado",
-      notRun: [
-        "E3, traços de agentes reais: depende de um enxame de LLM com orçamento. Até lá, a carga é sintética e nenhum traço é reproduzido.",
-        "E4, emulação de rede: depende de Docker e Mini-NDN. A hipótese H4 espera por ela.",
-        "E1 em navegador: a metade Playwright dos microbenchmarks.",
-      ],
+      notRun: {
+        e3: "E3, traços de agentes reais: depende de um enxame de LLM com orçamento. Até lá, a carga é sintética e nenhum traço é reproduzido.",
+        e4: "E4, emulação de rede: depende de Docker. A hipótese H4 espera por ela.",
+        browser: "E1 em navegador: a metade Playwright dos microbenchmarks.",
+      },
       reproduceTitle: "Reproduzir",
       reproduce:
         "Um comando refaz E1, E2 e E5 a partir de um checkout limpo e regenera os dados desta página. As simulações são determinísticas para as suas sementes; o E1 depende da máquina.",
       runsTitle: "Execuções por trás desta página",
       runsLead: (digest: string) =>
-        `O checkout ainda não é um repositório git, então cada execução registra um digest SHA-256 dos fontes dos pacotes (sem os testes) no lugar de um commit. Os dados desta página foram exportados com o digest de fontes ${digest}.`,
+        `Cada execução registra o commit em que rodou (com -dirty quando há mudanças locais) e um digest SHA-256 dos fontes dos pacotes, sem os testes, para que uma execução nomeie o seu código mesmo sem git. Os dados desta página foram exportados com o digest de fontes ${digest}.`,
       runs: {
         experiment: "Experimento",
         id: "Id da execução",

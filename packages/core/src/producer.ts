@@ -89,6 +89,7 @@ export function wireCode(e: unknown): IdemWireErrorCode {
   switch (e.code) {
     case "DIGEST_MISMATCH":
     case "BAD_SIGNATURE":
+    case "EXPIRED":
     case "UNTRUSTED_KEY":
     case "NOT_CACHEABLE":
     case "TIMEOUT":

@@ -270,9 +270,9 @@ export const landing = defineMessages(
       body: "IDEM runs over HTTP between agent, edge gateway and producer: like a CDN with signed objects, addressed by names instead of URLs. It borrows the network-layer model of Named Data Networking without asking the network to change.",
       today: "Today",
       todayBody: "HTTP overlay between agent, edge gateway and producer, running in the sandbox.",
-      planned: "Planned",
+      planned: "Native NDN",
       plannedBody:
-        "Native NDN binding: the same names and signed Data as NDN packets, via NDNts, evaluated in Mini-NDN.",
+        "The same names and signed Data as NDN packets, via NDNts, measured against NFD forwarders in Docker.",
       note: "In the spec, a binding is an MCP transport, not an OSI layer 4 protocol.",
       figTitle:
         "The protocol stack, exploded: IP, TCP, TLS, HTTP, the IDEM overlay, and the application with MCP on top",
@@ -613,9 +613,9 @@ export const landing = defineMessages(
       body: "O IDEM roda sobre HTTP entre o agente, o gateway de borda e o produtor: como uma CDN com objetos assinados, endereçados por nomes em vez de URLs. Ele toma emprestado o modelo de rede do Named Data Networking sem pedir que a rede mude.",
       today: "Hoje",
       todayBody: "Sobreposição HTTP entre agente, gateway de borda e produtor, rodando no sandbox.",
-      planned: "Planejado",
+      planned: "NDN nativo",
       plannedBody:
-        "Binding NDN nativo: os mesmos nomes e Data assinados como pacotes NDN, via NDNts, avaliados no Mini-NDN.",
+        "Os mesmos nomes e Data assinados como pacotes NDN, via NDNts, medidos com forwarders NFD em Docker.",
       note: "Na spec, um binding é um transporte do MCP, não um protocolo da camada 4 do OSI.",
       figTitle:
         "A pilha de protocolos, explodida: IP, TCP, TLS, HTTP, a sobreposição IDEM e a aplicação com o MCP no topo",
