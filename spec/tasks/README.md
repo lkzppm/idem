@@ -13,9 +13,9 @@ are the day-to-day view under it.
 | [`landing.md`](landing.md) | Home sections below the hero, figures, section labels | `app/page.tsx`, `components/landing/*` (not hero/globe/halftone), `app/styles/landing.css` |
 | [`sandbox.md`](sandbox.md) | The sandbox as an observatory: sidebar, draggable windows | `app/sandbox/*`, `components/sandbox/*`, `lib/sandbox/*`, `app/styles/sandbox.css` |
 | [`docs.md`](docs.md) | Documentation pages | `app/docs/*`, `components/docs/*`, `content/docs/*`, `lib/markdown.tsx`, `app/styles/docs.css` |
-| [`results.md`](results.md) | Benchmarks (E1, E2, E5) and the results page | `experiments/*`, `packages/sim` CLI, `app/results/*`, `components/results/*`, `app/styles/results.css` |
+| [`results.md`](results.md) | Benchmarks (E1, E2, E5) and the benchmarks page | `experiments/*`, `packages/sim` CLI, `app/benchmarks/*`, `components/results/*`, `app/styles/results.css` |
 | [`review.md`](review.md) | Cross-cutting review rounds and their fixes | findings, by area |
-| [`ndn.md`](ndn.md) | Native NDN binding (ADR-026) and its Mini-NDN runs | `packages/ndn/*`, `experiments/mininet/*` |
+| [`ndn.md`](ndn.md) | Native NDN binding (ADR-026) and its runs against NFD | `packages/ndn/*`, `experiments/ndn/*` |
 
 Paths under `components/`, `app/`, `lib/` are in `apps/web/`.
 

@@ -14,6 +14,13 @@
 
 export type Tone = "interest" | "data" | "ink" | "muted";
 export type Marker = "circle" | "square" | "diamond" | "none";
+/** A line's stroke: solid (`false`), dashed (`true`) or dash-dot (`"long"`), so three series of one colour stay apart. */
+export type Dash = boolean | "long";
+
+/** The class a series' stroke takes: `r-dash` for both dashed kinds, `r-dash-long` on top for dash-dot. */
+export function dashClass(dash: Dash | undefined): string {
+  return dash === "long" ? " r-dash r-dash-long" : dash ? " r-dash" : "";
+}
 
 export interface ChartPoint {
   x: number;
@@ -33,7 +40,7 @@ export interface ChartSeries {
   /** The label drawn at the end of the line, when the full one is too long there. */
   short?: string;
   tone: Tone;
-  dash?: boolean;
+  dash?: Dash;
   marker?: Marker;
   /** A thin dotted reference line (a bound), without markers or whiskers. */
   reference?: boolean;
@@ -135,7 +142,7 @@ export function SeriesKey({
 }: Omit<ChartSeries, "id" | "label" | "points">) {
   return (
     <svg className={`r-key t-${tone}`} viewBox="0 0 34 12" width="34" height="12" aria-hidden="true">
-      <path d="M1 6H33" className={`r-line${reference ? " r-ref" : dash ? " r-dash" : ""}`} />
+      <path d="M1 6H33" className={`r-line${reference ? " r-ref" : dashClass(dash)}`} />
       {!reference && (
         <g className="r-mark">
           <MarkerShape kind={marker} x={17} y={6} size={4} />

@@ -21,8 +21,11 @@ export interface SimLinkConfig {
   bandwidthMbps?: number;
 }
 
-/** Modes compared in the evaluation (05-evaluation §1). */
-export type SimMode = "mcp-direct" | "mcp-local-cache" | "idem" | "idem-noverify";
+/**
+ * Modes compared in the evaluation (05-evaluation §1). `mcp-gateway-cache` (B5) is plain MCP with
+ * a shared, unsigned response cache at each edge, as MCP gateways ship it today (ADR-036).
+ */
+export type SimMode = "mcp-direct" | "mcp-local-cache" | "mcp-gateway-cache" | "idem" | "idem-noverify";
 
 /** One tool call of a trace (05-evaluation §2, W-trace). */
 export interface TraceRecord {
@@ -51,6 +54,19 @@ export interface SyntheticWorkload {
   privateFraction?: number;
   /** Fraction of calls to `send_email` (not cacheable, bypass). Default 0. */
   sideEffectFraction?: number;
+  /**
+   * W-code (ADR-037): calls issued by code in steps. Each step issues the next `size` planned calls
+   * (all at once if `parallel`, the default, else back to back with no think time), waits for all of
+   * them, then thinks (`thinkTimeMs`, the model turn) before the next step. Absent: one call per
+   * step, which is the behaviour of every configuration written before this field existed.
+   */
+  burst?: { size: number; parallel?: boolean };
+  /**
+   * Agents start uniformly within `[0, startSpreadMs)`; 0 starts them all at the same instant (an
+   * orchestrator spawning its sub-agents). Default `thinkTimeMs` (the behaviour before this field
+   * existed; the same random draw, scaled).
+   */
+  startSpreadMs?: number;
 }
 
 /** Replay of recorded calls. */

@@ -26,9 +26,26 @@ the committed run folders; no figure is typed in.
 
 - **Order.** Hero (what kind of result each experiment is: NFD check, E4, E2 and E5, E1), four headline
   tiles, then the sections, each a stop of the mini navbar: **Native NDN** (E4, then the NFD
-  conformance check), **Verdicts** (H1 to H4), **Redundancy** and **Latency** (E2), **Sensitivity**
-  (E2 sweeps), **Cost** (E1), **Safety** (E5), **Method**. The headline is IDEM over real NDN; the
-  simulation and the microbenchmarks are shown as the evidence behind it.
+  conformance check), **Verdicts** (H1 to H6), **Redundancy** (E2), **Shared cache** (E2 against
+  B5), **Latency** (E2), **Sensitivity** (E2 sweeps), **Cost** (E1), **Safety** (E5), **Method**. The
+  headline is IDEM over real NDN; the simulation and the microbenchmarks are shown as the evidence
+  behind it.
+- **B5 beside the other modes (ADR-036).** The shared, unsigned gateway cache is drawn wherever the
+  comparison is the point: upstream reduction along every sweep, the latency distribution and the
+  change of the median, the percentile and W-mixed tables, the method's list of modes. It is blue (it
+  sends requests) and dash-dot with diamonds, so it parts from B0 (solid, circles) and B1 (dashed,
+  squares) without its colour. Redundancy states B2's reduction against B5 at the base point beside
+  the readings against B0 and B1, and its table has a "vs. B5" column.
+- **Shared cache.** The three sweeps that take B5 apart: `e2-surface` (upstream reduction of B1, B5
+  and B2 against the share of URLs written in an equivalent form, the halftone between B2 and B5),
+  then `e2-code-burst` and `e2-code-sync`, each a figure with three tabs (upstream reduction, B2's PIT
+  aggregation ratio, B5's in-flight duplicates per run) and one table of every value. Each figure names
+  its run and is followed by a reading computed from the data. The section's verdict gives both
+  reductions against B0 at surface variation 0, where B5 and IDEM can differ only by calls in flight,
+  so the page says plainly where IDEM adds little; every comparison with B5 reads as fewer, more or
+  "as many within the 95% interval" from the interval itself.
+- **H5 and H6.** Computed in `lib/results/verdicts.ts` by the rules of spec 05 §4 (E2), with the
+  same statuses as H1–H3 and the rule printed under the evidence.
 - **Question and verdict.** Every section opens with the question it answers and, when its data allows
   one, a one-line verdict *computed* from that data (`computeVerdicts`, `lib/results/native.ts`, the
   sentence templates in `lib/i18n/messages/results.ts`). A verdict states what was measured, never
@@ -44,6 +61,12 @@ the committed run folders; no figure is typed in.
   `summary.json`. The page shows the latest run, one row per scenario (pass or fail, the rules it
   exercises, the number of checks, or the error that stopped it before any check ran) and the pass
   count of the run before it. It is a conformance result, not a measurement.
+- **Safety and its baseline.** E5's table lists the IDEM variants by attack class, with the
+  documented limits (the two in-tolerance replays, the timing probe) apart from the claims. Under it,
+  "The same attacks on the shared gateway cache (B5)" puts each row of `e5.baseline` beside the IDEM
+  variant it mirrors, both counts from the same run, and says what it shows (what the signature and
+  the authorization partition buy against the same attack) and what it does not (it is the expected
+  outcome for an unsigned cache, not a finding about any product).
 - **Interactive charts.** Charts stay server-computed SVG; the line chart is a client component
   (`components/results/interactive-chart.tsx`) that adds: a crosshair and a readout card with the exact
   value and its 95% interval (or run range) at the nearest x, or for the nearest point on curves that
@@ -226,12 +249,14 @@ Information architecture (reading order; it drives the sidebar and the previous 
 | Group | Page | Route | Source |
 |---|---|---|---|
 | Learn | **Introduction** — what IDEM is, the thesis, when it applies and when not, what exists today | `/docs` | `content/docs/<locale>/introduction.md` |
+| Learn | **Use cases** — eight present-day settings (research swarms, tool calls issued by code, documentation servers, enterprise gateways, metered APIs, publishers, checking origin, lossy networks), each in five parts: today, what repeats, where IDEM sits, what it gives by mechanism, what it does not solve; then where IDEM does not fit and which experiment covers each. External facts carry a reference key; no IDEM result numbers | `/docs/use-cases` | `content/docs/<locale>/use-cases.md` |
 | Learn | **Concepts** — names and canonicalization, Interest and Data, PIT/CS/FIB, signatures and the trust manifest, freshness, scope, passthrough | `/docs/concepts` | `content/docs/<locale>/concepts.md` |
-| Learn | **Architecture** — topology, packages, the single engine and its events, flows, bindings (HTTP overlay; native NDN planned), deploy | `/docs/architecture` | `content/docs/<locale>/architecture.md` |
+| Learn | **Architecture** — topology, packages, the single engine and its events, flows, bindings (HTTP overlay, native NDN), deploy | `/docs/architecture` | `content/docs/<locale>/architecture.md` |
 | Specification | **Protocol** — normative | `/docs/protocol` | `spec/01-protocol.md` itself (single source, never copied) |
 | Specification | **Security** — threat model from protocol §11: each attack and the rule behind its defence; what v1 leaves open | `/docs/security` | `content/docs/<locale>/security.md` |
 | Use | **API reference** — the exports of `@idem/core`, `gateway`, `mcp`, `sim`, checked against `packages/*/src`, with a producer / edge / consumer example | `/docs/api` | `content/docs/<locale>/api.md` |
 | Use | **Using the sandbox** — what each mode runs, what each control changes, how to read the PIT, CS, log and attacks | `/docs/sandbox` | `content/docs/<locale>/sandbox.md` |
+| Research | **Related work** — the reader's version of spec 00 §3: the ICN lineage, caches for tool results, signing in MCP and signed caching on the web, agent networking, tool calls issued by code; one comparison table (cells say "not stated" where the source is silent); what IDEM takes from each; what stays open | `/docs/related-work` | `content/docs/<locale>/related-work.md` |
 | Research | **Evaluation** — method only (hypotheses, modes, workloads, metrics, E1–E5); no numbers, which live on `/benchmarks` | `/docs/evaluation` | `content/docs/<locale>/evaluation.md` |
 | Research | **Decisions** — the ADRs | `/docs/decisions` | `spec/07-decisions.md` itself |
 | Research | **References** — the bibliography | `/docs/references` | `spec/08-references.md` itself |
@@ -239,6 +264,12 @@ Information architecture (reading order; it drives the sidebar and the previous 
 The earlier plan's Quickstart, Bindings and FAQ pages are folded in: the example opens the API
 reference (the packages are not published, so there is no install step; `withIdem` is still planned),
 bindings are a section of Architecture, and the threat model is the Security page.
+
+Use cases and Related work (ADR-035) are the two pages that speak about the outside world. Their rules:
+every statement about another system or paper carries a key from `08-references.md` and says no more
+than that source does; a scenario states how strong its outside evidence is (measured, documented
+practice, or by analogy); the only numbers on them are external figures quoted as their source states
+them, never a result of IDEM's own experiments, which stay on `/benchmarks`.
 
 - **Layout.** A sticky page tree on the left (the current page marked by a plate that glides between
   items on a spring, and a blue square), the article (a measure of about 70 characters), and an "on
@@ -298,7 +329,7 @@ the sandbox. See ADR-017.
   `#forwarder` (the pipeline of [01 §7] as a sorter: five Interests in turn, or picked, each visibly
   taking its branch, pass through / drop / reply from the CS / add the face / forward, and for a
   forwarded one the Data's way back, verify / store / satisfy / clear; then the layer stack, whose
-  slabs drop and land on reveal: an application-layer overlay over HTTP, native NDN binding planned);
+  slabs drop and land on reveal: an application-layer overlay over HTTP, and the native NDN binding);
   `#guarantees` (the four guarantees, each with a looping scene: the signed manifest decides what the
   CS keeps, a private result stays in its owner's partition, a tampered answer fails the agent's check
   and is retried at the producer, a call with a side effect passes through as plain MCP; then the

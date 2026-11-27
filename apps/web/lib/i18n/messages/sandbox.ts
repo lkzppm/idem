@@ -147,7 +147,9 @@ export const sandbox = defineMessages(
       },
       attackResult: {
         tamperOk:
-          "The signature check failed here (BAD_SIGNATURE). The client threw the answer away, retried without caches and verified the producer's own answer.",
+          "The signature check failed here (BAD_SIGNATURE). The client threw the answer away, retried once as a plain call no cache may answer, and verified the producer's own answer, signed and within its lifetime.",
+        tamperClock: (tolerance: string) =>
+          `The signature check failed here (BAD_SIGNATURE) and the client retried, but by this device's clock the producer's own answer was outside its signed lifetime, so it returned an error instead of content (CLOCK_SKEW). This device's clock is off by more than ${tolerance}: set it automatically and try again.`,
         forgeOk:
           "The edge recomputed the args digest, found it does not match the name, and dropped the Interest: DIGEST_MISMATCH.",
         crossOk: (a: string, b: string) =>
@@ -164,9 +166,12 @@ export const sandbox = defineMessages(
         edgeCs: (age: string) => `edge CS · ${age} old`,
         edgePit: "edge PIT (aggregated)",
         retried: " → retried direct",
+        clockSkew: "refused: this device's clock (CLOCK_SKEW)",
         byOther: " · filled by another visitor",
         network: "network error",
       },
+      clockSkew: (tolerance: string) =>
+        `Some answers were refused because of this device's clock, not the network: they were genuine and verified, but by this clock they were signed more than ${tolerance} in the future, or are older than their freshness plus ${tolerance}. The retry got the same verdict, so the page shows an error instead of content (CLOCK_SKEW). Set the clock automatically and try again.`,
       log: {
         agent: "agent",
         tool: "tool",
@@ -230,7 +235,7 @@ export const sandbox = defineMessages(
         upstream: "Reached the producer",
         plain: "Plain calls",
         verified: "Signatures verified here",
-        caught: "Bad signatures caught",
+        caught: "Answers refused and retried",
         p50: "Latency p50",
         p95: "Latency p95",
         saved: (n: number, total: number) => `${n} of ${total} calls never reached the producer.`,
@@ -536,7 +541,9 @@ export const sandbox = defineMessages(
       },
       attackResult: {
         tamperOk:
-          "A verificação da assinatura falhou aqui (BAD_SIGNATURE). O cliente descartou a resposta, tentou de novo sem caches e verificou a resposta do próprio produtor.",
+          "A verificação da assinatura falhou aqui (BAD_SIGNATURE). O cliente descartou a resposta, tentou de novo uma vez como chamada comum, que nenhum cache pode responder, e verificou a resposta do próprio produtor, assinada e dentro do seu tempo de vida.",
+        tamperClock: (tolerance: string) =>
+          `A verificação da assinatura falhou aqui (BAD_SIGNATURE) e o cliente tentou de novo, mas, pelo relógio deste dispositivo, a resposta do próprio produtor estava fora do seu tempo de vida assinado, então ele devolveu um erro em vez do conteúdo (CLOCK_SKEW). O relógio deste dispositivo está errado em mais de ${tolerance}: ajuste-o para a hora automática e tente de novo.`,
         forgeOk:
           "A borda recalculou o digest dos args, viu que não bate com o nome e descartou o Interest: DIGEST_MISMATCH.",
         crossOk: (a: string, b: string) =>
@@ -553,9 +560,12 @@ export const sandbox = defineMessages(
         edgeCs: (age: string) => `CS da borda · idade ${age}`,
         edgePit: "PIT da borda (agregado)",
         retried: " → nova tentativa direta",
+        clockSkew: "recusada: relógio deste dispositivo (CLOCK_SKEW)",
         byOther: " · preenchido por outro visitante",
         network: "erro de rede",
       },
+      clockSkew: (tolerance: string) =>
+        `Algumas respostas foram recusadas por causa do relógio deste dispositivo, não da rede: eram genuínas e verificadas, mas, por este relógio, foram assinadas mais de ${tolerance} no futuro, ou são mais antigas que o seu frescor mais ${tolerance}. A nova tentativa teve o mesmo veredito, então a página mostra um erro em vez do conteúdo (CLOCK_SKEW). Ajuste o relógio para a hora automática e tente de novo.`,
       log: {
         agent: "agente",
         tool: "ferramenta",
@@ -624,7 +634,7 @@ export const sandbox = defineMessages(
         upstream: "Chegaram ao produtor",
         plain: "Chamadas comuns",
         verified: "Assinaturas verificadas aqui",
-        caught: "Assinaturas ruins pegas",
+        caught: "Respostas recusadas e refeitas",
         p50: "Latência p50",
         p95: "Latência p95",
         saved: (n: number, total: number) => `${n} de ${total} chamadas nunca chegaram ao produtor.`,

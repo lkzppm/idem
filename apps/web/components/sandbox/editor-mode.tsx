@@ -1,7 +1,7 @@
 "use client";
 
 import type { ForwarderEventKind } from "@idem/core";
-import type { AttackRecord, Metrics, SimMode } from "@idem/sim";
+import type { SimMode as AnySimMode, AttackRecord, Metrics } from "@idem/sim";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import { useMessages } from "@/lib/i18n/client";
@@ -61,6 +61,9 @@ import {
 } from "./ui";
 import { useDragToStage } from "./window/drag-to-stage";
 import { isTyping, Slot, usePanels, useWorkspace } from "./workspace";
+
+/** The modes the sandbox compares; B5 (`mcp-gateway-cache`) is an evaluation baseline only. */
+type SimMode = Exclude<AnySimMode, "mcp-gateway-cache">;
 
 type Strings = (typeof sandbox)["en"];
 type SwarmStrings = Strings["swarm"];

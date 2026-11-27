@@ -13,6 +13,7 @@ import {
 import {
   type ChartPoint,
   type ChartSeries,
+  dashClass,
   type LineChartProps,
   M,
   MarkerShape,
@@ -382,7 +383,7 @@ export function LineChart({
                       );
                     })}
                 <path
-                  className={`r-line${s.reference ? " r-ref" : s.dash ? " r-dash" : " r-draw"}`}
+                  className={`r-line${s.reference ? " r-ref" : s.dash ? dashClass(s.dash) : " r-draw"}`}
                   d={path(s.points)}
                   {...(!s.reference && !s.dash && { pathLength: 1 })}
                 />

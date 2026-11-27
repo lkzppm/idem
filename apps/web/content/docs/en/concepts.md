@@ -73,7 +73,7 @@ interface Interest {
   lifetimeMs: number;    // default 10 000: how long the asker waits
   nonce: string;         // 64 random bits: tells a loop from a new request
   hopLimit: number;      // default 8, decremented at every forwarder
-  authContext?: string;  // first hop only, see Scope
+  authContext?: string;  // left unset by senders: the edge derives its own, see Scope
 }
 ```
 
@@ -192,7 +192,18 @@ A Data that sits in one cache and is then served to another does not get a fresh
 ageMs + (now − receivedAt) < min(freshnessMs, ttlMs)
 ```
 
-`ageMs` is the one field of a Data that is not signed, because every hop has to update it. The limit it is compared with, `freshnessMs`, is signed, and so is `producedAt`. The [Security](/docs/security#limits) page says what follows from an unsigned age.
+`ageMs` is the one field of a Data that is not signed, because every hop has to update it. So this first part of freshness, the age counted hop by hop, holds between honest nodes only: it does not catch a node that understates the age.
+
+The second part uses what is signed. Every node also compares the signed `producedAt` with its own clock. A Data is outside its **signed lifetime** when either line holds [P-8.6]:
+
+```
+now − producedAt ≥ min(freshnessMs, ttlMs) + clockToleranceMs    (expired)
+producedAt − now > clockToleranceMs                              (dated in the future)
+```
+
+`clockToleranceMs` is a local option of each node, 60 seconds by default. It covers the difference between the node's clock and the producer's, plus the time in transit. A forwarder does not store a Data that is outside its signed lifetime, and answers `EXPIRED` to an Interest that asked for fresh Data. A consumer refuses such a Data as well, and asks again once with a plain call [P-8.7].
+
+The two parts do different jobs. The age counted hop by hop needs no agreement between clocks, and it is what an honest cache uses to stop serving on time. The signed lifetime needs clocks that agree within the tolerance, and it bounds what a dishonest node on the path can pass off as fresh: never more than the freshness plus the tolerance. The [Security](/docs/security#limits) page says what remains inside that bound and what a wrong clock does.
 
 Errors are never cached. A result with `isError: true` is signed with `freshnessMs = 0` [P-5.3], and timeouts and upstream failures are not stored either: there is no negative caching in v1 [P-7.2].
 
@@ -205,7 +216,7 @@ Some read-only results are the same for everyone (a public page). Others depend 
 - **`public`** Data may be stored in any Content Store and served to anyone.
 - **`private`** Data may be stored only at the first forwarder, the edge, and only in a partition keyed by the consumer's **authorization context** [P-8.3].
 
-The `authContext` is derived at the edge from the consumer's credential by a one-way function, an HMAC with a secret only the edge knows [P-8.4]. It is never the credential itself, it is never part of a name, and it is not passed beyond the first hop. The credential travels on to the producer hop by hop, as an HTTP `Authorization` header would.
+The `authContext` is derived at the edge from the consumer's credential by a one-way function, an HMAC with a secret only the edge knows [P-8.4]. It is never the credential itself, it is never part of a name, and it is not passed beyond the first hop. A value that a sender writes into the `authContext` field of an Interest is ignored on every face: the edge always derives its own. The credential travels on to the producer hop by hop, as an HTTP `Authorization` header would.
 
 The PIT follows the same partition. Two users' Interests for the same private name share a name but not a PIT entry, so one user's answer is never delivered to the other while both are waiting. A private Interest without an authorization context is never aggregated and never answered from a cache.
 

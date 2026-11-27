@@ -25,7 +25,7 @@ export function verifyData(data: Data, trust: TrustStore, opts?: { now?: number 
 export function signManifest(m: UnsignedManifest, key: IdemKeyPair): Promise<Manifest>;
 export function verifyManifest(m: Manifest, trust: TrustStore, opts?: { now?: number }): Promise<VerifyResult>;  // [P-6.2], = trust.check
 export function verifyManifestSignature(m: Manifest): Promise<VerifyResult>;                  // self-consistency only
-export function deriveAuthContext(edgeSecret: string, credential: string): Promise<string>;   // [P-8.4]
+export function deriveAuthContext(edgeSecret: string, credential: string): Promise<string>;   // [P-8.4]; the edge's own, never taken from an Interest
 // `opts.now` (epoch ms, default Date.now()) is the time key `notAfter` is checked against; nodes on
 // a virtual clock pass their own.
 export type VerifyResult =
@@ -51,7 +51,9 @@ export interface ForwarderOptions {
   fib: Fib;
   trust: TrustStore;
   verifyOnInsert?: boolean;     // default true; false only in experiments [P-7.1]
-  authSecret?: string;          // edge secret: authContext = HMAC(secret, credential) on consumer faces [P-8.4]
+  authSecret?: string;          // edge secret: authContext = HMAC(secret, credential) on consumer faces [P-8.4];
+                                // an authContext carried by a received Interest is always ignored
+  clockToleranceMs?: number;    // signed-lifetime tolerance [P-8.6]; default DEFAULT_CLOCK_TOLERANCE_MS
   onEvent?: (e: ForwarderEvent) => void;
 }
 export interface PitLimits { maxEntries: number; maxFacesPerEntry: number; }
@@ -79,6 +81,24 @@ export interface ContentStore { get(key: string, now: number): CsEntry | undefin
 export class MemoryContentStore implements ContentStore { constructor(opts: { maxBytes: number; policy?: "lru" | "lfu" | "fifo" }); entries(): IterableIterator<CsEntry>; }
 export function isFresh(entry: Pick<CsEntry, "data" | "receivedAt">, now: number, ttlCapMs?: number): boolean;   // [P-8.1, P-8.2]
 export function entryAge(entry: Pick<CsEntry, "data" | "receivedAt">, now: number): number;
+// Signed lifetime [P-8.6]: the one predicate forwarders and consumers use (the E5 judge works on ground truth).
+export const DEFAULT_CLOCK_TOLERANCE_MS = 60_000;
+export function apparentAge(meta: Pick<DataMeta, "producedAt">, now: number): number;            // now − producedAt, not clamped
+export function lifetimeOf(meta: Pick<DataMeta, "freshnessMs">, ttlMs: number, toleranceMs?: number): number;  // min(freshness, ttl) + tolerance
+export function lifetimeState(meta: Pick<DataMeta, "producedAt" | "freshnessMs">, ttlMs: number, now: number, toleranceMs?: number): "within" | "expired" | "future";  // non-numbers → "expired"
+export function isOutsideLifetime(meta: Pick<DataMeta, "producedAt" | "freshnessMs">, ttlMs: number, now: number, toleranceMs?: number): boolean;
+export function lifetimeReason(meta: Pick<DataMeta, "producedAt" | "freshnessMs">, ttlMs: number, now: number, toleranceMs?: number): string;  // side, producedAt, local time
+export function clockTolerance(ms: number | undefined): number;   // validates the option; IdemError("BAD_POLICY") if negative or NaN
+export function staleByAge(data: Pick<Data, "ageMs" | "meta">, ttlMs: number): boolean;  // ageMs present and ≥ min(freshness, ttl) [P-8.1]; no ageMs → false
+// The consumer's decision [P-5.5, P-8.7]: name, verifyData, then (mustBeFresh) signed lifetime and age.
+// Used by IdemClient, IdemConsumer, NdnConsumer, the simulator's agents and the E5 harness.
+export function acceptData(data: Data, opts: AcceptOptions): Promise<AcceptVerdict>;
+export interface AcceptOptions { trust: TrustStore; now: number; name?: string; mustBeFresh: boolean; ttlMs?: number; toleranceMs?: number; }  // ttlMs default: trust's policy, else Infinity
+export type AcceptVerdict =
+  | { ok: true; verify: VerifiedData }
+  | { ok: false; code: "BAD_SIGNATURE" | "UNTRUSTED_KEY" | "BAD_MANIFEST"; reason: string; verify: VerifyResult }  // a wrong name is BAD_SIGNATURE
+  | { ok: false; code: "EXPIRED"; reason: string; verify: VerifiedData };   // signature valid, outside the lifetime or stale by age
+// Error codes: wire EXPIRED (HTTP 502) [P-8.6]; local CLOCK_SKEW [P-8.7]. Pass ttlMs = Infinity when no manifest TTL is known.
 export interface Clock { now(): number; setTimeout(fn: () => void, ms: number): unknown; clearTimeout(h: unknown): void; }
 export class RealClock implements Clock {}
 export class VirtualClock implements Clock { constructor(start?: number); get pending(): number; nextAt(): number | undefined; step(): Promise<boolean>; runUntil(t: number): Promise<void>; runAll(maxSteps?: number): Promise<number>; }
@@ -132,14 +152,60 @@ export function createMcpProducer(producer: Producer, info: McpServerInfo): McpH
 // tools, and sends each tools/call through the gateway in-process as a verifying consumer.
 export function createMcpEdge(opts: McpEdgeOptions): Promise<McpHttpHandler>;
 export interface McpServerInfo { name: string; version: string; }
-export interface McpEdgeOptions { gateway: Gateway; producer: string; info: McpServerInfo; maxClients?: number; }  // per-credential clients, default 512
+export interface McpEdgeOptions { gateway: Gateway; producer: string; info: McpServerInfo; maxClients?: number; clockToleranceMs?: number; }  // per-credential clients, default 512; tolerance of the edge's [P-8.7] check
 export class IdemConsumer {
-  constructor(opts?: { trust?: TrustStore });
+  constructor(opts?: { trust?: TrustStore; clock?: Clock; clockToleranceMs?: number });
   readonly trust: TrustStore;
   pin(producer: string, keys: JsonWebKey[]): Promise<void>;
-  verifyToolResult(result: CallToolResult): Promise<VerifyResult | { ok: false; code: "UNSIGNED"; reason: string }>;
+  // EXPIRED: the signature verifies but the result is outside its signed lifetime on this clock [P-8.7]
+  verifyToolResult(result: CallToolResult): Promise<VerifyResult | { ok: false; code: "UNSIGNED" | "EXPIRED"; reason: string }>;
 }
 ```
+
+Proxy-producer (protocol §9.1, "Legacy producer", [P-9.5]–[P-9.8], ADR-038): an IDEM producer with
+its own name and key for an MCP server that knows nothing about IDEM. It is a core `Producer`, served
+with `createProducerHandler` or `createMcpProducer` like any other.
+
+```ts
+export function createProxyProducer(opts: ProxyProducerOptions): Promise<ProxyProducer>;  // reads the origin's tools/list; BAD_POLICY if a declared tool cannot be cached
+export interface ProxyProducerOptions {
+  upstream: ProxyUpstream;
+  name: string;                               // the proxy's producer name; never the origin's host [P-9.5]
+  key: IdemKeyPair;                           // the proxy's key
+  tools: Record<string, ProxyToolPolicy>;     // operator policy; a tool without one is relayed, unsigned [P-9.6]
+  clock?: Clock;
+  manifestVersion?: number;                   // first version, +1 per rebuild; default clock seconds, then max(prev + 1, seconds) [P-6.3]
+  maxClients?: number;                        // origin clients, one per credential; default 512
+  onSchemaChange?: (c: SchemaChange) => void; // the tool is held not cacheable until refresh() [P-9.8]
+}
+export interface ProxyUpstream {
+  url: string | URL;                          // origin Streamable HTTP endpoint
+  fetch?: typeof fetch;
+  credential?: string;                        // the proxy's own Bearer at the origin: tools/list and tools declared public, held or refused too [P-9.7]
+  info?: { name: string; version: string };   // client identity toward the origin
+}
+export interface ProxyToolPolicy extends ProducerToolPolicy {
+  policyVersion?: number;
+  operatorAssertsReadOnly?: boolean;          // only when the origin gives no readOnlyHint; never against false [P-9.6]
+}
+export class ProxyProducer extends Producer {
+  static create(opts: ProxyProducerOptions): Promise<ProxyProducer>;  // same as createProxyProducer
+  readonly origin: string;                    // scheme, host and path of the origin
+  readonly manifestVersion: number;
+  refresh(): Promise<ProxyRefresh>;           // re-read the origin's tools/list; new manifest version if it changed
+}
+export interface ProxyRefresh { changed: boolean; manifestVersion: number; refused: Record<string, string>; }  // refused: declared cacheable, not offered, with the reason
+export interface SchemaChange { tool: string; manifestVersion: number; }
+export const ORIGIN_META_KEY = "dev.idem/origin";
+export interface OriginRecord { origin: string; readOnlyHint: "origin" | "operator" | "absent"; }  // in each listed tool's _meta, unsigned
+```
+
+The proxy checks the origin's `tools/list` after every origin call whose result it signs (one extra
+request per miss; hits never reach it) [P-9.8]. Forwarders and consumers read a manifest once, so
+after a schema change they need a restart, or a new edge, to see the refreshed one; until then the
+changed tool answers `NOT_CACHEABLE` or `DIGEST_MISMATCH`, never a result signed under the old
+digest after the change. `createMcpProducer` and `createMcpEdge` pass each tool's `_meta` through to
+`tools/list`, so plain MCP clients see the origin record.
 
 `withIdem(server)` (wrapping an existing `McpServer` whose tools are registered elsewhere) is still
 planned; today a producer declares its tools through `Producer` and is served by `createMcpProducer`.
@@ -175,6 +241,7 @@ export interface GatewayOptions {
   upstreams: Upstream[];
   cs?: ContentStore; trust?: TrustStore; pit?: PitLimits;
   authSecret?: string;                        // authContext = HMAC(secret, bearer credential) [P-8.4]
+  clockToleranceMs?: number;                  // signed-lifetime tolerance of its forwarder [P-8.6]
   verifyOnInsert?: boolean; basePath?: string; fetch?: typeof fetch;
   onEvent?: (e: ForwarderEvent) => void;
 }
@@ -191,6 +258,8 @@ export interface IdemClientOptions {
   trust?: TrustStore;
   fetch?: typeof fetch;
   intercept?: (d: Data) => Data;              // test/demo hook: rewrite a Data before verification
+  clock?: Clock;                              // time of the lifetime check and key expiry; default RealClock
+  clockToleranceMs?: number;                  // default DEFAULT_CLOCK_TOLERANCE_MS [P-8.6]
 }
 export class IdemClient {                     // verifying consumer; browser, Node, edge runtimes
   constructor(opts: IdemClientOptions);
@@ -198,18 +267,19 @@ export class IdemClient {                     // verifying consumer; browser, No
   init(): Promise<{ manifest: Manifest; tools: ToolInfo[] }>;
   prepare(tool: string, args: unknown): Promise<Interest | undefined>;          // undefined: the call is not IDEM
   call(tool: string, args: unknown): Promise<CallOutcome>;
-  sendInterest(i: Interest): Promise<{ data?: Data; verify?: VerifyResult; error?: WireError; trace: TraceHop[] }>;
+  sendInterest(i: Interest): Promise<{ data?: Data; verify?: VerifyResult; error?: WireError; trace: TraceHop[] }>;  // verified but outside its lifetime: verify.ok, error EXPIRED
 }
 export interface CallOutcome {
   tool: string;
   result: CallToolResult;                     // an error result when `error` is set
   via: "idem" | "call";
   name?: string; data?: Data; verify?: VerifyResult;
-  retried: boolean;                           // first answer failed verification; repeated as a plain call, verified again [P-5.5]
+  retried: boolean;                           // first answer BAD_SIGNATURE or EXPIRED; repeated as a plain call, checked again [P-5.5, P-8.7]
   trace: TraceHop[];
   latencyMs: number;
-  error?: WireError;                          // { code, message }
+  error?: CallError;                          // { code, message }
 }
+export interface CallError { code: IdemWireErrorCode | "CLOCK_SKEW"; message: string; }  // CLOCK_SKEW: the verified retry is still outside its lifetime
 ```
 
 Also exported: the faces `HttpUpstreamFace` and `RequestFace`, `credentialOf(req)`, and the wire
@@ -242,7 +312,8 @@ export function verifyNdnData(d: NdnData, trust: TrustStore, opts?: { now?: numb
 export function serveNdn(opts: { producer: Producer; key: IdemKeyPair; fw?: Forwarder; concurrency?: number }): Promise<NdnProducer>;
 export class NdnConsumer {
   constructor(opts: { producer: string; fw?: Forwarder; trust?: TrustStore; lifetimeMs?: number;
-                      interestLifetimeMs?: number; retransmissions?: number });   // retx: fresh Nonce, same name
+                      interestLifetimeMs?: number; retransmissions?: number;    // retx: fresh Nonce, same name
+                      clock?: Clock; clockToleranceMs?: number });              // [P-8.7]: outside its lifetime → EXPIRED, fail closed
   // call() → NdnCallOutcome also carries `attempts` (Interests sent) and `verifyMs` (both signatures)
   init(): Promise<{ manifest: Manifest; tools: ToolInfo[] }>;   // _manifest / _tools over NDN
   prepare(tool: string, args: unknown): Promise<Interest | undefined>;
@@ -263,7 +334,7 @@ types. Also exported: `hasParamsDigest`, `ndnNonce`, `idemNonce`, `CONTENT_TYPE`
 
 ```ts
 export function runSimulation(cfg: SimConfig, opts: { seed: number; onEvent?: (e: ForwarderEvent) => void; keepEvents?: boolean }): Promise<SimResult>;
-export type SimMode = "mcp-direct" | "mcp-local-cache" | "idem" | "idem-noverify";   // B0, B1, B2/B3 (by topology), B4
+export type SimMode = "mcp-direct" | "mcp-local-cache" | "mcp-gateway-cache" | "idem" | "idem-noverify";   // B0, B1, B5, B2/B3 (by topology), B4
 export interface SimConfig {
   topology: { nodes: SimNode[]; links: SimLinkConfig[] };
   mode: SimMode;
@@ -287,6 +358,9 @@ export interface Dist { dist: "lognormal"; mu: number; sigma: number; }
 export interface SyntheticWorkload {
   kind: "synthetic"; agents: number; callsPerAgent: number; zipfAlpha: number; overlap: number; catalogSize: number;
   thinkTimeMs?: number; surfaceVariation?: number; privateFraction?: number; sideEffectFraction?: number;
+  // W-code (ADR-037). Absent: one call per step, start window = thinkTimeMs (the same draws as before).
+  burst?: { size: number; parallel?: boolean };   // a step issues `size` calls (at once by default), waits for all, then thinks
+  startSpreadMs?: number;                         // agents start uniformly within [0, startSpreadMs); 0 = same instant
 }
 // The records themselves, not a path: the simulator runs in the browser and never reads files.
 export interface TraceWorkload { kind: "trace"; records: TraceRecord[]; }
@@ -342,18 +416,36 @@ export const SIM_PRODUCER = "demo.idem.dev";
 // A run that can be stepped and attacked (the sandbox's swarm mode and the network editor)
 export interface SimHooks { onEvent?: (e: ForwarderEvent) => void; onTransmit?: (tx: Transmission) => void; onCall?: (r: CallRecord) => void; onAttack?: (a: AttackRecord) => void; }
 // CallRecord carries `producer` (name) and, for a call to an unreachable producer, `error: "NO_ROUTE"`
-// (ok: false, attempts: 0, nothing sent). Metrics.noRoute counts those calls.
+// (ok: false, attempts: 0, nothing sent). Metrics.noRoute counts those calls. `error: "CLOCK_SKEW"`
+// marks a call whose verified plain-call retry was still outside its signed lifetime [P-8.7].
 export class Simulation {
   static create(cfg: SimConfig, opts?: { seed: number; keepEvents?: boolean } & SimHooks): Promise<Simulation>;
   readonly config: SimConfig; readonly seed: number; readonly mode: SimMode;
   readonly clock: VirtualClock; readonly forwarders: Map<string, Forwarder>; readonly metrics: MetricsCollector;
   readonly producers: readonly ResolvedProducer[]; readonly defaultProducer: string; readonly manifests: Manifest[];
+  readonly gatewayCaches: Map<string, GatewayCache>;   // B5 only: each edge's gateway cache, by node id
   cacheable(tool: string, producer?: string): { policy: ToolPolicy; identity: ToolIdentity } | undefined;
   runUntil(t: number): Promise<void>; run(): Promise<SimResult>; result(): SimResult;
   // `producer` is a producer name, default the first. An attack that cannot be staged returns without a record.
   attackTamper(producer?: string): void; attackForge(agentIndex?: number, producer?: string): Promise<void>;
   attackPrivateProbe(a?: number, b?: number, producer?: string): Promise<void>;
 }
+
+// B5, the industry baseline (ADR-036): plain MCP with a shared, unsigned response cache at the edge.
+// Key = producer, tool and the arguments as sent (sorted keys, no normalization); TTL per tool; no
+// coalescing of identical calls in flight; error results not stored. Simulator only, not in core.
+export function stableJson(v: unknown): string;                                    // sorted keys, no whitespace
+export function gatewayCacheKey(producer: string, tool: string, args: unknown): string;
+export interface GatewayCacheEntry { key: string; result: CallToolResult; storedAt: number; ttlMs: number; bytes: number; hits: number; }
+export class GatewayCache {                                                        // byte budget + the CS policies
+  constructor(opts: { maxBytes: number; policy?: "lru" | "lfu" | "fifo" });
+  get(key: string, now: number): GatewayCacheEntry | undefined;                    // fresh entries only
+  put(key: string, result: CallToolResult, ttlMs: number, now: number): { inserted: boolean; evicted: number };
+  entries(): IterableIterator<GatewayCacheEntry>; stats(): { entries: number; bytes: number; maxBytes: number; evictions: number };
+}
+export interface GatewayRelayOptions { cache: GatewayCache; clock: Clock; ttlFor(producer: string, tool: string): number | undefined; onHit?(key: string): void; onMiss?(key: string, inFlight: boolean): void; }
+export class GatewayRelay { constructor(opts: GatewayRelayOptions); readonly cache: GatewayCache; face(inner: Face): Face; }   // wraps a client link of a plain-call relay
+// Metrics adds gatewayCacheHits and gatewayInflightDuplicates (B5; 0 in the other modes).
 
 // Processing-cost model: the virtual clock does not see CPU time, so E1's measurements are charged as delay
 export interface ProcessingCosts { sizesBytes: number[]; canonicalizeUs: number[]; nameUs: number[]; signUs: number[]; verifyUs: number[]; }
@@ -368,7 +460,8 @@ export function percentile(values: readonly number[], p: number): number;
 ```
 
 Types only, for the `/benchmarks` page: `ResultsData`, `SweepData`, `MicrobenchData`, `MicrobenchCell`,
-`MissOverhead`, `SafetyData`, `RunRef`, `Stat` (the export of committed runs), `AttackClass`,
+`MissOverhead`, `SafetyData` (IDEM variants in `rows`; the B5 baseline rows, when the run has them, in
+`baseline`, each with the `mirrors` id of its IDEM variant), `SafetyRowData`, `RunRef`, `Stat` (the export of committed runs), `AttackClass`,
 `Expectation` (E5), `EvalModeId`, `SweepBase` (experiment specs), and the records `CallRecord`,
 `Transmission`, `AttackRecord`, `Metrics`. The experiment pipeline itself (`packages/sim/src/experiments`,
 run by `pnpm sim`) is not part of the package's entry point: it is Node-side tooling of the evaluation

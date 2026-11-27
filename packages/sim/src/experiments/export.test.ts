@@ -29,14 +29,14 @@ const ENV = {
 };
 const rows = (text: string) => parseCsv(text);
 
-async function sweepRun(id: string): Promise<LoadedRun> {
+async function sweepRun(id: string, modes: ResolvedSweep["modes"] = ["B0", "B2"]): Promise<LoadedRun> {
   const file = join(ROOT, "experiments", "configs", "e2-agents.json");
   const cfg = parseExperimentConfig(JSON.parse(readFileSync(file, "utf8"))) as SweepConfig;
   const { processing: _file, ...rest } = cfg;
   const small: ResolvedSweep = {
     ...rest,
     seeds: { first: 1, count: 2 },
-    modes: ["B0", "B2"],
+    modes,
     sweep: { param: "agents", values: [2, 4] },
     base: { ...cfg.base, workload: { ...cfg.base.workload, callsPerAgent: 5 } },
   };
@@ -132,6 +132,44 @@ describe("export for the /results page", () => {
     for (let q = 1; q <= 100; q++) expect(cdf[q] as number).toBeGreaterThanOrEqual(cdf[q - 1] as number);
   });
 
+  it("carries B5 like any mode, with its gateway counters and the reduction against it", async () => {
+    const s = sweepData(await sweepRun("20261117T000000Z-dddddddd", ["B0", "B2", "B5"]));
+    expect(s.modes).toEqual([
+      { id: "B0", name: "mcp-direct" },
+      { id: "B2", name: "idem" },
+      { id: "B5", name: "mcp-gateway-cache" },
+    ]);
+    expect(s.metrics.upstream_reduction_vs_b5?.B5?.map((x) => x.mean)).toEqual([0, 0]);
+    expect(s.metrics.upstream_reduction_vs_b5?.B2).toHaveLength(2);
+    expect(s.metrics.gateway_cache_hits?.B5).toHaveLength(2);
+    expect(s.metrics.gateway_inflight_duplicates?.B5).toHaveLength(2);
+    expect(s.metrics.gateway_cache_hits?.B2?.map((x) => x.mean)).toEqual([0, 0]);
+    expect(s.cdf.B5).toHaveLength(101);
+  });
+
+  it("reads the base value of the W-code parameters (ADR-037)", () => {
+    const file = join(ROOT, "experiments", "configs", "e2-agents.json");
+    const cfg = parseExperimentConfig(JSON.parse(readFileSync(file, "utf8"))) as SweepConfig;
+    const run = (param: string, workload: object): LoadedRun => ({
+      experiment: "x",
+      id: "r",
+      config: { ...cfg, sweep: { param, values: [1, 4] }, base: { ...cfg.base, workload } },
+      seed: "1",
+      gitSha: "none",
+      sourceDigest: "d",
+      env: ENV,
+      metrics: [],
+      summary: [],
+      cdf: [],
+    });
+    expect(sweepData(run("burstSize", cfg.base.workload)).baseValue).toBe(1);
+    expect(
+      sweepData(run("burstSize", { ...cfg.base.workload, burst: { size: 4, parallel: true } })).baseValue,
+    ).toBe(4);
+    expect(sweepData(run("startSpreadMs", cfg.base.workload)).baseValue).toBe(cfg.base.workload.thinkTimeMs);
+    expect(sweepData(run("startSpreadMs", { ...cfg.base.workload, startSpreadMs: 0 })).baseValue).toBe(0);
+  });
+
   it("combines repeated E1 runs by the median of their statistics and keeps the spread", () => {
     const data = buildResultsData([microRun("r1", 1), microRun("r3", 3), microRun("r2", 2)], "x");
     expect(data.e1?.runs.map((r) => r.id)).toEqual(["r1", "r2", "r3"]);
@@ -223,6 +261,50 @@ describe("export for the /results page", () => {
     expect(e5?.rows[0]?.mechanisms).toEqual([
       { mechanism: "ACCEPTED: a=b; c", count: 2 },
       { mechanism: "Nack TIMEOUT", count: 1 },
+    ]);
+    // A run made before the baseline rows existed: no `mirrors` column, no baseline.
+    expect(e5).not.toHaveProperty("baseline");
+    expect(e5?.rows[0]).not.toHaveProperty("mirrors");
+  });
+
+  it("keeps the B5 baseline rows apart from the IDEM rows (ADR-036)", () => {
+    const line = (variant: string, expected: string, mirrors: string, accepted: number) => ({
+      attack: "tamper",
+      variant,
+      where: "w",
+      expected,
+      trials: "3",
+      rejected: String(3 - accepted),
+      accepted: String(accepted),
+      mechanisms: accepted ? `ACCEPTED: x=${accepted}` : "edge=3",
+      assumes: "",
+      summary: "s",
+      mirrors,
+    });
+    const run: LoadedRun = {
+      experiment: "e5-safety",
+      id: "r1",
+      config: { experiment: "e5-safety", kind: "safety", seed: 1, trials: 3 },
+      seed: "1..3",
+      gitSha: "none",
+      sourceDigest: "d",
+      env: ENV,
+      metrics: [
+        line("tamper/content@upstream", "rejected", "", 0),
+        line("baseline/tamper@upstream", "baseline", "tamper/content@upstream", 3),
+      ],
+    };
+    const e5 = buildResultsData([run], "x").e5;
+    expect(e5?.rows.map((r) => r.variant)).toEqual(["tamper/content@upstream"]);
+    expect(e5?.rows[0]).not.toHaveProperty("mirrors");
+    expect(e5?.baseline).toEqual([
+      expect.objectContaining({
+        variant: "baseline/tamper@upstream",
+        expected: "baseline",
+        mirrors: "tamper/content@upstream",
+        accepted: 3,
+        mechanisms: [{ mechanism: "ACCEPTED: x", count: 3 }],
+      }),
     ]);
   });
 

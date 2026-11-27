@@ -146,11 +146,10 @@ importers:
       '@idem/gateway':
         specifier: workspace:*
         version: link:../gateway
-      '@modelcontextprotocol/server':
+      '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0
-    devDependencies:
-      '@modelcontextprotocol/client':
+      '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
 

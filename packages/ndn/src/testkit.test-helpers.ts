@@ -103,6 +103,7 @@ export async function setupNetwork() {
   const p = await setupProducer();
   const fw = Forwarder.create();
   const served = await serveNdn({ producer: p.producer, key: p.key, fw });
-  const consumer = new NdnConsumer({ producer: PRODUCER, fw });
+  // The consumer reads the producer's (virtual) clock: the signed lifetime needs them to agree [P-8.6].
+  const consumer = new NdnConsumer({ producer: PRODUCER, fw, clock: p.clock });
   return { ...p, fw, served, consumer };
 }

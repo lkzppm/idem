@@ -38,6 +38,8 @@ export interface GatewayOptions {
   pit?: PitLimits;
   /** Edge secret for `authContext = HMAC(secret, credential)` [P-8.4]. */
   authSecret?: string;
+  /** Clock tolerance of the signed-lifetime check [P-8.6]. Default `DEFAULT_CLOCK_TOLERANCE_MS`. */
+  clockToleranceMs?: number;
   /** [P-7.1] experiment flag only. */
   verifyOnInsert?: boolean;
   /** Path prefix the handler is mounted under (e.g. `/api/edge`). */
@@ -109,6 +111,7 @@ export function createGateway(opts: GatewayOptions): Gateway {
     ...(opts.cs && { cs: opts.cs }),
     ...(opts.pit && { pit: opts.pit }),
     ...(opts.authSecret !== undefined && { authSecret: opts.authSecret }),
+    ...(opts.clockToleranceMs !== undefined && { clockToleranceMs: opts.clockToleranceMs }),
     ...(opts.verifyOnInsert !== undefined && { verifyOnInsert: opts.verifyOnInsert }),
     onEvent: (e) => {
       for (const c of collectors) {

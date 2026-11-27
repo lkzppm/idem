@@ -94,10 +94,27 @@ Tipos: `IdemName`, `ParsedName`, `CanonicalArgs`, `Normalizer`, `JsonSchema`, `J
 | `verifyData(data, trust, opts?)` | Verificação de ponta a ponta [P-5.5]: o locator e o nome concordam, a chave é confiável e não expirou, o digest do conteúdo bate, a assinatura é válida. Devolve um `VerifyResult`, nunca lança |
 | `signManifest(m, key)`, `verifyManifest(m, trust, opts?)`, `verifyManifestSignature(m)` | Assinam um manifesto; conferem-no contra um armazenamento de confiança; conferem só a sua consistência interna |
 | `contentDigest(content)`, `dataSignedBytes(name, meta)`, `manifestSignedBytes(m)`, `stripEphemeral(result)` | Os bytes exatos que entram no hash e na assinatura [P-5.2] |
-| `deriveAuthContext(edgeSecret, credential)` | `b64u(HMAC-SHA256(secret, credential))[0:22]` [P-8.4] |
+| `deriveAuthContext(edgeSecret, credential)` | `b64u(HMAC-SHA256(secret, credential))[0:22]` [P-8.4]. É a borda que o calcula; um forwarder nunca aceita o `authContext` de um Interest recebido |
 | `assertManifestShape(m)` | Lança `BAD_MANIFEST` se `m` não tiver o formato da seção 6 |
 
-`VerifyResult` é `{ ok: true, producer, keyId }` ou `{ ok: false, code, reason }`, com `code` igual a `BAD_SIGNATURE`, `UNTRUSTED_KEY` ou `BAD_MANIFEST`.
+`VerifyResult` é `{ ok: true, producer, keyId }` ou `{ ok: false, code, reason }`, com `code` igual a `BAD_SIGNATURE`, `UNTRUSTED_KEY` ou `BAD_MANIFEST`. O `verifyData` não compara o `producedAt` com um relógio: uma assinatura válida e um Data dentro do seu tempo de vida são dois vereditos separados.
+
+### Tempo de vida assinado {#core-lifetime}
+
+O predicado de [P-8.6]. Os forwarders e todos os consumidores usam esta mesma definição. O juiz do experimento de segurança não a usa: ele trabalha com a verdade do seu mundo, para não poder concordar com a defesa que julga.
+
+| Export | O que faz |
+|---|---|
+| `lifetimeState(meta, ttlMs, now, toleranceMs?)` | Onde um Data está em um nó cujo relógio marca `now`: `"within"`, `"expired"` (a sua idade aparente chegou a `min(freshnessMs, ttlMs)` mais a tolerância) ou `"future"` (datado à frente além da tolerância). Falha fechado: um valor que não é número dá `"expired"`. Passe `ttlMs = Infinity` quando nenhum TTL de manifesto é conhecido |
+| `isOutsideLifetime(meta, ttlMs, now, toleranceMs?)` | `true` quando o estado não é `"within"` |
+| `apparentAge(meta, now)`, `lifetimeOf(meta, ttlMs, toleranceMs?)` | `now − producedAt`, sem corte em 0; e a idade aparente em que um Data expira |
+| `lifetimeReason(meta, ttlMs, now, toleranceMs?)` | A mensagem de uma linha de um erro `EXPIRED` ou `CLOCK_SKEW`: qual lado da janela foi perdido, o `producedAt` e a hora local |
+| `clockTolerance(ms)` | Valida a opção `clockToleranceMs` de um nó. Lança `BAD_POLICY` para um valor negativo ou que não é número |
+| `DEFAULT_CLOCK_TOLERANCE_MS` | `60_000`, o padrão de toda opção `clockToleranceMs` |
+| `staleByAge(data, ttlMs)` | `true` quando um Data traz um `ageMs` de pelo menos `min(freshnessMs, ttlMs)` [P-8.1]. Um Data sem `ageMs` vem do seu produtor e não chega velho |
+| `acceptData(data, { trust, now, name?, mustBeFresh, ttlMs?, toleranceMs? })` | A decisão do consumidor, a mesma que todo consumidor distribuído toma (`IdemClient`, `IdemConsumer`, `NdnConsumer`, os agentes do simulador, o experimento de segurança): o Data traz o nome pedido, é verificado [P-5.5] e, quando o pedido era de Data fresco, está dentro do seu tempo de vida assinado e não está velho pela sua idade [P-8.7]. Devolve `{ ok: true, verify }` ou `{ ok: false, code, reason, verify }`, com `code` igual a `BAD_SIGNATURE` (nome errado incluído), `UNTRUSTED_KEY`, `BAD_MANIFEST` ou `EXPIRED`; para `EXPIRED`, `verify.ok` é `true` |
+
+A tolerância é local a cada nó, e cada um a recebe como uma opção chamada `clockToleranceMs`: `Forwarder`, `createGateway`, `IdemClient`, `createMcpEdge`, `IdemConsumer` e `NdnConsumer`.
 
 ### `TrustStore` {#core-trust}
 
@@ -124,6 +141,7 @@ const forwarder = new Forwarder({
   pit,                 // optional; default: { maxEntries: 10_000, maxFacesPerEntry: 256 }
   verifyOnInsert,      // optional; default true. false only in experiments [P-7.1]
   authSecret,          // optional; the edge secret that derives authContext [P-8.4]
+  clockToleranceMs,    // optional; signed-lifetime tolerance [P-8.6]. Default DEFAULT_CLOCK_TOLERANCE_MS
   onEvent,             // optional; receives every ForwarderEvent
 });
 forwarder.addFace(face, { consumer: true });   // a face that leads to consumers: this node is their edge
@@ -164,7 +182,7 @@ Um `ProducerTool` é `{ name, description?, inputSchema, outputSchema?, annotati
 
 ### Erros e codificação {#core-errors}
 
-`IdemError` carrega um `code` do tipo `IdemErrorCode`, a união dos códigos de fio (`IdemWireErrorCode`: `DIGEST_MISMATCH`, `BAD_SIGNATURE`, `UNTRUSTED_KEY`, `NOT_CACHEABLE`, `TIMEOUT`, `HOP_LIMIT`, `LOOP`, `UPSTREAM_ERROR`) com os locais (`IdemLocalErrorCode`: `BAD_NAME`, `BAD_JSON`, `BAD_ENCODING`, `INVALID_ARGS`, `UNSUPPORTED_SCHEMA`, `BAD_POLICY`, `BAD_MANIFEST`, `CRYPTO_UNSUPPORTED`). `isIdemError(e, code?)` refina um erro desconhecido.
+`IdemError` carrega um `code` do tipo `IdemErrorCode`, a união dos códigos de fio (`IdemWireErrorCode`: `DIGEST_MISMATCH`, `BAD_SIGNATURE`, `EXPIRED`, `UNTRUSTED_KEY`, `NOT_CACHEABLE`, `TIMEOUT`, `HOP_LIMIT`, `LOOP`, `UPSTREAM_ERROR`) com os locais (`IdemLocalErrorCode`: `BAD_NAME`, `BAD_JSON`, `BAD_ENCODING`, `INVALID_ARGS`, `UNSUPPORTED_SCHEMA`, `BAD_POLICY`, `BAD_MANIFEST`, `CRYPTO_UNSUPPORTED`, `CLOCK_SKEW`). `isIdemError(e, code?)` refina um erro desconhecido. Dois dos códigos pertencem ao tempo de vida assinado: um forwarder responde `EXPIRED` para um Data fora do seu tempo de vida quando o Interest pediu Data fresco [P-8.6], e um consumidor levanta `CLOCK_SKEW` quando a sua nova tentativa verificada continua fora dele [P-8.7].
 
 Auxiliares de codificação: `b64uEncode`, `b64uDecode`, `isB64u`, `sha256`, `sha256b64u`, `utf8`, `utf8Length`, `randomNonce`.
 
@@ -183,6 +201,7 @@ Um forwarder HTTP, de borda ou regional, que executa o motor do core no relógio
 | `cs`, `trust`, `pit` | Um Content Store, um armazenamento de confiança e limites de PIT próprios |
 | `authSecret` | O segredo da borda; `authContext` é um HMAC dele com a credencial bearer [P-8.4] |
 | `verifyOnInsert` | Só como flag de experimento [P-7.1] |
+| `clockToleranceMs` | A tolerância da verificação de tempo de vida assinado deste forwarder [P-8.6] |
 | `basePath` | O prefixo de caminho em que o handler está montado, como `/api/edge` |
 | `fetch`, `onEvent` | Um `fetch` injetado; um ouvinte para todos os eventos do forwarder |
 
@@ -198,15 +217,15 @@ O consumidor que verifica. Roda em qualquer lugar que tenha `fetch` e WebCrypto.
 
 | Membro | O que faz |
 |---|---|
-| `new IdemClient({ edge, producer, producerUrl?, credential?, trust?, fetch?, intercept? })` | `edge` é o primeiro salto. `producerUrl` é para onde vai a nova tentativa sem cache, para um consumidor que alcança o produtor; por padrão, ela é uma chamada passthrough pela borda. `intercept` é um gancho de teste que reescreve um Data antes da verificação |
+| `new IdemClient({ edge, producer, producerUrl?, credential?, trust?, fetch?, clock?, clockToleranceMs?, intercept? })` | `edge` é o primeiro salto. `producerUrl` é para onde vai a nova tentativa sem cache, para um consumidor que alcança o produtor; por padrão, ela é uma chamada passthrough pela borda. `clock` e `clockToleranceMs` definem a fonte de tempo e a tolerância da verificação de tempo de vida [P-8.7]. `intercept` é um gancho de teste que reescreve um Data antes da verificação |
 | `init()` | Busca e verifica o manifesto e a lista de ferramentas |
 | `prepare(tool, args)` | O Interest que uma chamada enviaria, ou `undefined` se a chamada não for IDEM |
 | `call(tool, args)` | Chama uma ferramenta e devolve um `CallOutcome` |
-| `sendInterest(interest)` | Envia um Interest já montado e verifica a resposta |
+| `sendInterest(interest)` | Envia um Interest já montado e verifica a resposta. Um Data que passa na verificação mas está fora do seu tempo de vida volta com `verify.ok` verdadeiro e `error` `EXPIRED` |
 
-Um `CallOutcome` tem `tool`, `result`, `via` (`"idem"` ou `"call"`), `name`, `data`, `verify`, `retried`, `trace`, `latencyMs` e `error`. `retried` é verdadeiro quando a primeira resposta falhou na verificação e a chamada foi repetida como chamada comum, que nenhum cache responde [P-5.5]. A resposta repetida também é verificada: se vier sem assinatura, assinada para outro nome ou inválida, `error` é `BAD_SIGNATURE` e `result` é um resultado de erro, nunca o conteúdo sem verificação.
+Um `CallOutcome` tem `tool`, `result`, `via` (`"idem"` ou `"call"`), `name`, `data`, `verify`, `retried`, `trace`, `latencyMs` e `error`. `retried` é verdadeiro quando a primeira resposta falhou na verificação (`BAD_SIGNATURE`) ou estava fora do seu tempo de vida assinado (`EXPIRED`, vindo de um forwarder ou pelo relógio do próprio cliente), e a chamada foi repetida como chamada comum, que nenhum cache responde [P-5.5, P-8.7]. A resposta repetida passa pelas mesmas verificações. Se vier sem assinatura, assinada para outro nome ou inválida, `error` é `BAD_SIGNATURE`. Se passar na verificação mas continuar fora do tempo de vida, `error` é `CLOCK_SKEW`, e `verify.ok` continua verdadeiro, porque a assinatura é válida. Nos dois casos `result` é um resultado de erro, nunca o conteúdo sem verificação ou expirado. Leia `error` antes de `verify.ok`. `error` é um `CallError`: um código de fio ou `CLOCK_SKEW`, com uma mensagem.
 
-Também exportados: as faces `HttpUpstreamFace` e `RequestFace`; `credentialOf(req)`; e os auxiliares de fio `PATHS`, `HEADERS`, `statusFor(code)`, `errorResponse`, `json`, `isWireError`, `parseTrace`, `formatTrace`, `routePath`, com os tipos `WireError`, `TraceHop`, `Gateway`, `GatewayOptions`, `Upstream`, `IdemClientOptions`, `ProducerHandlerOptions`.
+Também exportados: as faces `HttpUpstreamFace` e `RequestFace`; `credentialOf(req)`; e os auxiliares de fio `PATHS`, `HEADERS`, `statusFor(code)`, `errorResponse`, `json`, `isWireError`, `parseTrace`, `formatTrace`, `routePath`, com os tipos `WireError`, `TraceHop`, `CallError`, `CallOutcome`, `Gateway`, `GatewayOptions`, `Upstream`, `IdemClientOptions`, `ProducerHandlerOptions`.
 
 ## `@idem/mcp` {#mcp}
 
@@ -215,13 +234,52 @@ O binding MCP, sobre o SDK TypeScript v2 do MCP.
 | Export | O que faz |
 |---|---|
 | `createMcpProducer(producer, info)` | Serve um `Producer` como servidor MCP sem estado. `tools/call` executa `handleCall`, então os resultados de ferramentas cacheáveis levam `_meta["dev.idem/data"]`. A credencial é `Authorization: Bearer` |
-| `createMcpEdge({ gateway, producer, info, maxClients? })` | Um endpoint MCP comum na frente de uma borda IDEM. Ele termina o MCP: lista as ferramentas do produtor (só as ferramentas), e cada `tools/call` passa pelo motor do forwarder no mesmo processo, com a borda nomeando a chamada e verificando a resposta em nome do cliente [P-5.5]. É assíncrono, porque antes aprende a lista de ferramentas e verifica o manifesto |
-| `new IdemConsumer({ trust? })` | Verifica resultados recebidos por MCP. `pin(producer, keys)` fixa chaves do produtor; `verifyToolResult(result)` devolve um `VerifyResult`, ou `{ ok: false, code: "UNSIGNED" }` para um resultado sem metadados IDEM |
+| `createMcpEdge({ gateway, producer, info, maxClients?, clockToleranceMs? })` | Um endpoint MCP comum na frente de uma borda IDEM. Ele termina o MCP: lista as ferramentas do produtor (só as ferramentas), e cada `tools/call` passa pelo motor do forwarder no mesmo processo, com a borda nomeando a chamada e verificando a resposta em nome do cliente [P-5.5]. Uma resposta que falha na verificação ou na checagem do tempo de vida mesmo depois da nova tentativa chega ao cliente MCP como um resultado de erro, nunca como conteúdo [P-8.7]. É assíncrono, porque antes aprende a lista de ferramentas e verifica o manifesto |
+| `new IdemConsumer({ trust?, clock?, clockToleranceMs? })` | Verifica resultados recebidos por MCP. `pin(producer, keys)` fixa chaves do produtor; `verifyToolResult(result)` devolve um `VerifyResult`, ou `{ ok: false, code: "UNSIGNED" }` para um resultado sem metadados IDEM, ou `{ ok: false, code: "EXPIRED" }` para um cuja assinatura é válida mas que está fora do seu tempo de vida assinado neste relógio [P-8.7]. Ele não tem um caminho próprio sem cache; então quem chamou repete a chamada |
+| `createProxyProducer(options)` | Um produtor IDEM, com nome e chave próprios, na frente de um servidor MCP que não fala IDEM. Veja [abaixo](#mcp-proxy) |
 
-Tipos de opções: `McpServerInfo` (`{ name, version }`) e `McpEdgeOptions`.
+Tipos de opções: `McpServerInfo` (`{ name, version }`) e `McpEdgeOptions`. O pacote reexporta o tipo `JsonSchema` do `@idem/core`.
 
 > [!NOTE]
 > Um wrapper `withIdem(server)`, que acrescentaria o IDEM a um `McpServer` existente, com ferramentas registradas em outro lugar, está planejado e não foi implementado. Hoje um produtor declara suas ferramentas pelo `Producer` e é servido por `createMcpProducer`.
+
+### `createProxyProducer(options)` {#mcp-proxy}
+
+O proxy-producer da [seção 9.1 do protocolo](/docs/protocol#s9-1) (ADR-038): um produtor IDEM para um servidor MCP que não sabe nada de IDEM, a origem. O proxy chama a origem por MCP comum, nomeia os resultados e os assina com a sua própria chave. A confiança passa para o proxy; a página de [Segurança](/docs/security#limits) diz o que um consumidor fica e não fica sabendo pela assinatura dele.
+
+```ts
+import { importKeyPair } from "@idem/core";
+import { createProducerHandler } from "@idem/gateway";
+import { createMcpProducer, createProxyProducer } from "@idem/mcp";
+
+const proxy = await createProxyProducer({
+  upstream: { url: "https://mcp.example.com/mcp", credential: process.env.ORIGIN_TOKEN },
+  name: "proxy.example.com",                        // the proxy's own name, never the origin's
+  key: await importKeyPair(JSON.parse(process.env.PROXY_KEY_JWK!)),
+  tools: {                                          // any tool not listed is relayed, unsigned, never cached
+    search_docs: { cacheable: true, ttlMs: 300_000, scope: "public", normalizers: { "/q": ["trim", "lowercase"] } },
+    my_tickets: { cacheable: true, ttlMs: 30_000, scope: "private" },  // forwards the user's Bearer
+    get_status: { cacheable: true, ttlMs: 10_000, scope: "public", operatorAssertsReadOnly: true },
+  },
+  onSchemaChange: () => void proxy.refresh(),       // or refresh from a deploy hook
+});
+export const idem = createProducerHandler(proxy);   // edges: { producer: "proxy.example.com", kind: "producer" }
+export const mcp = createMcpProducer(proxy, { name: "idem-proxy", version: "1.0.0" });
+```
+
+O `createProxyProducer` lê o `tools/list` da origem e devolve um `ProxyProducer`, uma subclasse do `Producer` do core; por isso ele é servido por `createProducerHandler` ou `createMcpProducer` como qualquer outro produtor. Ele lança `BAD_POLICY` quando o nome é o host da origem, ou quando uma ferramenta declarada cacheável não pode ser: ausente na origem, marcada com `readOnlyHint: false`, sem `readOnlyHint` e sem `operatorAssertsReadOnly`, ou com um schema fora do subconjunto suportado.
+
+| Opção | Significado |
+|---|---|
+| `upstream` | Um `ProxyUpstream`, `{ url, fetch?, credential?, info? }`: o endpoint Streamable HTTP da origem. `credential` é o Bearer do próprio proxy na origem, usado para o `tools/list` e para as ferramentas declaradas `public`, que nunca veem a credencial de um usuário final, nem quando retidas ou recusadas [P-9.7] |
+| `name`, `key` | O nome de produtor e a chave de assinatura do próprio proxy, nunca os da origem [P-9.5] |
+| `tools` | A política do operador por ferramenta da origem, um `ProxyToolPolicy`: um `ProducerToolPolicy` mais `policyVersion?` e `operatorAssertsReadOnly?`. Este último é para uma ferramenta à qual a origem não dá `readOnlyHint`; ele não pode contrariar um `readOnlyHint: false` [P-9.6] |
+| `onSchemaChange` | Chamado com um `SchemaChange`, `{ tool, manifestVersion }`, quando o proxy vê mudar a entrada da origem para uma ferramenta. A ferramenta fica não cacheável a partir daí, até o `refresh()` [P-9.8] |
+| `clock`, `manifestVersion`, `maxClients` | A fonte de tempo; a primeira versão do manifesto, por padrão o relógio em segundos, para que um reinício nunca volte atrás [P-6.3]; o limite de clientes da origem, um por credencial, com padrão 512 |
+
+Um `ProxyProducer` acrescenta `origin`, `manifestVersion` e `refresh()`, que relê a lista de ferramentas da origem e devolve um `ProxyRefresh`, `{ changed, manifestVersion, refused }`; `ProxyProducer.create(options)` é o mesmo que a função. Cada ferramenta que ele lista leva `_meta["dev.idem/origin"]` (a chave é `ORIGIN_META_KEY`), um `OriginRecord` da forma `{ origin, readOnlyHint: "origin" | "operator" | "absent" }`. Como a lista de ferramentas, o registro não é assinado e é só informativo. O tipo de opções é `ProxyProducerOptions`.
+
+Há uma lacuna conhecida. Os forwarders e o `IdemClient` leem um manifesto uma vez só. Depois que a origem muda uma ferramenta e o proxy faz o refresh, uma borda que não foi reiniciada responde `NOT_CACHEABLE` ou `DIGEST_MISMATCH` para aquela ferramenta.
 
 ## `@idem/sim` {#sim}
 
@@ -242,17 +300,21 @@ const { metrics } = await runSimulation(config, { seed: 42 });
 | `runSimulation(config, { seed, onEvent?, keepEvents? })` | Executa até o fim e devolve um `SimResult` (`metrics`, `events?`, `config`, `seed`) |
 | `Simulation` | Uma execução que pode ser avançada em passos: `Simulation.create(config, { seed, ...hooks })`, `runUntil(t)`, `run()`, `result()`, e os ataques `attackTamper()`, `attackForge()`, `attackPrivateProbe()` |
 | `SimConfig` | `topology`, `mode`, `workload`, `producer`, `cs`, e ajustes opcionais como `interestLifetimeMs` |
-| `SimMode` | `"mcp-direct"`, `"mcp-local-cache"`, `"idem"`, `"idem-noverify"` |
+| `SimMode` | `"mcp-direct"`, `"mcp-local-cache"`, `"mcp-gateway-cache"`, `"idem"`, `"idem-noverify"` |
 | `buildTopology(preset)` | `star` (agentes → borda → produtor) ou `tree` (agentes → bordas → regional → produtor) |
 | `defaultConfig(overrides?)` | Uma configuração inicial razoável |
-| `SyntheticWorkload`, `TraceWorkload`, `TraceRecord` | As cargas de trabalho da [Avaliação](/docs/evaluation#workloads) |
-| `Metrics`, `MetricsCollector` | As métricas de uma execução, calculadas a partir do fluxo de eventos do forwarder |
+| `SyntheticWorkload`, `PerAgentWorkload`, `TraceWorkload`, `TraceRecord` | As cargas de trabalho da [Avaliação](/docs/evaluation#workloads). Uma carga sintética aceita `burst: { size, parallel? }` e `startSpreadMs` para chamadas emitidas por código; sem eles, é uma chamada por passo, como antes. Uma carga por agente dá a cada agente o seu próprio `AgentPlan` |
+| `Metrics`, `MetricsCollector` | As métricas de uma execução, calculadas a partir do fluxo de eventos do forwarder. `gatewayCacheHits` e `gatewayInflightDuplicates` são contados no modo de cache de gateway e valem 0 nos outros |
+| `GatewayCache`, `GatewayRelay`, `gatewayCacheKey(producer, tool, args)`, `stableJson(value)` | O cache de gateway sem assinatura do modo B5 (ADR-036): o cache, com orçamento em bytes e as políticas de substituição do Content Store; o relay que envolve uma face de cliente de um forwarder que repassa chamadas comuns; e a chave, que é o produtor, a ferramenta e os argumentos como foram enviados, serializados com as chaves ordenadas. É um baseline da avaliação e só existe no simulador. `Simulation.gatewayCaches` guarda o cache de cada borda nesse modo |
+| `validateConfig(config)`, `SimConfigError` | Confere uma configuração e devolve os seus produtores com os padrões preenchidos; lança um `SimConfigError` cujo `path` aponta para o campo com problema |
+| `routesTo`, `pathToProducer`, `reachableProducers` | Rotas de menor latência até um produtor em qualquer grafo (ADR-027) |
+| `TOOL_CATALOG`, `TOOL_IDS`, `toolInfo`, `isToolId`, `simTool` | As ferramentas simuladas, que espelham as do produtor de demonstração, e a definição delas do lado do produtor |
 | `Rng`, `Zipf`, `percentile` | O gerador com semente de onde sai toda decisão aleatória |
-| `planWorkload`, `SIM_PRODUCER`, `SimHooks`, `CallRecord`, `Transmission`, `AttackRecord` | A expansão da carga, o nome do produtor usado nas simulações e os registros que uma execução relata |
+| `planWorkload`, `SIM_PRODUCER`, `SimHooks`, `CallRecord`, `Transmission`, `AttackRecord` | A expansão da carga, o nome do produtor usado nas simulações e os registros que uma execução relata. Um `CallRecord` pode trazer `error`, um `SimCallError`: `"NO_ROUTE"`, ou `"CLOCK_SKEW"` para uma chamada cuja nova tentativa verificada continuou fora do seu tempo de vida assinado |
 
-Tipos de configuração: `SimNode`, `SimLinkConfig`, `TopologyPreset`.
+Tipos de configuração: `SimNode`, `SimLinkConfig`, `TopologyPreset`, `SimProducerConfig`, `SimToolConfig`, `ToolId`, `ToolMixEntry`, `AgentPlan`, `Dist`. Outros tipos: `PlannedCall`, `ResolvedProducer`, `RouteHop`, `RoutePath`, `GatewayCacheEntry`, `GatewayRelayOptions`, `ToolCatalogEntry`, `SimToolContext`, `SimErrorCode`. Constantes: `AGENT_PLAN_DEFAULTS`, `DEFAULT_MAX_RESULT_BYTES`, `CORPUS_ORIGIN`, `SEARCH_QUERIES`, `CITIES`.
 
-O pacote também exporta o modelo de custo de processamento (`ProcessingCosts`, `ProcessingOp`, `costUs`, `assertProcessingCosts`) e, só como tipos, os formatos que a página de resultados lê: `ResultsData`, `SweepData`, `MicrobenchData`, `MicrobenchCell`, `MissOverhead`, `SafetyData`, `RunRef`, `Stat`, `AttackClass`, `Expectation`, `EvalModeId`, `SweepBase`. Eles pertencem à avaliação e mudam com ela; leia-os em `packages/sim/src`.
+O pacote também exporta o modelo de custo de processamento (`ProcessingCosts`, `ProcessingOp`, `costUs`, `assertProcessingCosts`) e, só como tipos, os formatos que a página de resultados lê: `ResultsData`, `SweepData`, `MicrobenchData`, `MicrobenchCell`, `MissOverhead`, `SafetyData`, `SafetyRowData`, `EmulationData`, `EmulationModeId`, `NfdData`, `NfdRunData`, `NfdScenario`, `RunRef`, `Stat`, `AttackClass`, `Expectation`, `EvalModeId`, `SweepBase`. Eles pertencem à avaliação e mudam com ela; leia-os em `packages/sim/src`.
 
 ## `@idem/ndn` {#ndn}
 
@@ -277,7 +339,7 @@ const out = await consumer.call("fetch_page", { url: "https://corpus.idem.dev/do
 | `producerSigner`, `ndnSigner`, `ndnVerifier` | Assinadores e verificadores Ed25519 do NDN, do keychain do NDNts, com as mesmas chaves WebCrypto do `@idem/core` |
 | `verifyNdnData(data, trust, opts?)` | As duas verificações: a assinatura NDN e a assinatura IDEM com o digest do conteúdo. Nunca lança exceção |
 | `serveNdn(options)` | Serve um `Producer` sob `/idem/v1/<producer>`, com `_manifest` e `_tools`; ferramentas privadas recebem um Nack `NOT_CACHEABLE` e nunca rodam |
-| `NdnConsumer` | `init()` busca o manifesto e a lista de ferramentas pelo NDN, `prepare()` nomeia uma chamada, `call()` a envia e verifica a resposta |
+| `NdnConsumer` | `init()` busca o manifesto e a lista de ferramentas pelo NDN, `prepare()` nomeia uma chamada, `call()` a envia e verifica a resposta. As suas opções incluem `retransmissions`, `clock` e `clockToleranceMs`. Um Data verificado que está fora do seu tempo de vida assinado faz a chamada falhar fechada com `EXPIRED`: um consumidor só nativo não tem chamada comum para tentar de novo [P-8.7] |
 | `tlvTree`, `toHex`, `TLV_TYPES` | A árvore TLV decodificada de um pacote, para exibição (a visão nativa do sandbox usa) |
 
-Também exportados: `ndnNonce`, `idemNonce`, `CONTENT_TYPE`, `RESERVED` e os tipos de opções e de resultados.
+Também exportados: `ndnNonce`, `idemNonce`, `CONTENT_TYPE`, `RESERVED` e os tipos de opções e de resultados `NdnConsumerOptions`, `NdnCallOutcome`, `NdnProducer`, `NdnProducerOptions`, `NdnSigner`, `NdnVerifyOptions`, `NdnVerifyResult`, `OuterVerifyResult`, `DecodedData`, `NativeEnvelope` e `TlvNode`.

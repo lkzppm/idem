@@ -16,15 +16,19 @@ flowchart LR
 Minimum topology: agents → edge → producer. The tree topology (edge → regional → producer) exists for
 the multi-hop experiments (E4).
 
+A server that does not speak IDEM can sit behind a proxy-producer (`createProxyProducer` in
+`@idem/mcp`, protocol §9.1, ADR-038). The proxy is the producer of every diagram here, with its own
+name and key; it calls the legacy server (the origin) over plain MCP.
+
 ## 2. Packages
 
 | Package | Responsibility | Depends on | Runs in |
 |---|---|---|---|
 | `@idem/core` | names, canonicalization, JCS, digests, envelope, Ed25519, manifest, trust store, **forwarder engine** (PIT, CS, FIB), events, `Clock`, transport-agnostic `Producer` and consumer helpers (ADR-014) | Web APIs only | browser, Node, Vercel, simulator |
 | `@idem/gateway` | IDEM over HTTP: producer handler, HTTP forwarder (edge/regional) with upstream HTTP faces, verifying `IdemClient`; Web-standard `(Request) => Promise<Response>` | core | browser (client), Node, Vercel |
-| `@idem/mcp` | MCP binding (SDK v2): `createMcpProducer`, `createMcpEdge` (edge as a plain MCP endpoint), `IdemConsumer` | core, gateway, `@modelcontextprotocol/server` | Node, Vercel |
-| `@idem/ndn` | native binding (protocol §9.2, ADR-026): IDEM name ⇄ NDN name, Interest/Data codec (content = JCS envelope with the IDEM signature), NDN Ed25519 via the NDNts keychain, `serveNdn` (wraps core's `Producer`), `NdnConsumer` (core's `buildInterest` + `verifyData`), TLV inspector. PIT/CS are NFD's | core, `@ndn/{packet,tlv,keychain,endpoint,fw}` | Node (Mini-NDN), browser (sandbox view; WebSocket face later) |
-| `@idem/sim` | discrete-event simulator: topologies, links (delay, loss, bandwidth), workloads, metric collection | core | Node (experiments), browser (sandbox) |
+| `@idem/mcp` | MCP binding (SDK v2): `createMcpProducer`, `createMcpEdge` (edge as a plain MCP endpoint), `createProxyProducer` (legacy servers, ADR-038), `IdemConsumer` | core, gateway, `@modelcontextprotocol/server`, `@modelcontextprotocol/client` | Node, Vercel |
+| `@idem/ndn` | native binding (protocol §9.2, ADR-026): IDEM name ⇄ NDN name, Interest/Data codec (content = JCS envelope with the IDEM signature), NDN Ed25519 via the NDNts keychain, `serveNdn` (wraps core's `Producer`), `NdnConsumer` (core's `buildInterest` + `verifyData`), TLV inspector. PIT/CS are NFD's | core, `@ndn/{packet,tlv,keychain,endpoint,fw}` | Node (against NFD in Docker: the functional check and the E4 bench), browser (sandbox view; WebSocket face later) |
+| `@idem/sim` | discrete-event simulator: topologies, links (delay, loss, bandwidth), workloads, metric collection; the unsigned gateway cache of evaluation mode B5 (`gateway-cache.ts`, ADR-036), which is a baseline and not part of the protocol | core | Node (experiments), browser (sandbox) |
 | `apps/web` | landing, sandbox, docs, results, demo routes (producer + gateway) | all (`ndn` only for the sandbox's native view) | Vercel |
 
 Dependency rule: `core` depends on nothing. `sim`, `gateway` and `ndn` only on `core` (plus `@ndn/*` for
@@ -39,6 +43,8 @@ The logic in protocol §7 lives **exactly once**, in `Forwarder`, parameterized 
 - `clock: Clock`: `RealClock` in production, `VirtualClock` in the simulator.
 - `cs: ContentStore`: `MemoryContentStore` (byte-budgeted LRU) by default; the interface allows Redis.
 - `verifier: Verifier` and `trust: TrustStore`.
+- `clockToleranceMs`: the tolerance of the signed-lifetime check [P-8.6], default
+  `DEFAULT_CLOCK_TOLERANCE_MS` (60 s). Data outside its lifetime is dropped with reason `expired`.
 - `onEvent: (e: ForwarderEvent) => void`: every §7 event becomes a typed object. **The sandbox and the
   experiments consume exactly this stream.** Metrics are not computed anywhere else.
 

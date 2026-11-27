@@ -1,4 +1,6 @@
 import {
+  type AcceptVerdict,
+  acceptData,
   b64uEncode,
   buildInterest,
   type CallToolResult,
@@ -25,7 +27,8 @@ import {
   VirtualClock,
   verifyData,
 } from "@idem/core";
-import type { SimConfig, SimLinkConfig, SimMode, ToolId } from "./config";
+import type { SimConfig, SimLinkConfig, SimMode, SyntheticWorkload, ToolId } from "./config";
+import { GatewayCache, GatewayRelay } from "./gateway-cache";
 import { type Metrics, MetricsCollector } from "./metrics";
 import { costUs } from "./processing";
 import { Rng } from "./rng";
@@ -78,8 +81,11 @@ export interface CallRecord {
   error?: SimCallError;
 }
 
-/** Local failure of a simulated call (see {@link CallRecord.error}). */
-export type SimCallError = "NO_ROUTE";
+/**
+ * Local failure of a simulated call (see {@link CallRecord.error}). `CLOCK_SKEW`: the verified
+ * plain-call retry was still outside its signed lifetime [P-8.7].
+ */
+export type SimCallError = "NO_ROUTE" | "CLOCK_SKEW";
 
 /** Outcome of an injected attack. */
 export interface AttackRecord {
@@ -287,17 +293,34 @@ class AgentNode {
   readonly #nonceRng: Rng;
   readonly #waiters = new Map<string, Waiter>();
   readonly #localCache = new Map<string, { result: CallToolResult; at: number; ttlMs: number }>();
+  /** W-code (ADR-037): calls per step and whether a step's calls go out at once. */
+  readonly #burst: { size: number; parallel: boolean } | undefined;
+  /** Window the first step starts in, ms (default: the think time). */
+  readonly #startSpreadMs: number;
   plan: CallSpec[] = [];
+  /** Index of the first call of the current step. */
   #k = 0;
   finished = false;
 
-  constructor(id: string, faces: readonly LinkFace[], sim: Simulation, rng: Rng, thinkTimeMs: number) {
+  constructor(
+    id: string,
+    faces: readonly LinkFace[],
+    sim: Simulation,
+    rng: Rng,
+    thinkTimeMs: number,
+    shape: Pick<SyntheticWorkload, "burst" | "startSpreadMs"> = {},
+  ) {
     this.id = id;
     this.token = `token-${id}`;
     this.faces = faces;
     this.#sim = sim;
     this.#rng = rng;
     this.#thinkTimeMs = thinkTimeMs;
+    this.#burst =
+      shape.burst === undefined
+        ? undefined
+        : { size: shape.burst.size, parallel: shape.burst.parallel ?? true };
+    this.#startSpreadMs = shape.startSpreadMs ?? thinkTimeMs;
     this.#nonceRng = rng.fork("nonce");
     for (const face of faces) {
       face.onReceive((p) => {
@@ -320,12 +343,13 @@ class AgentNode {
       this.finished = true;
       return;
     }
-    const delay = first.at ?? this.#rng.next() * this.#thinkTimeMs;
-    this.#sim.clock.setTimeout(() => this.#issue(), delay);
+    const delay = first.at ?? this.#rng.next() * this.#startSpreadMs;
+    this.#sim.clock.setTimeout(() => this.#step(), delay);
   }
 
-  #next(): void {
-    this.#k++;
+  /** Move past the current step (`size` calls) and schedule the next one after a think time. */
+  #next(size = 1): void {
+    this.#k += size;
     const spec = this.plan[this.#k];
     if (!spec) {
       this.finished = true;
@@ -334,52 +358,98 @@ class AgentNode {
     }
     const now = this.#sim.clock.now();
     const delay = spec.at !== undefined ? Math.max(0, spec.at - now) : this.#rng.exp(this.#thinkTimeMs);
-    this.#sim.clock.setTimeout(() => this.#issue(), delay);
+    this.#sim.clock.setTimeout(() => this.#step(), delay);
   }
 
-  async #issue(): Promise<void> {
-    const spec = this.plan[this.#k] as CallSpec;
+  /**
+   * Issue the current step. Without `burst` a step is one call (the model-turn workload). With it,
+   * the next `size` calls: all at once (`parallel`), or each as soon as the previous one ends; the
+   * think time starts when the last of them ends (ADR-037).
+   */
+  #step(): void | Promise<void> {
+    const k = this.#k;
+    const b = this.#burst;
+    if (!b) return this.#issue(k, () => this.#next());
+    const end = Math.min(this.plan.length, k + Math.max(1, b.size));
+    const size = end - k;
+    if (b.parallel) {
+      let left = size;
+      const done = () => {
+        if (--left === 0) this.#next(size);
+      };
+      // Prepare the step's calls one after the other in plan order (names, Interests: WebCrypto
+      // digests), then send them all at this virtual instant. Preparing them concurrently would let
+      // the completion order of the digests decide the send order, hence CPU-charged send times and
+      // service-time draws (golden rule 7).
+      return (async () => {
+        const sends: (() => void)[] = [];
+        for (let i = 0; i < size; i++) sends.push(await this.#prepare(k + i, done));
+        for (const send of sends) send();
+      })();
+    }
+    const run = (i: number): Promise<void> =>
+      this.#issue(i, () => {
+        if (i + 1 < end) this.#sim.clock.setTimeout(() => run(i + 1), 0);
+        else this.#next(size);
+      });
+    return run(k);
+  }
+
+  async #issue(k: number, after: () => void): Promise<void> {
+    (await this.#prepare(k, after))();
+  }
+
+  /**
+   * Everything a call needs before it leaves (its name for B1, its Interest for the IDEM modes),
+   * computed now; the returned function sends it, synchronously, with nothing left to await.
+   */
+  async #prepare(k: number, after: () => void): Promise<() => void> {
+    const spec = this.plan[k] as CallSpec;
     const t0 = this.#sim.clock.now();
     const producer = spec.producer ?? this.#sim.defaultProducer;
     const record = (r: Omit<CallRecord, "agent" | "producer" | "tool" | "t0" | "t1" | "latencyMs">) => {
       const t1 = this.#sim.clock.now();
       this.#sim.recordCall({ agent: this.id, producer, tool: spec.tool, t0, t1, latencyMs: t1 - t0, ...r });
-      this.#next();
+      after();
     };
     const face = this.routes.get(producer);
     if (!face) {
       // No path to the producer: the call fails here, recorded, instead of vanishing on a link.
-      record({ ok: false, via: "call", attempts: 0, stale: false, error: "NO_ROUTE" });
-      return;
+      return () => record({ ok: false, via: "call", attempts: 0, stale: false, error: "NO_ROUTE" });
     }
     const pending: PendingCall = { spec, producer, face, t0, attempts: 0, via: "call", done: record };
     const mode = this.#sim.mode;
     const cache = this.#sim.cacheable(spec.tool, producer);
     if (cache && (mode === "idem" || mode === "idem-noverify")) {
       pending.via = "idem";
-      return this.#sendInterest(pending, cache);
+      return this.#prepareInterest(pending, cache);
     }
     if (cache && mode === "mcp-local-cache") {
       const key = await this.#sim.nameFor(spec, cache).catch(() => undefined);
       const hit = key === undefined ? undefined : this.#localCache.get(`${this.token}|${key}`);
       if (hit && t0 - hit.at < hit.ttlMs) {
-        pending.done({ ok: true, via: "local-cache", attempts: 0, stale: false });
-        return;
+        return () => pending.done({ ok: true, via: "local-cache", attempts: 0, stale: false });
       }
-      return this.#sendCall(pending, (result) => {
-        if (key !== undefined && result.isError !== true) {
-          this.#localCache.set(`${this.token}|${key}`, {
-            result,
-            at: this.#sim.clock.now(),
-            ttlMs: cache.policy.ttlMs,
-          });
-        }
-      });
+      return () =>
+        this.#sendCall(pending, (result) => {
+          if (key !== undefined && result.isError !== true) {
+            this.#localCache.set(`${this.token}|${key}`, {
+              result,
+              at: this.#sim.clock.now(),
+              ttlMs: cache.policy.ttlMs,
+            });
+          }
+        });
     }
-    return this.#sendCall(pending);
+    return () => this.#sendCall(pending);
   }
 
   async #sendInterest(pending: PendingCall, cache: Cacheable): Promise<void> {
+    (await this.#prepareInterest(pending, cache))();
+  }
+
+  /** Build the next Interest of `pending`; the returned function registers its waiter and sends it. */
+  async #prepareInterest(pending: PendingCall, cache: Cacheable): Promise<() => void> {
     pending.attempts++;
     let interest: Interest;
     try {
@@ -393,20 +463,31 @@ class AgentNode {
       }));
     } catch {
       // Invalid for IDEM → plain MCP [P-3.1].
-      return this.#sendCall(pending);
+      return () => this.#sendCall(pending);
     }
+    return () => this.#sendPrepared(pending, cache, interest);
+  }
+
+  #sendPrepared(pending: PendingCall, cache: Cacheable, interest: Interest): void {
     const timer = this.#sim.clock.setTimeout(() => {
       if (!this.#waiters.delete(interest.nonce)) return;
-      this.#retry(pending, cache);
+      // Returned, so the clock awaits the retry's digest before it moves on (golden rule 7).
+      return this.#retry(pending, cache);
     }, this.#sim.lifetimeMs + 1_000);
     this.#waiters.set(interest.nonce, async (p) => {
       this.#sim.clock.clearTimeout(timer);
       if (p.type === "data") {
-        // The answer must be for the name that was asked, and verify [P-5.5].
-        const ok = p.data.name === interest.name && (await this.#sim.consumerVerify(p.data));
-        if (!ok) {
-          if (p.data.name !== interest.name) this.#sim.metrics.consumerVerifyFail();
-          // [P-5.5] retry with a plain call (no PIT, no CS), held to the same standard.
+        // The shared consumer decision (`acceptData`): the name that was asked, the signature
+        // [P-5.5], and the signed lifetime and age on the agent's clock, the simulation's one clock
+        // [P-8.7]. A refusal of any kind gets the [P-5.5] retry as a plain call (no PIT, no CS),
+        // held to the same standard.
+        const v = await this.#sim.consumerAccept(
+          p.data,
+          interest.name,
+          interest.mustBeFresh,
+          cache.policy.ttlMs,
+        );
+        if (!v.ok) {
           pending.retryOf = interest.name;
           return this.#sendCall(pending);
         }
@@ -426,7 +507,7 @@ class AgentNode {
       if (p.type === "nack") {
         if (p.code === "TIMEOUT" || p.code === "UPSTREAM_ERROR") return this.#retry(pending, cache);
         // A forwarder refused the Data: the same retry as after a failed verification [P-5.5].
-        if (p.code === "BAD_SIGNATURE") pending.retryOf = interest.name;
+        if (p.code === "BAD_SIGNATURE" || p.code === "EXPIRED") pending.retryOf = interest.name;
         return this.#sendCall(pending);
       }
     });
@@ -454,13 +535,24 @@ class AgentNode {
       this.#sim.clock.clearTimeout(timer);
       if (p.type === "result") {
         const data = dataFromToolResult(p.result);
-        if (pending.retryOf !== undefined && data?.name !== pending.retryOf) {
-          // The retry came back unsigned, or signed for another name: nothing reaches the agent.
-          this.#sim.metrics.consumerVerifyFail();
-          pending.done({ ok: false, via: pending.via, attempts: pending.attempts, stale: false });
-          return;
-        }
-        if (data && this.#sim.verifies && !(await this.#sim.consumerVerify(data))) {
+        if (pending.retryOf !== undefined) {
+          // The [P-5.5] retry: the shared consumer decision, for the name first asked, as fresh Data.
+          const ttl = this.#sim.cacheable(pending.spec.tool, pending.producer)?.policy.ttlMs ?? Infinity;
+          const v = data && (await this.#sim.consumerAccept(data, pending.retryOf, true, ttl));
+          if (!v) this.#sim.metrics.consumerVerifyFail(); // unsigned: nothing reaches the agent
+          if (!v || !v.ok) {
+            // Unsigned, signed for another name, or not verifying: nothing reaches the agent. A
+            // verified retry still outside its lifetime fails closed [P-8.7].
+            pending.done({
+              ok: false,
+              via: pending.via,
+              attempts: pending.attempts,
+              stale: false,
+              ...(v?.code === "EXPIRED" && { error: "CLOCK_SKEW" }),
+            });
+            return;
+          }
+        } else if (data && this.#sim.verifies && !(await this.#sim.consumerVerify(data))) {
           pending.done({ ok: false, via: pending.via, attempts: pending.attempts, stale: false });
           return;
         }
@@ -517,6 +609,9 @@ export class Simulation {
   readonly agents: AgentNode[] = [];
   readonly metrics: MetricsCollector;
   readonly attacks: AttackRecord[] = [];
+  /** B5 (`mcp-gateway-cache`) only: the gateway cache of each edge forwarder, by node id. */
+  readonly gatewayCaches = new Map<string, GatewayCache>();
+  readonly #gateways = new Map<string, GatewayRelay>();
   readonly #hooks: SimHooks;
   readonly #rng: Rng;
   #trust = new TrustStore();
@@ -657,7 +752,11 @@ export class Simulation {
       });
       for (const link of byNode.get(node.id) ?? []) {
         const peer = link.cfg.a === node.id ? link.cfg.b : link.cfg.a;
-        fwd.addFace(link.faces[node.id] as LinkFace, { consumer: this.#kinds.get(peer) === "agent" });
+        const consumer = this.#kinds.get(peer) === "agent";
+        const face = link.faces[node.id] as LinkFace;
+        fwd.addFace(consumer && cfg.mode === "mcp-gateway-cache" ? this.#gatewayFace(node, face) : face, {
+          consumer,
+        });
       }
       for (const [name, tree] of routes) {
         const hop = tree.get(node.id);
@@ -704,6 +803,7 @@ export class Simulation {
           this,
           this.#rng.fork(`agent-${i}`),
           perAgent ? (own?.think ?? 300) : this.thinkTimeMs,
+          w.kind === "synthetic" ? w : {},
         );
         for (const [name, tree] of routes) {
           const hop = tree.get(node.id);
@@ -714,6 +814,33 @@ export class Simulation {
       });
     for (const a of this.agents) a.start();
     this.#finished = this.agents.filter((a) => a.finished).length;
+  }
+
+  /**
+   * B5: the agent-side face of an edge with its gateway cache in front. The operator caches exactly
+   * the tools the producer's manifest marks cacheable and `public`, with the manifest's TTL (a
+   * perfectly configured operator; ADR-036); every other call passes through.
+   */
+  #gatewayFace(node: SimConfig["topology"]["nodes"][number], face: LinkFace): Face {
+    let relay = this.#gateways.get(node.id);
+    if (!relay) {
+      relay = new GatewayRelay({
+        cache: new GatewayCache({
+          maxBytes: node.csMaxBytes ?? this.config.cs.maxBytes,
+          policy: this.config.cs.policy,
+        }),
+        clock: this.clock,
+        // Every tool the manifest marks cacheable, with its TTL; `private` ones in a partition per
+        // caller credential, as FastMCP's per-token key gives (ADR-036, amended).
+        ttlFor: (producer, tool) => this.cacheable(tool, producer)?.policy.ttlMs,
+        perCredential: (producer, tool) => this.cacheable(tool, producer)?.policy.scope === "private",
+        onHit: () => this.metrics.gatewayHit(),
+        onMiss: (_key, inFlight) => this.metrics.gatewayMiss(inFlight),
+      });
+      this.#gateways.set(node.id, relay);
+      this.gatewayCaches.set(node.id, relay.cache);
+    }
+    return relay.face(face);
   }
 
   /**
@@ -800,6 +927,19 @@ export class Simulation {
       if (dst === "agent") recv += costUs(c, "verifyUs", bytes);
     }
     return { send: send / 1000, recv: recv / 1000 };
+  }
+
+  /**
+   * An agent's decision on a Data: `acceptData` of `@idem/core`, the shared consumer decision, on
+   * the simulation's clock, with the agent-side metrics (a failed name or signature check, a
+   * tampered content that verified).
+   */
+  async consumerAccept(d: Data, name: string, mustBeFresh: boolean, ttlMs: number): Promise<AcceptVerdict> {
+    const v = await acceptData(d, { trust: this.#trust, now: this.clock.now(), name, mustBeFresh, ttlMs });
+    if (!v.verify.ok) this.metrics.consumerVerifyFail();
+    else if (JSON.stringify(d.content).includes("tampered in flight"))
+      this.metrics.safetyViolation("tampered");
+    return v;
   }
 
   async consumerVerify(d: Data): Promise<boolean> {

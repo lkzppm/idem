@@ -38,11 +38,20 @@ export type {
   ResultsData,
   RunRef,
   SafetyData,
+  SafetyRowData,
   Stat,
   SweepData,
 } from "./experiments/export";
 export type { AttackClass, Expectation } from "./experiments/safety";
 export type { EvalModeId, SweepBase } from "./experiments/spec";
+export {
+  GatewayCache,
+  type GatewayCacheEntry,
+  GatewayRelay,
+  type GatewayRelayOptions,
+  gatewayCacheKey,
+  stableJson,
+} from "./gateway-cache";
 export { type Metrics, MetricsCollector } from "./metrics";
 export { assertProcessingCosts, costUs, type ProcessingCosts, type ProcessingOp } from "./processing";
 export { percentile, Rng, Zipf } from "./rng";

@@ -34,6 +34,7 @@ One CLI writes that layout (ADR-023): `pnpm sim -- --config experiments/configs/
 | B2 | `idem` | Agents → edge forwarder (PIT + CS) → producer |
 | B3 | `idem-tree` | Agents → edge → regional → producer (multi-hop) |
 | B4 | `idem-noverify` | B2 with `verifyOnInsert=false`, only to isolate verification cost (E1/E2) |
+| B5 | `mcp-gateway-cache` | Plain MCP with one shared, unsigned exact-match response cache at the edge, as MCP gateways ship it (the industry baseline, ADR-036) |
 
 As run (ADR-023): every mode crosses the same links. In B0 and B1 the edge only relays plain calls and
 the producer answers as a plain MCP server (no `_meta["dev.idem/data"]`), so the baselines carry no
@@ -45,6 +46,31 @@ consumer, the digest check at each forwarder, canonicalize, name and sign at the
 each forwarder (not in B4) and at the consumer, priced by `experiments/configs/processing.json`, the
 medians of E1 interpolated by payload size (`pnpm sim -- calibrate`). The baselines are charged nothing.
 
+B5 as run (ADR-036). B5 models a response cache at an MCP gateway the way the products that cache
+`tools/call` ship it (FastMCP's response-caching middleware, `mcp-proxy`, IBM ContextForge's plugin;
+the large gateways read for the comparison document no `tools/call` cache at all). It is plain MCP end
+to end, like B0 and B1: no names, no signatures, no manifest on the wire, and the producer answers as a
+plain MCP server. The edge keeps one cache shared by all its agents, keyed by producer, tool and the
+arguments as sent, serialized with sorted keys (FastMCP's key): key order does not matter, any other
+difference in spelling does, since there is no producer-declared normalization. A miss goes upstream
+and its result is stored on the way back; two misses for the same key that are in flight at the same
+time both go upstream (cache-aside: FastMCP and ContextForge do not coalesce; `mcp-proxy` can, as an
+opt-in its own documentation hedges, and the model takes the common case). Error results are not
+stored. The model is generous where the comparison would otherwise be about configuration: the
+operator caches exactly the tools the producer's manifest marks cacheable, with the manifest's TTL
+counted from the store at the edge, so neither the choice of tools nor the TTL is what differs. A
+`public` tool has one entry shared by every agent, keyed without a credential as `mcp-proxy` and
+ContextForge key. A `private` tool has one entry per caller credential, the per-token partition
+FastMCP's key has, so B5 gets the per-user repeats an IDEM edge gets from its `authContext`
+partition [P-8.3] and is not handicapped on per-user tools (ADR-036, amended 2026-11-27); FastMCP
+partitions every tool that way, which for `public` tools would share nothing between agents and
+would make B5 a per-agent cache, so B5 keeps the shared key for them. Both kinds share one byte budget
+with the replacement policy of the IDEM Content Store, and the stored result's JSON bytes count
+against it. B5 does no cryptographic work and is charged no CPU. It is a relay in the simulator
+(`packages/sim/src/gateway-cache.ts`, in front of the core forwarder relaying plain calls), not part
+of `@idem/core`. Adding it did not change any run of B0 to B4: the fingerprints of every run of every
+committed sweep (30 seeds) are identical before and after (ADR-036).
+
 ## 2. Workloads
 
 - **W-syn (synthetic):** `agents ∈ {1, 2, 4, 8, 16, 32}`, `callsPerAgent`, catalog size, Zipf α over
@@ -54,6 +80,18 @@ medians of E1 interpolated by payload size (`pnpm sim -- calibrate`). The baseli
   `{ t, agent, tool, args, resultBytes }`. Arguments are kept so canonicalization is exercised for real.
 - **W-mixed:** a fraction of non-cacheable calls (`send_email`) and `private` calls (`my_notes`) to
   check bypass and scope behavior under load.
+- **W-code (calls issued by code, ADR-037):** W-syn where an agent's calls come from a program, as in
+  Code Mode and programmatic tool calling, instead of one per model turn. A script step issues the next
+  `burst.size` planned calls (all at once if `burst.parallel`, otherwise back to back with no think
+  time), waits for all of them, then thinks (`thinkTimeMs`, the model turn) before the next step.
+  Agents start uniformly within `startSpreadMs` (0 = an orchestrator spawning its sub-agents at the
+  same instant). Without `burst` a step is one call, and without `startSpreadMs` the window is the
+  think time: exactly the W-syn workload, with the same random draws. The calls themselves (tools,
+  documents, spellings) are planned as in W-syn, so a burst changes when calls are issued, not which.
+  A parallel step prepares its calls (names, Interests) one after the other in plan order, then sends
+  them all at the same virtual instant, so a run never depends on the order in which concurrent
+  WebCrypto operations complete (`determinism.test.ts` perturbs that order and requires identical
+  fingerprints).
 
 Base point of the W-syn sweeps (`experiments/configs/e2-*.json`; each sweep moves one parameter). These
 are assumptions about a swarm, to be replaced by W-trace when E3 runs; none was tuned on results:
@@ -71,20 +109,39 @@ are assumptions about a swarm, to be replaced by W-trace when E3 runs; none was 
 | TTL, CS | 60 s, 8 MiB LRU per forwarder |
 | seeds | 1..30 at every point; the same seed plans the same calls and think times in every mode |
 
+Base point of the W-code sweeps (`e2-code-burst`, `e2-code-sync`), where it differs from the table
+above. Also assumptions, none tuned on results; the shape (several calls per model turn, issued in
+parallel from code) is documented for Code Mode and programmatic tool calling, how often such calls
+repeat across agents is not measured by anyone:
+
+| Parameter | Value |
+|---|---|
+| calls per agent | 16, held constant in every W-code sweep so that only the shape changes |
+| burst | 4 calls sent at once per step (`e2-code-burst` sweeps 1, 2, 4, 8, 16) |
+| start window | agents start within 1 s (`e2-code-sync` sweeps 0, 0.1, 1, 5, 20 s) |
+| think time | exponential, mean 2 s, between steps (one model turn per step) |
+| surface variation | 0: arguments written by code are built mechanically (loop variables, ids copied from an earlier result) and vary less in spelling than model-written ones |
+
+W-code does not model: per-entity fan-out into names nobody else asks for beyond the W-syn private
+pool, free-form arguments such as SQL strings, a code runtime replaying recorded results, rate limits,
+or server-side Code Mode, where the agent's only visible call is the program itself (ADR-037).
+
 ## 3. Metrics
 
 | Metric | Definition |
 |---|---|
 | Upstream calls | `tools/call` requests that reach the producer |
-| Upstream reduction | `1 − upstream(mode) / upstream(B0)`, per seed (also reported against B1) |
+| Upstream reduction | `1 − upstream(mode) / upstream(B0)`, per seed (also reported against B1 and B5: `upstream_reduction_vs_b1`, `upstream_reduction_vs_b5`) |
 | Oracle reduction | `1 − (distinct names + passthrough calls) / calls`: a perfect shared cache, the bound for any mode |
 | CS hit ratio | `cs_hit / (cacheable interests at the edge)` |
 | PIT aggregation ratio | `pit_aggregate / (cacheable interests at the edge)` |
+| Gateway cache hits | B5 only: calls answered from the edge's gateway cache (`gateway_cache_hits`) |
+| In-flight duplicates | B5 only: cacheable calls that missed the gateway cache while an identical call was already upstream, and so went upstream too (`gateway_inflight_duplicates`): what a PIT would have absorbed |
 | Latency | per call, consumer-observed; report p50, p95, p99 |
 | Producer-link bytes | bytes crossing the producer link |
 | Crypto overhead | µs per canonicalize / sign / verify (E1) |
 | Stale serves | Data served with `ageMs ≥ min(freshnessMs, ttlMs)` [P-8.1, P-8.2] (must be 0) |
-| Late serves | informative: Data handed over when `now − producedAt ≥ min(freshnessMs, ttlMs)` on the simulation's one clock; time in transit is not part of `ageMs` (ADR-025) |
+| Late serves | informative: Data handed over when `now − producedAt ≥ min(freshnessMs, ttlMs)` on the simulation's one clock; time in transit is not part of `ageMs` (ADR-025). Agents and forwarders also apply the signed lifetime [P-8.6, P-8.7] with the default tolerance; the pinned fingerprints of the honest E2 runs did not change when they started to (ADR-034) |
 | Safety violations | accepted tampered Data + cross-context `private` serves (must be 0) |
 
 ## 4. Experiments
@@ -97,11 +154,35 @@ order statistics per cell; wall-clock, so the whole run is repeated and every re
 browser half has not run.
 
 ### E2 — Trace-driven simulation (main result)
-`@idem/sim` with W-syn sweeps and W-trace replay, B0–B4. ≥ 10 seeds per point; report mean and 95%
+`@idem/sim` with W-syn sweeps and W-trace replay, B0–B5. ≥ 10 seeds per point; report mean and 95%
 CI. Plots: upstream reduction vs agents; vs overlap; latency CDFs; CS size sensitivity; TTL
-sensitivity. Supports H1, H2.
+sensitivity; upstream calls vs surface variation, burst size and start window against B5. Supports
+H1, H2, H5 (a) and H6.
 As run: `e2-agents`, `e2-overlap`, `e2-ttl`, `e2-cs-size`, `e2-think-time` (W-syn) and `e2-mixed`
-(W-mixed), 30 seeds per point. W-trace replay waits for E3.
+(W-mixed), each with B5 added to its modes; `e2-surface` (W-syn, `surfaceVariation` ∈ {0, 0.1, 0.3,
+0.5, 1}), `e2-code-burst` (W-code, burst size ∈ {1, 2, 4, 8, 16}, parallel) and `e2-code-sync` (W-code,
+start window ∈ {0, 100, 1000, 5000, 20000} ms at burst 4), each with B0, B1, B5 and B2; 30 seeds per
+point. `e2-surface` isolates what producer-declared canonicalization adds over B5: at 0 every repeat is
+spelled the same way, so B5 and B2 can differ only by in-flight aggregation. W-trace replay waits for
+E3.
+
+Verdict rules, evaluated from `summary.csv` (a statistic is *above* or *below* zero when its 95%
+interval is, as for H1 and H2; *apart* means two 95% intervals do not overlap):
+- **H5 (a)**, from `upstream_reduction_vs_b5` of B2. *Surface:* at every value > 0 of `e2-surface`,
+  above zero. *In flight:* at every point of the three surface-0 sweeps (`e2-surface` at 0,
+  `e2-code-burst`, `e2-code-sync`) where B5's `gateway_inflight_duplicates` is above zero, above
+  zero. *Neither:* at every such point where B5's mean `gateway_inflight_duplicates` is 0, neither
+  above nor below zero. Supported if every evaluated point agrees and the surface and in-flight sets
+  are not empty; refuted if no point of the surface or in-flight sets is above zero; partly otherwise.
+- **H5 (b)**, from E5: for each baseline row and the IDEM variant it mirrors, the pair holds when the
+  baseline row was accepted in at least one trial and the IDEM variant in none. Supported if every
+  pair holds, refuted if none does, partly otherwise. H5 is supported if (a) and (b) are, refuted if
+  both are refuted, partly otherwise.
+- **H6**, from B2's `pit_aggregation_ratio` and `upstream_reduction_vs_b5`. In `e2-code-burst`
+  (increasing burst size) and in `e2-code-sync` (decreasing start window), a metric *grows* when its
+  values at the two ends of the sweep are apart in the stated direction and no consecutive pair of
+  points is apart in the opposite direction. Supported if both metrics grow in both sweeps; refuted
+  if neither metric grows in either sweep; partly otherwise.
 
 ### E3 — Real-agent trace collection
 A small swarm (AI SDK 7 via AI Gateway) solving a fixed set of research questions with the demo tools
@@ -174,8 +255,8 @@ As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/
   netem qdisc of every interface, Docker VM, the harness digest and the discarded runs.
 - Seeds 1..3 × loss {0, 1, 5} % × 5 modes = 45 runs of about a minute each. Three seeds keep the
   run under the 45-minute target; the CIs are wide accordingly.
-- **Status.** Harness built and smoke-tested; the full run has not been executed (see roadmap M6).
-  No E4 number exists yet. `export-web` reads `experiments/results/e4/<run-id>/` (`kind: "emulation"`:
+- **Status.** The full run is committed (`experiments/results/e4/20261118T141957Z-de2bcf73`, read
+  above); a run with at least 10 seeds is an open roadmap item. `export-web` reads `experiments/results/e4/<run-id>/` (`kind: "emulation"`:
   `summary.csv` by mode and loss, `latency_cdf.csv`, `config.json`, `env.json`) into `e4` of
   `data.json`, which is `null` until a run folder with a summary exists; `/benchmarks` then shows E4
   as its lead section (spec 04 §1.1, ADR-032). Tested with an in-memory fixture, never a committed
@@ -185,16 +266,55 @@ As built (`experiments/ndn/bench`, `pnpm exp:e4`, config `experiments/ndn/bench/
 Adversarial runs: tamper with Data in flight, forge names (digest mismatch), replay stale Data,
 request `private` results across `authContext`s, poison attempts with a non-manifest key.
 Expected: every attempt on a claim of spec 01 is rejected; counts reported. Supports H3. Stale Data
-has two cases (ADR-025): an honest cache MUST NOT serve an expired copy, which is a claim and is
-expected to be rejected; a party on the path replaying a genuine, expired Data is a documented limit
-of v1, which the suite measures and expects to be accepted until the rule of Q6 is adopted.
-As run: `e5-safety`, 27 variants × 250 trials against the real `Forwarder`, `Producer`, `TrustStore`
-and `verifyData` on a virtual clock (`packages/sim/src/experiments/safety.ts`). A trial is rejected
-only if no victim accepted forged, foreign or expired content and no Content Store kept any. Every
-variant carries what spec 01 says of it: `rejected` (24 variants, a claim), `limit` (on-path replay
-on the producer link and on the agent link, ADR-025) or `leaks` (the timing side channel of Q3).
-One claim does not hold and stays in the suite, failing, until the engine changes: a `private` read
-by a consumer that puts the victim's `authContext` in its own Interest (ADR-023, Q7).
+has three cases (ADR-034): an honest cache MUST NOT serve a copy past its freshness [P-8.1], a claim;
+a party on the path replaying a genuine Data older than its freshness plus the clock tolerance, or
+dated beyond the tolerance in the future, MUST be refused [P-8.6, P-8.7], a claim; a replay younger
+than that bound is accepted by design (bounded staleness), a documented limit the suite measures.
+As run: `e5-safety`, 34 variants (31 IDEM variants and 3 baseline rows) × 250 trials against the real
+`Forwarder`, `Producer`, `TrustStore` and `verifyData` on a virtual clock
+(`packages/sim/src/experiments/safety.ts`). A trial is rejected
+only if no victim accepted forged, foreign or out-of-lifetime content and no Content Store kept any.
+The consumer of the suite decides with `acceptData`, the function of `@idem/core` that every shipped
+consumer uses (`IdemClient`, `IdemConsumer`, `NdnConsumer`, the simulator's agents), so the suite
+exercises the shipped [P-5.5]/[P-8.7] decision; it does not model the plain-call retry: a refusal
+ends the trial. The judge never reuses a node's predicate. It works on ground truth from the world:
+which texts the producer made, and at what world time it made each one. Content is out of its bound
+when it was made at least `ttlMs` + 60 s (`DEFAULT_CLOCK_TOLERANCE_MS`) before it reached the
+consumer, or claims a `producedAt` more than 60 s in the future; the honest-cache variant keeps the
+stricter reading, made at least `ttlMs` before. Each claim also names the layer that must stop it
+(the forwarder's signature, digest, lifetime or partition check, the producer, or the consumer) and
+the test of the suite (`safety.test.ts`) requires every trial's mechanism to show that layer, so a
+claim held only because another layer caught the attack fails. Every variant carries what spec 01 says of it: `rejected` (28 variants, a claim), `limit` (2:
+a replay inside the tolerance window on the producer link and on the agent link, ADR-034) or `leaks`
+(the timing side channel of Q3). The replay claims are: expired Data on the producer link and on the
+agent link, an old Data with an understated `ageMs` from a malicious regional forwarder (stopped at
+the edge's signed-lifetime check), and a Data the producer signed with a far-future `producedAt`
+(assumes a producer clock glitch; stopped at the edge). The producer-link limit also checks the bound:
+after the replay, a later consumer asking once the copy is outside its lifetime must get a fresh
+answer. `private/authcontext-known` (a consumer that puts the victim's `authContext` in its own
+Interest) is a claim like the other `private` variants since the edge ignores the field (ADR-033).
+The counts of the run that matches this code are reported in the results; earlier runs describe the
+engine before ADR-033 and ADR-034.
+Baseline rows (ADR-036; supports H5 (b)): three variants run the attack of an IDEM variant against B5,
+in a world of plain MCP clients, the same producer answering as a plain MCP server, and the
+simulator's gateway cache in front of a core forwarder relaying plain calls.
+`baseline/tamper-cache@edge` (mirrors `tamper/content@last-hop`: a compromised, buggy or malicious
+gateway or cache backend rewrites a stored result, and every later user of that call is served it);
+`baseline/tamper@upstream` (mirrors `tamper/content@upstream`; assumes the attacker controls the
+link between the gateway and the producer, with no TLS on that hop or a compromised hop on it: the
+result is rewritten there, cached, and served to later users; only the later users, answered from the
+gateway cache, are judged, since the first user's own answer crossed the rewritten link and plain MCP
+with no cache would take it too, and a trial in which no later user was answered from the cache is a
+setup failure); `baseline/private-miskeyed@edge` (mirrors `private/sequential`: the operator lists the
+per-user tool as cacheable without a per-credential partition, keyed on tool and arguments as
+`mcp-proxy` and ContextForge key, the misconfiguration the MCP SDK's `cacheScope` warning describes,
+and a second user receives the first user's result; B5 as run in E2 partitions such a tool per
+credential and would not leak here, nor would FastMCP's per-token key). They are judged on ground
+truth the same way: a trial is accepted when a client took a text the producer did not make for that
+call, another user's result, or a cache holds one. They carry `expected: "baseline"` and the
+id of the variant they mirror (`mirrors` in `metrics.csv`): acceptance is the outcome, shown next to
+IDEM's rejection of the same attack; they are not claims, not findings, and not part of the IDEM
+counts. `export-web` puts them in `e5.baseline`, apart from `e5.rows`.
 
 ## 5. Reporting rules
 

@@ -6,9 +6,10 @@ import type { IdemWireErrorCode } from "./errors";
 import type { Face, Packet } from "./face";
 import type { Fib } from "./fib";
 import { jcs } from "./jcs";
+import { clockTolerance, lifetimeReason, lifetimeState, staleByAge } from "./lifetime";
 import { type ParsedName, parseName } from "./name";
 import type { TrustStore } from "./trust";
-import type { Scope } from "./types";
+import type { Data, Scope } from "./types";
 
 /**
  * Every observable action of a forwarder (protocol §7). The sandbox and the experiments consume
@@ -58,8 +59,14 @@ export interface ForwarderOptions {
   /**
    * Edge secret. When set, Interests arriving on consumer faces with a credential get an
    * `authContext = HMAC(secret, credential)` [P-8.4], which partitions `private` PIT and CS entries.
+   * An `authContext` carried by a received Interest is always ignored.
    */
   authSecret?: string;
+  /**
+   * How far outside its freshness, on this node's clock, a Data may be and still count as within its
+   * signed lifetime [P-8.6]. Default `DEFAULT_CLOCK_TOLERANCE_MS` (60 000 ms).
+   */
+  clockToleranceMs?: number;
   onEvent?: (e: ForwarderEvent) => void;
 }
 
@@ -72,12 +79,16 @@ export interface FaceOptions {
 interface InRecord {
   face: string;
   nonce: string;
+  /** The downstream's Interest asked for fresh Data: it never receives Data outside its lifetime [P-8.6]. */
+  mustBeFresh: boolean;
 }
 
 interface PitEntry {
   key: string;
   name: string;
   scope: Scope;
+  /** Manifest TTL of the tool when the entry was created [P-8.2]. */
+  ttlMs: number;
   authContext?: string;
   inRecords: InRecord[];
   outFace: string;
@@ -91,6 +102,9 @@ interface BypassEntry {
   up: string;
   kind: "interest" | "call";
   name?: string;
+  /** Interests only: the downstream asked for fresh Data, and the tool's manifest TTL [P-8.6]. */
+  mustBeFresh?: boolean;
+  ttlMs?: number;
   timer: unknown;
 }
 
@@ -114,6 +128,7 @@ export class Forwarder {
   readonly #trust: TrustStore;
   readonly #verify: boolean;
   readonly #authSecret: string | undefined;
+  readonly #tolerance: number;
   readonly #onEvent: ((e: ForwarderEvent) => void) | undefined;
   readonly #faces = new Map<string, { face: Face; consumer: boolean }>();
   readonly #pit = new Map<string, PitEntry>();
@@ -131,6 +146,7 @@ export class Forwarder {
     this.#trust = opts.trust;
     this.#verify = opts.verifyOnInsert ?? true;
     this.#authSecret = opts.authSecret;
+    this.#tolerance = clockTolerance(opts.clockToleranceMs);
     this.#onEvent = opts.onEvent;
   }
 
@@ -218,14 +234,11 @@ export class Forwarder {
     const consumerFace = this.#faces.get(faceId)?.consumer ?? false;
     const [digest, authContext] = await Promise.all([
       sha256b64u(jcs(I.args)).catch(() => undefined),
-      // authContext exists only on the first hop [P-8.4]; anything arriving from upstream
-      // forwarders is ignored.
-      consumerFace
-        ? I.authContext !== undefined
-          ? Promise.resolve(I.authContext)
-          : p.auth !== undefined && this.#authSecret !== undefined
-            ? deriveAuthContext(this.#authSecret, p.auth)
-            : Promise.resolve(undefined)
+      // [P-8.4] The edge derives authContext itself, from the credential and its own secret. An
+      // authContext carried by the Interest is never used, on any face: a consumer that could
+      // choose it would read another context's partition.
+      consumerFace && p.auth !== undefined && this.#authSecret !== undefined
+        ? deriveAuthContext(this.#authSecret, p.auth)
         : Promise.resolve(undefined),
     ]);
 
@@ -268,7 +281,11 @@ export class Forwarder {
     const cacheableHere = scope === "public" || authContext !== undefined;
     if (cacheableHere) {
       const hit = this.#cs.get(key, t);
-      if (hit && (!I.mustBeFresh || isFresh(hit, t, policy.ttlMs))) {
+      // Fresh means fresh by ageMs [P-8.1, P-8.2] AND within the signed lifetime [P-8.6].
+      const fresh = (h: NonNullable<typeof hit>) =>
+        isFresh(h, t, policy.ttlMs) &&
+        lifetimeState(h.data.meta, policy.ttlMs, t, this.#tolerance) === "within";
+      if (hit && (!I.mustBeFresh || fresh(hit))) {
         const ageMs = entryAge(hit, t);
         this.#emit({ kind: "cs_hit", face: faceId, name: I.name, ageMs });
         this.#send(faceId, { type: "data", nonce: I.nonce, data: { ...hit.data, ageMs } });
@@ -280,10 +297,10 @@ export class Forwarder {
     const existing = this.#pit.get(key);
     if (existing) {
       if (existing.inRecords.length >= this.#limits.maxFacesPerEntry) {
-        this.#passthrough(faceId, p, "pit_full");
+        this.#passthrough(faceId, p, "pit_full", policy.ttlMs);
         return;
       }
-      existing.inRecords.push({ face: faceId, nonce: I.nonce });
+      existing.inRecords.push({ face: faceId, nonce: I.nonce, mustBeFresh: I.mustBeFresh });
       this.#nonces.set(I.nonce, key);
       const expiresAt = t + I.lifetimeMs;
       if (expiresAt > existing.expiresAt) this.#armExpiry(existing, expiresAt);
@@ -291,7 +308,7 @@ export class Forwarder {
       return;
     }
     if (this.#pit.size >= this.#limits.maxEntries) {
-      this.#passthrough(faceId, p, "pit_full");
+      this.#passthrough(faceId, p, "pit_full", policy.ttlMs);
       return;
     }
 
@@ -305,8 +322,9 @@ export class Forwarder {
       key,
       name: I.name,
       scope,
+      ttlMs: policy.ttlMs,
       ...(authContext !== undefined && scope === "private" && { authContext }),
-      inRecords: [{ face: faceId, nonce: I.nonce }],
+      inRecords: [{ face: faceId, nonce: I.nonce, mustBeFresh: I.mustBeFresh }],
       outFace: nextHop,
       outNonce: I.nonce,
       expiresAt: 0,
@@ -324,8 +342,16 @@ export class Forwarder {
     this.#emit({ kind: "upstream_out", face: faceId, name: I.name, nextHop });
   }
 
-  /** Forward without PIT state (PIT bounds exceeded [P-7.3]). */
-  #passthrough(faceId: string, p: Extract<Packet, { type: "interest" }>, reason: string): void {
+  /**
+   * Forward without PIT state (PIT bounds exceeded [P-7.3]). The entry keeps the Interest's
+   * `mustBeFresh` and the tool's TTL, so the answer gets the same freshness checks as a PIT entry's.
+   */
+  #passthrough(
+    faceId: string,
+    p: Extract<Packet, { type: "interest" }>,
+    reason: string,
+    ttlMs: number,
+  ): void {
     const I = p.interest;
     const nextHop = this.#fib.lookup(I.name);
     if (
@@ -343,7 +369,11 @@ export class Forwarder {
       return;
     }
     this.#emit({ kind: "bypass", face: faceId, name: I.name, reason });
-    this.#trackBypass(I.nonce, { down: faceId, up: nextHop, kind: "interest", name: I.name }, I.lifetimeMs);
+    this.#trackBypass(
+      I.nonce,
+      { down: faceId, up: nextHop, kind: "interest", name: I.name, mustBeFresh: I.mustBeFresh, ttlMs },
+      I.lifetimeMs,
+    );
     const { authContext: _stripped, ...upstream } = I;
     this.#send(nextHop, {
       type: "interest",
@@ -402,7 +432,13 @@ export class Forwarder {
 
     const bypass = this.#takeBypass(p.nonce, faceId);
     if (bypass) {
-      this.#send(bypass.down, p);
+      // Passthrough [P-7.3] has no exception to [P-8.6]: a downstream that asked for fresh Data
+      // gets EXPIRED instead of Data outside its signed lifetime or stale by its age.
+      const refused = bypass.mustBeFresh === true ? this.#refusal(D, bypass.ttlMs ?? Infinity) : undefined;
+      if (refused !== undefined) {
+        this.#emit({ kind: "drop", name: D.name, reason: refused.event });
+        this.#nack(bypass.down, p.nonce, "EXPIRED", D.name, refused.message);
+      } else this.#send(bypass.down, p);
       return;
     }
     const entry = this.#matchUpstream(p.nonce, faceId);
@@ -434,8 +470,31 @@ export class Forwarder {
       return;
     }
 
-    // Cache: never errors [P-5.3, P-7.2]; private only at the edge, partitioned [P-8.3].
+    // A downstream that asked for fresh Data receives only Data fresh by [P-8.1]/[P-8.2] and within
+    // its signed lifetime [P-8.6], whatever the flags of the other Interests in the entry: it gets
+    // EXPIRED instead and retries as a plain call [P-8.7]. Downstreams that asked with
+    // mustBeFresh: false still get the Data. Data outside its signed lifetime is never stored.
     const t = this.#clock.now();
+    const outside = lifetimeState(D.meta, entry.ttlMs, t, this.#tolerance) !== "within";
+    const refused = this.#refusal(D, entry.ttlMs);
+    if (refused !== undefined && (outside || entry.inRecords.some((r) => r.mustBeFresh))) {
+      this.#emit({ kind: "drop", name: D.name, reason: refused.event });
+    }
+    if (outside) {
+      this.#removeEntry(entry);
+      let delivered = 0;
+      for (const r of entry.inRecords) {
+        if (r.mustBeFresh) this.#nack(r.face, r.nonce, "EXPIRED", entry.name, refused?.message);
+        else {
+          this.#send(r.face, { type: "data", nonce: r.nonce, data: D });
+          delivered++;
+        }
+      }
+      if (delivered > 0) this.#emit({ kind: "pit_satisfy", name: D.name, faces: delivered });
+      return;
+    }
+
+    // Cache: never errors [P-5.3, P-7.2]; private only at the edge, partitioned [P-8.3].
     const storable =
       D.content.isError !== true &&
       D.meta.freshnessMs > 0 &&
@@ -447,8 +506,32 @@ export class Forwarder {
     }
 
     this.#removeEntry(entry);
-    for (const r of entry.inRecords) this.#send(r.face, { type: "data", nonce: r.nonce, data: D });
-    this.#emit({ kind: "pit_satisfy", name: D.name, faces: entry.inRecords.length });
+    let delivered = 0;
+    for (const r of entry.inRecords) {
+      if (refused !== undefined && r.mustBeFresh) {
+        this.#nack(r.face, r.nonce, "EXPIRED", entry.name, refused.message);
+      } else {
+        this.#send(r.face, { type: "data", nonce: r.nonce, data: D });
+        delivered++;
+      }
+    }
+    if (delivered > 0) this.#emit({ kind: "pit_satisfy", name: D.name, faces: delivered });
+  }
+
+  /**
+   * Why `D` must not reach a downstream that asked for fresh Data, or `undefined` if it may: outside
+   * its signed lifetime at this node [P-8.6], or stale by its hop-relative age [P-8.1, P-8.2].
+   */
+  #refusal(D: Data, ttlMs: number): { event: "expired" | "stale"; message: string } | undefined {
+    const t = this.#clock.now();
+    if (lifetimeState(D.meta, ttlMs, t, this.#tolerance) !== "within") {
+      return { event: "expired", message: lifetimeReason(D.meta, ttlMs, t, this.#tolerance) };
+    }
+    if (staleByAge(D, ttlMs)) {
+      const fresh = Math.min(D.meta.freshnessMs, ttlMs);
+      return { event: "stale", message: `Data stale by its age (ageMs ${D.ageMs}, freshness ${fresh} ms)` };
+    }
+    return undefined;
   }
 
   #fail(entry: PitEntry, code: IdemWireErrorCode, message: string): void {

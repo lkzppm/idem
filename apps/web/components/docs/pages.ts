@@ -6,12 +6,14 @@
 
 export type DocSlug =
   | "introduction"
+  | "use-cases"
   | "concepts"
   | "architecture"
   | "protocol"
   | "security"
   | "api"
   | "sandbox"
+  | "related-work"
   | "evaluation"
   | "decisions"
   | "references";
@@ -36,12 +38,14 @@ export const DOC_GROUPS: readonly DocGroup[] = ["learn", "spec", "use", "researc
 
 export const DOC_PAGES: readonly DocPage[] = [
   { slug: "introduction", group: "learn" },
+  { slug: "use-cases", group: "learn" },
   { slug: "concepts", group: "learn" },
   { slug: "architecture", group: "learn" },
   { slug: "protocol", group: "spec", spec: "01-protocol.md", translated: true, normative: true },
   { slug: "security", group: "spec" },
   { slug: "api", group: "use" },
   { slug: "sandbox", group: "use" },
+  { slug: "related-work", group: "research" },
   { slug: "evaluation", group: "research" },
   { slug: "decisions", group: "research", spec: "07-decisions.md" },
   { slug: "references", group: "research", spec: "08-references.md" },

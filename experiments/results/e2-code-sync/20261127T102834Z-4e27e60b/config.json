@@ -1,0 +1,129 @@
+{
+  "experiment": "e2-code-sync",
+  "title": "E2 — calls issued by code in bursts: how closely agents start (W-code, H6)",
+  "description": "W-code (ADR-037): sweep of the window in which the agents start (startSpreadMs; 0 = an orchestrator spawning every sub-agent at the same instant), with every agent issuing its 16 calls in steps of 4 calls sent at once, waiting for all of them, then thinking for one model turn before the next step. The burst size 4 is an assumption between the sizes of e2-code-burst. Assumptions, none measured and none tuned on results: 8 agents; 16 calls per agent; the shared catalog, Zipf exponent and overlap of the W-syn base (50 documents, 0.8, 0.5); a model turn between steps with an exponential think time of mean 2 s; surface variation 0, because arguments written by code are built mechanically (loop variables, ids copied from an earlier result) and vary less in spelling than model-written ones; links, service time, result sizes, TTL and Content Store as the W-syn base. The shape (calls issued from code, several per model turn, in parallel) is documented for programmatic tool calling and Code Mode; how often such calls repeat across agents has not been measured by anyone, so this sweep shows the mechanism, not a measured workload. Same seeds at every point; reductions are paired by seed against B0, B1 and B5 (ADR-036).",
+  "kind": "sweep",
+  "seeds": {
+    "first": 1,
+    "count": 30
+  },
+  "modes": [
+    "B0",
+    "B1",
+    "B5",
+    "B2"
+  ],
+  "sweep": {
+    "param": "startSpreadMs",
+    "values": [
+      0,
+      100,
+      1000,
+      5000,
+      20000
+    ]
+  },
+  "base": {
+    "workload": {
+      "agents": 8,
+      "callsPerAgent": 16,
+      "catalogSize": 50,
+      "zipfAlpha": 0.8,
+      "overlap": 0.5,
+      "thinkTimeMs": 2000,
+      "surfaceVariation": 0,
+      "privateFraction": 0,
+      "sideEffectFraction": 0,
+      "burst": {
+        "size": 4,
+        "parallel": true
+      },
+      "startSpreadMs": 1000
+    },
+    "topology": {
+      "agentLinkMs": 5,
+      "producerLinkMs": 40,
+      "lossPct": 0,
+      "tree": {
+        "edges": 2,
+        "coreLinkMs": 10,
+        "producerLinkMs": 30
+      }
+    },
+    "producer": {
+      "serviceMedianMs": 150,
+      "serviceSigma": 0.5,
+      "ttlMs": 60000,
+      "pageBytesMedian": 6144
+    },
+    "cs": {
+      "maxBytes": 8388608,
+      "policy": "lru"
+    },
+    "interestLifetimeMs": 10000
+  },
+  "processing": {
+    "file": "processing.json",
+    "sizesBytes": [
+      1024,
+      4096,
+      16384,
+      65536,
+      262144,
+      1048576
+    ],
+    "canonicalizeUs": [
+      9.041,
+      24.875,
+      104.166,
+      458.959,
+      1858.958,
+      7222.459
+    ],
+    "nameUs": [
+      16.666,
+      16.916,
+      26.083,
+      45.958,
+      125.625,
+      486.917
+    ],
+    "signUs": [
+      37.292,
+      36.834,
+      58.417,
+      101.625,
+      304.834,
+      800.667
+    ],
+    "verifyUs": [
+      59.458,
+      67.75,
+      88.708,
+      133.834,
+      352.958,
+      789.375
+    ],
+    "source": {
+      "experiment": "e1-node",
+      "runs": [
+        "20261117T072542Z-b1fe1c14",
+        "20261117T072557Z-b1fe1c14",
+        "20261117T074111Z-b1fe1c14",
+        "20261117T074126Z-b1fe1c14",
+        "20261117T075642Z-b1fe1c14",
+        "20261117T125444Z-15f0097f",
+        "20261117T125507Z-15f0097f",
+        "20261117T125542Z-15f0097f",
+        "20261117T125628Z-15f0097f",
+        "20261117T125716Z-15f0097f",
+        "20261127T065000Z-381e7337",
+        "20261127T065012Z-381e7337",
+        "20261127T065025Z-381e7337",
+        "20261127T065039Z-381e7337",
+        "20261127T065052Z-381e7337"
+      ],
+      "statistic": "median over runs of the per-run median (p50_us), microseconds"
+    }
+  }
+}
